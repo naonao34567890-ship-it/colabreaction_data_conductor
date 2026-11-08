@@ -1,17 +1,111 @@
-<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>分子 XYZ ライブラリ</title><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script><script src="common.js"></script><script src="worker.js"></script></head>
-<body><div class="page"><header><div class="heading"><div><div class="eyebrow">MOLECULAR WORKSPACE / 01</div><h1>分子 XYZ ライブラリ</h1></div><div class="badge">ローカル保存 · XYZ / QM9</div></div><div class="toolbar"><button class="primary" id="fileButton">＋ ファイルを選択</button><button id="folderButton">フォルダを選択</button><input hidden type="file" id="files" multiple accept=".xyz"><input hidden type="file" id="folder" multiple webkitdirectory><span class="spacer"></span><button id="all">全選択</button><button id="none">全解除</button><button id="open" disabled>エディタで開く ↗</button><button id="download" disabled>ダウンロード ↓</button></div><div class="progress-area"><div class="row"><span id="progressText">ファイル・フォルダを登録できます</span><span class="spacer"></span><span id="queued">待機中 0件</span><button id="cancel" disabled>キャンセル</button></div><progress id="progress" value="0" max="1"></progress></div></header><main class="workspace"><div class="row"><h2>すべての分子</h2><span id="count" class="muted">0 分子</span><span class="spacer"></span><small id="selected">0 選択中</small></div><div class="grid-view" id="grid"><div id="empty" class="empty"><div><b>分子を、ひとつの場所に。</b>xyz ファイルやフォルダをドロップして登録<br><small>複数分子ファイル・QM9形式に対応</small></div></div></div><div class="drop-hint">このページに xyz ファイル・フォルダをドロップ　／　ダブルクリックで分子エディタを開く</div><details id="results"><summary id="summary">読み込み結果</summary><pre id="resultText"></pre></details><div class="status" id="notice" role="status" aria-live="polite"></div></main></div>
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>分子 XYZ ライブラリ</title><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script><script src="common.js"></script><script src="worker.js"></script><style>
+#grid { user-select: none; }
+.selection-box { position: fixed; z-index: 10; pointer-events: none; box-sizing: border-box; border: 1px solid #087f78; background: #009c8222; }
+</style></head>
+<body><div class="page"><header><div class="heading"><div><div class="eyebrow">MOLECULAR WORKSPACE / 01</div><h1>分子 XYZ ライブラリ</h1></div><div class="badge">ローカル保存 · XYZ / QM9</div></div><div class="toolbar"><button class="primary" id="fileButton">＋ ファイルを選択</button><button id="folderButton">フォルダを選択</button><input hidden type="file" id="files" multiple accept=".xyz"><input hidden type="file" id="folder" multiple webkitdirectory><span class="spacer"></span><button id="all">全選択</button><button id="none">全解除</button><button id="deleteSelected" title="Ctrl＋Alt＋Backspace" disabled>削除</button><button id="open" disabled>エディタで開く ↗</button><button id="download" disabled>ダウンロード ↓</button></div><div class="progress-area"><div class="row"><span id="progressText">ファイル・フォルダを登録できます</span><span class="spacer"></span><span id="queued">待機中 0件</span><button id="cancel" disabled>キャンセル</button></div><progress id="progress" value="0" max="1"></progress></div></header><main class="workspace"><div class="row"><h2>すべての分子</h2><span id="count" class="muted">0 分子</span><span class="spacer"></span><small id="selected">0 選択中</small></div><div class="grid-view" id="grid"><div id="empty" class="empty"><div><b>分子を、ひとつの場所に。</b>xyz ファイルやフォルダをドロップして登録<br><small>複数分子ファイル・QM9形式に対応</small></div></div></div><div class="drop-hint">このページに xyz ファイル・フォルダをドロップ　／　左ドラッグで範囲選択　／　ダブルクリックで分子エディタを開く</div><details id="results"><summary id="summary">読み込み結果</summary><pre id="resultText"></pre></details><div class="status" id="notice" role="status" aria-live="polite"></div></main></div>
 <dialog id="exportDialog"><h2>選択した分子をダウンロード</h2><label>保存する名前<input id="exportName" value="molecules"></label><label>出力形式<select id="format"><option value="zip">ZIP（分子ごとの xyz）</option><option value="xyz">1つの連結 xyz</option></select></label><p class="muted" id="exportHint"></p><div class="dialog-actions"><button id="closeDialog">戻る</button><button class="primary" id="exportStart">保存する</button></div></dialog>
 <script>
 'use strict';
-const $=id=>document.getElementById(id);let meta=[],selected=new Set(),jobs=[],active=null,exporting=false,exportCancel=null;const channel=new BroadcastChannel('molecular-xyz');
-const grid=new Mol.VirtualGrid($('grid'),{onSelect:m=>{selected.has(m.id)?selected.delete(m.id):selected.add(m.id);selectionUI();},isSelected:id=>selected.has(id),onOpen:openEditor,onDelete:async m=>{try{await Mol.remove(m.id);applyChange({type:'deleted',id:m.id});Mol.notify({type:'deleted',id:m.id});}catch(e){notice(e.message);}}});
+const $=id=>document.getElementById(id);let meta=[],selected=new Set(),jobs=[],active=null,exporting=false,exportCancel=null,deleting=false;const channel=new BroadcastChannel('molecular-xyz');
+const grid=new Mol.VirtualGrid($('grid'),{onSelect:m=>{selected.has(m.id)?selected.delete(m.id):selected.add(m.id);selectionUI();},isSelected:id=>selected.has(id),onOpen:openEditor,onDelete:m=>deleteFiles([m.id])});
 function notice(s){$('notice').textContent=s;}
 function openEditor(m){window.open('editor.html?id='+encodeURIComponent(m.id),'_blank','noopener');}
-function selectionUI(){ $('selected').textContent=selected.size.toLocaleString()+' 選択中';$('download').disabled=!selected.size||exporting||!!active;$('open').disabled=selected.size!==1;}
+function selectionUI(){ $('selected').textContent=selected.size.toLocaleString()+' 選択中';$('download').disabled=!selected.size||exporting||!!active;$('open').disabled=selected.size!==1;$('deleteSelected').disabled=deleting||!!active||exporting||![...selected].some(id=>!metaMap.get(id)?.builtin);}
 function refresh(){grid.setData(meta.sort(Mol.compareDisplayOrder));$('count').textContent=meta.length.toLocaleString()+' 分子';$('empty').hidden=!!meta.length;$('empty').style.display=meta.length?'none':'flex';selectionUI();}
-let metaMap=new Map();function applyChange(m){if(m.type==='added'){for(const item of m.items){if(!metaMap.has(item.id)){meta.push(item);metaMap.set(item.id,item);}}}else if(m.type==='deleted'){metaMap.delete(m.id);meta=meta.filter(x=>x.id!==m.id);selected.delete(m.id);}refresh();}
+let metaMap=new Map();function applyChange(m){if(m.type==='added'){for(const item of m.items){if(!metaMap.has(item.id)){meta.push(item);metaMap.set(item.id,item);}}}else if(m.type==='deleted'){const ids=new Set(m.ids??[m.id]);for(const id of ids){metaMap.delete(id);selected.delete(id);}meta=meta.filter(x=>!ids.has(x.id));}refresh();}
 channel.onmessage=e=>applyChange(e.data);Mol.metadata().then(v=>{for(const m of v)if(!metaMap.has(m.id)){meta.push(m);metaMap.set(m.id,m);}refresh();}).catch(e=>notice('保存領域を開けません: '+e.message));
 $('all').onclick=()=>{selected=new Set(meta.map(m=>m.id));selectionUI();grid.render();};$('none').onclick=()=>{selected.clear();selectionUI();grid.render();};$('open').onclick=()=>{const m=metaMap.get(selected.values().next().value);if(m)openEditor(m);};
+async function deleteFiles(ids) {
+ if(deleting||active||exporting)return;
+ ids=ids.filter(id=>metaMap.has(id)&&!metaMap.get(id).builtin);
+ if(!ids.length)return;
+ deleting=true;
+ selectionUI();
+ try {
+  await Mol.removeMany(ids);
+  const change={type:'deleted',ids};
+  applyChange(change);
+  Mol.notify(change);
+  notice(`${ids.length} 件のファイルを削除しました。`);
+ } catch(e) {
+  notice(e.message);
+ } finally {
+  deleting=false;
+  selectionUI();
+ }
+}
+$('deleteSelected').onclick=()=>deleteFiles([...selected]);
+window.addEventListener('keydown',e=>{
+ if(e.key!=='Backspace'||!e.ctrlKey||!e.altKey||e.shiftKey||e.metaKey||
+    $('exportDialog').open||e.target.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))return;
+ e.preventDefault();
+ if(!e.repeat)deleteFiles([...selected]);
+});
+
+const gridView=$('grid');
+const selectionBox=document.createElement('div');
+selectionBox.className='selection-box';
+selectionBox.hidden=true;
+document.body.append(selectionBox);
+let marquee=null;
+let suppressClick=false;
+gridView.addEventListener('pointerdown',e=>{
+ suppressClick=false;
+ if(e.pointerType!=='mouse'||e.button!==0||e.target.closest('button')||
+    !gridView.contains(e.target)||e.clientX>=gridView.getBoundingClientRect().left+gridView.clientLeft+gridView.clientWidth)return;
+ marquee={id:e.pointerId,x:e.clientX,y:e.clientY,
+   base:e.ctrlKey||e.metaKey||e.shiftKey?new Set(selected):new Set(),
+   original:new Set(selected),active:false};
+});
+gridView.addEventListener('dragstart',e=>e.preventDefault());
+gridView.addEventListener('click',e=>{
+ if(!suppressClick)return;
+ suppressClick=false;
+ e.stopImmediatePropagation();
+},true);
+function drawSelection(e) {
+ const {x,y,base}=marquee;
+ const rect=gridView.getBoundingClientRect();
+ const left=Math.max(rect.left,Math.min(x,e.clientX)),right=Math.min(rect.right,Math.max(x,e.clientX));
+ const top=Math.max(rect.top,Math.min(y,e.clientY)),bottom=Math.min(rect.bottom,Math.max(y,e.clientY));
+ Object.assign(selectionBox.style,{left:left+'px',top:top+'px',width:Math.max(0,right-left)+'px',height:Math.max(0,bottom-top)+'px'});
+ selected=new Set([...base].filter(id=>metaMap.has(id)));
+ for(const [id,node] of grid.nodes){
+  const tile=node.el.getBoundingClientRect();
+  if(left<=right&&top<=bottom&&tile.left<=right&&tile.right>=left&&tile.top<=bottom&&tile.bottom>=top)selected.add(id);
+ }
+ selectionUI();
+ grid.render();
+}
+window.addEventListener('pointermove',e=>{
+ if(marquee?.id!==e.pointerId)return;
+ if(!marquee.active){
+  if(Math.hypot(e.clientX-marquee.x,e.clientY-marquee.y)<4)return;
+  marquee.active=true;
+  suppressClick=true;
+  gridView.setPointerCapture(e.pointerId);
+  selectionBox.hidden=false;
+ }
+ drawSelection(e);
+});
+window.addEventListener('pointerup',e=>{
+ if(marquee?.id!==e.pointerId)return;
+ if(marquee.active)drawSelection(e);
+ marquee=null;
+ selectionBox.hidden=true;
+});
+function cancelSelection(e){
+ if(!marquee||(e.pointerId!==undefined&&marquee.id!==e.pointerId))return;
+ if(marquee.active){
+  selected=new Set([...marquee.original].filter(id=>metaMap.has(id)));
+  selectionUI();
+  grid.render();
+ }
+ marquee=null;
+ selectionBox.hidden=true;
+}
+window.addEventListener('pointercancel',cancelSelection);
+window.addEventListener('blur',cancelSelection);
 $('fileButton').onclick=()=>$('files').click();$('folderButton').onclick=()=>$('folder').click();for(const id of ['files','folder'])$(id).onchange=e=>{enqueue({files:Array.from(e.target.files)});e.target.value='';};
 let dragDepth=0;document.addEventListener('dragenter',e=>{if(e.dataTransfer.types.includes('Files')){e.preventDefault();dragDepth++;document.body.classList.add('dragging');}});document.addEventListener('dragover',e=>e.preventDefault());document.addEventListener('dragleave',()=>{if(--dragDepth<=0)document.body.classList.remove('dragging');});document.addEventListener('drop',e=>{e.preventDefault();dragDepth=0;document.body.classList.remove('dragging');const items=Array.from(e.dataTransfer.items||[]);const entries=items.map(i=>i.webkitGetAsEntry?.()).filter(Boolean);enqueue(entries.length?{entries}:{files:Array.from(e.dataTransfer.files)});});
 function enqueue(job){jobs.push(job);queueUI();runQueue();}function queueUI(){$('queued').textContent=`待機中 ${jobs.length}件`;}
