@@ -46,7 +46,7 @@ async function deleteFiles(ids) {
 }
 $('deleteSelected').onclick=()=>deleteFiles([...selected]);
 window.addEventListener('keydown',e=>{
- if(e.key!=='Backspace'||!e.ctrlKey||!e.altKey||e.shiftKey||e.metaKey||
+ if(e.key!=='Backspace'||!e.ctrlKey||!e.shiftKey||e.altKey||e.metaKey||
     $('exportDialog').open||e.target.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))return;
  e.preventDefault();
  if(!e.repeat)deleteFiles([...selected]);
