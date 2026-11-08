@@ -60,7 +60,18 @@ async function* parseFile(file,cancelled=()=>false){
  if(noise)yield {error:'有効なxyzブロックがありません',lines:noise};
 }
 function standard(m){return `${m.atoms.length}\n${(m.comment||'').replace(/[\r\n]/g,' ')}\n`+m.atoms.map(a=>`${a.el} ${a.x.toPrecision(12)} ${a.y.toPrecision(12)} ${a.z.toPrecision(12)}`).join('\n')+'\n';}
-function output(m){return m.edited?new Blob([standard(m)],{type:'chemical/x-xyz'}):m.raw;}
+async function output(m){
+ const type='chemical/x-xyz';
+ if(m.edited||!m.raw)return new Blob([standard({...m,comment:''})],{type});
+ const header=lines(m.raw);
+ try{
+  const {value:count}=await header.next();
+  const {value:comment}=await header.next();
+  const newline=comment.raw.slice(comment.text.length);
+  const offset=new TextEncoder().encode(count.raw+comment.raw).length;
+  return new Blob([count.raw,newline,m.raw.slice(offset)],{type});
+ }finally{await header.return();}
+}
 function centroid(atoms,indices){const ids=indices?Array.from(indices):atoms.map((_,i)=>i);const c={x:0,y:0,z:0};for(const i of ids){c.x+=atoms[i].x;c.y+=atoms[i].y;c.z+=atoms[i].z;}for(const k of ['x','y','z'])c[k]/=ids.length||1;return c;}
 function swap(atoms,a,b){if(!a.ids.length||!b.ids.length)throw Error('両方のモイエティを登録してください');const set=new Set(a.ids);if(b.ids.some(i=>set.has(i)))throw Error('原子が重複しています。交換できません');
  const anchored=a.point!==null&&b.point!==null;

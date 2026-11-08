@@ -19,7 +19,7 @@ class ImportJob{
 function header(size){const a=new Uint8Array(size);return{a,v:new DataView(a.buffer)};}
 async function exportData(ids,format,send,cancelled,progress){
  const central=[],encoder=new TextEncoder(),names=new Set();let offset=0,done=0;
- for(const id of ids){if(cancelled())return;const body=await Mol.get('body',id);if(!body)throw Error('出力対象が削除されました。選択し直してください');const blob=Mol.output(body);
+ for(const id of ids){if(cancelled())return;const body=await Mol.get('body',id);if(!body)throw Error('出力対象が削除されました。選択し直してください');const blob=await Mol.output(body);
   if(format==='zip'){
    let name=Mol.safeName(body.name)+'.xyz',n=1;while(names.has(name))name=Mol.safeName(body.name)+` (${++n}).xyz`;names.add(name);
    const filename=encoder.encode(name),bytes=new Uint8Array(await blob.arrayBuffer()),crc=Mol.crc32(bytes);if(filename.length>65535)throw Error('ZIP内のファイル名が長すぎます');
