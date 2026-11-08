@@ -25,7 +25,8 @@ async function exportData(ids,format,send,cancelled,progress){
    const filename=encoder.encode(name),bytes=new Uint8Array(await blob.arrayBuffer()),crc=Mol.crc32(bytes);if(filename.length>65535)throw Error('ZIP内のファイル名が長すぎます');
    const h=header(30+filename.length);h.v.setUint32(0,0x04034b50,true);h.v.setUint16(4,20,true);h.v.setUint16(6,0x800,true);h.v.setUint16(12,33,true);h.v.setUint32(14,crc,true);h.v.setUint32(18,bytes.length,true);h.v.setUint32(22,bytes.length,true);h.v.setUint16(26,filename.length,true);h.a.set(filename,30);
    const largeOffset=offset>=0xffffffff,c=header(46+filename.length+(largeOffset?12:0));c.v.setUint32(0,0x02014b50,true);c.v.setUint16(4,20,true);c.v.setUint16(6,largeOffset?45:20,true);c.v.setUint16(8,0x800,true);c.v.setUint16(14,33,true);c.v.setUint32(16,crc,true);c.v.setUint32(20,bytes.length,true);c.v.setUint32(24,bytes.length,true);c.v.setUint16(28,filename.length,true);c.v.setUint32(42,largeOffset?0xffffffff:offset,true);c.a.set(filename,46);if(largeOffset){c.v.setUint16(30,12,true);const x=46+filename.length;c.v.setUint16(x,1,true);c.v.setUint16(x+2,8,true);c.v.setBigUint64(x+4,BigInt(offset),true);}central.push(c.a);
-   await send(h.a);await send(bytes);offset+=h.a.length+bytes.length;
+   // The worker transfers ownership of each buffer, detaching it after send.
+   offset+=h.a.length+bytes.length;await send(h.a);await send(bytes);
   }else{if(done)await send(encoder.encode('\n'));for(let p=0;p<blob.size;p+=262144){if(cancelled())return;await send(new Uint8Array(await blob.slice(p,p+262144).arrayBuffer()));}}
   done++;progress(done);await Mol.tick();
  }

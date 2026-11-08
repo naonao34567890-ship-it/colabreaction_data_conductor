@@ -97,6 +97,12 @@ const builtinMeta = Array.from(builtins.values(), record => ({
  builtin: true, thumb: false, bytes: standard(record).length,
 }));
 async function get(store,id){if(store==='body'&&builtins.has(id))return structuredClone(builtins.get(id));const d=await db();return new Promise((res,rej)=>{const r=d.transaction(store).objectStore(store).get(id);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
+const displayNames = new Intl.Collator('ja', {numeric: true});
+function compareDisplayOrder(a, b) {
+ const pinned = id => id === water.id ? 0 : id === hydrogen.id ? 1 : 2;
+ return pinned(a.id) - pinned(b.id) || displayNames.compare(a.name, b.name) ||
+  (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
 async function metadata(){const d=await db();return new Promise((res,rej)=>{const result=builtinMeta.map(record => ({...record})),t=d.transaction('meta'),r=t.objectStore('meta').openCursor();r.onsuccess=()=>{const c=r.result;if(c){result.push(c.value);c.continue();}else res(result);};r.onerror=()=>rej(r.error);});}
 async function saveBatch(records){if(!records.length)return [];const d=await db();return new Promise((res,rej)=>{
  const tx=d.transaction(['meta','body'],'readwrite'),meta=tx.objectStore('meta'),body=tx.objectStore('body'),saved=[];
@@ -111,7 +117,7 @@ const crcTable=Array.from({length:256},(_,n)=>{for(let k=0;k<8;k++)n=n&1?0xedb88
 function crc32(bytes){let c=0xffffffff;for(const b of bytes)c=crcTable[(c^b)&255]^(c>>>8);return(c^0xffffffff)>>>0;}
 function safeName(n){return n.replace(/[\\/:*?"<>|\x00-\x1f]/g,'_').trim()||'molecule';}
 async function scanEntries(entries,{cancelled=()=>false,progress=()=>{},error=()=>{}}={}){const found=[],stack=entries.slice();let visited=0;while(stack.length&&!cancelled()){const entry=stack.pop();if(entry.isFile){if(/\.xyz$/i.test(entry.name))found.push(entry);}else if(entry.isDirectory){const reader=entry.createReader();while(!cancelled()){let batch;try{batch=await new Promise((r,j)=>reader.readEntries(r,j));}catch(e){error(entry.fullPath+': '+e.message);break;}if(!batch.length)break;for(const child of batch)stack.push(child);progress(found.length);await tick();}}if(++visited%100===0){progress(found.length);await tick();}}progress(found.length);return found;}
-const API={scanEntries,elements,tick,atomLine,lines,parseFile,standard,output,centroid,swap,bonds,db,get,metadata,saveBatch,remove,cacheThumb,notify,crc32,safeName};root.Mol=API;if(typeof module!=='undefined')module.exports=API;
+const API={scanEntries,elements,tick,atomLine,lines,parseFile,standard,compareDisplayOrder,output,centroid,swap,bonds,db,get,metadata,saveBatch,remove,cacheThumb,notify,crc32,safeName};root.Mol=API;if(typeof module!=='undefined')module.exports=API;
 })(globalThis);
 
 /* Browser-only presentation helpers; no DOM or Three dependency in Worker. */
