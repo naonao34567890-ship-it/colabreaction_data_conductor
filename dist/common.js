@@ -69,16 +69,33 @@ function swap(atoms,a,b){if(!a.ids.length||!b.ids.length)throw Error('両方の�
 function bonds(atoms){const size=6.5,grid=new Map(),out=[];atoms.forEach((a,i)=>{const g=[Math.floor(a.x/size),Math.floor(a.y/size),Math.floor(a.z/size)];for(let x=-1;x<=1;x++)for(let y=-1;y<=1;y++)for(let z=-1;z<=1;z++){for(const j of grid.get([g[0]+x,g[1]+y,g[2]+z].join(','))||[]){const b=atoms[j],d=(a.x-b.x)**2+(a.y-b.y)**2+(a.z-b.z)**2,max=1.22*(elements[a.el].r+elements[b.el].r);if(d>.16&&d<max*max)out.push([j,i]);}}const key=g.join(',');if(!grid.has(key))grid.set(key,[]);grid.get(key).push(i);});return out;}
 let dbPromise;const nameHints=new Map();
 function db(){if(!dbPromise)dbPromise=new Promise((resolve,reject)=>{const r=indexedDB.open('molecular-xyz-library',1);r.onupgradeneeded=()=>{const d=r.result;const m=d.createObjectStore('meta',{keyPath:'id'});m.createIndex('name','name',{unique:true});d.createObjectStore('body',{keyPath:'id'});d.createObjectStore('thumb',{keyPath:'id'});};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});return dbPromise;}
-async function get(store,id){const d=await db();return new Promise((res,rej)=>{const r=d.transaction(store).objectStore(store).get(id);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
-async function metadata(){const d=await db();return new Promise((res,rej)=>{const result=[],t=d.transaction('meta'),r=t.objectStore('meta').openCursor();r.onsuccess=()=>{const c=r.result;if(c){result.push(c.value);c.continue();}else res(result);};r.onerror=()=>rej(r.error);});}
+const water = {
+ id: 'builtin-water',
+ name: '水分子（H₂O）',
+ comment: 'Built-in water molecule',
+ atoms: [
+  {el:'O', x:0, y:0, z:0},
+  {el:'H', x:0.9572, y:0, z:0},
+  {el:'H', x:-0.239987, y:0.926627, z:0},
+ ],
+ baseLines: 5,
+ originalLines: 5,
+ edited: true,
+};
+const waterMeta = {
+ id: water.id, name: water.name, count: water.atoms.length,
+ builtin: true, thumb: false, bytes: standard(water).length,
+};
+async function get(store,id){if(store==='body'&&id===water.id)return structuredClone(water);const d=await db();return new Promise((res,rej)=>{const r=d.transaction(store).objectStore(store).get(id);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
+async function metadata(){const d=await db();return new Promise((res,rej)=>{const result=[{...waterMeta}],t=d.transaction('meta'),r=t.objectStore('meta').openCursor();r.onsuccess=()=>{const c=r.result;if(c){result.push(c.value);c.continue();}else res(result);};r.onerror=()=>rej(r.error);});}
 async function saveBatch(records){if(!records.length)return [];const d=await db();return new Promise((res,rej)=>{
  const tx=d.transaction(['meta','body'],'readwrite'),meta=tx.objectStore('meta'),body=tx.objectStore('body'),saved=[];
  tx.oncomplete=()=>res(saved);tx.onabort=()=>rej(tx.error||Error('保存失敗'));tx.onerror=()=>{};
  // Request chaining keeps the transaction alive and serializes collision checks.
  let i=0;function next(){if(i>=records.length)return;const r=records[i++],base=r.name;let suffix=nameHints.get(base)||1;if(suffix>1)r.name=`${base} (${suffix})`;function attempt(){const q=meta.index('name').getKey(r.name);q.onsuccess=()=>{if(q.result!==undefined){r.name=`${base} (${++suffix})`;attempt();}else{nameHints.set(base,suffix+1);r.id=crypto.randomUUID();const m={id:r.id,name:r.name,count:r.atoms.length,thumb:false,bytes:r.raw?.size||standard(r).length};meta.add(m);body.add(r);saved.push(m);next();}};}attempt();}next();
  });}
-async function remove(id){const d=await db();return new Promise((res,rej)=>{const t=d.transaction(['meta','body','thumb'],'readwrite');for(const s of ['meta','body','thumb'])t.objectStore(s).delete(id);t.oncomplete=res;t.onabort=()=>rej(t.error);});}
-async function cacheThumb(id,blob){const d=await db();return new Promise((res,rej)=>{const t=d.transaction(['meta','thumb'],'readwrite'),s=t.objectStore('meta'),r=s.get(id);r.onsuccess=()=>{if(r.result){s.put({...r.result,thumb:true});t.objectStore('thumb').put({id,blob});}};t.oncomplete=res;t.onabort=()=>rej(t.error);});}
+async function remove(id){if(id===water.id)throw Error('組み込みの水分子は削除できません');const d=await db();return new Promise((res,rej)=>{const t=d.transaction(['meta','body','thumb'],'readwrite');for(const s of ['meta','body','thumb'])t.objectStore(s).delete(id);t.oncomplete=res;t.onabort=()=>rej(t.error);});}
+async function cacheThumb(id,blob){const d=await db();return new Promise((res,rej)=>{const t=d.transaction(['meta','thumb'],'readwrite'),s=t.objectStore('meta'),r=s.get(id);r.onsuccess=()=>{if(r.result)s.put({...r.result,thumb:true});if(r.result||id===water.id)t.objectStore('thumb').put({id,blob});};t.oncomplete=res;t.onabort=()=>rej(t.error);});}
 function notify(change){if(typeof BroadcastChannel!=='undefined'){const c=new BroadcastChannel('molecular-xyz');c.postMessage(change);c.close();}}
 const crcTable=Array.from({length:256},(_,n)=>{for(let k=0;k<8;k++)n=n&1?0xedb88320^(n>>>1):n>>>1;return n>>>0;});
 function crc32(bytes){let c=0xffffffff;for(const b of bytes)c=crcTable[(c^b)&255]^(c>>>8);return(c^0xffffffff)>>>0;}
@@ -122,7 +139,7 @@ Mol.VirtualGrid=class{
  clear(){for(const n of this.nodes.values())this.drop(n);this.nodes.clear();}
  drop(n){n.alive=false;if(n.url)URL.revokeObjectURL(n.url);n.el.remove();}
  render(){const cols=Math.max(1,Math.floor(this.el.clientWidth/(this.mini?128:180))),w=this.el.clientWidth/cols,first=Math.max(0,Math.floor(this.el.scrollTop/this.row)-2),last=Math.ceil((this.el.scrollTop+this.el.clientHeight)/this.row)+2,start=first*cols,end=Math.min(this.data.length,last*cols);this.spacer.style.height=Math.ceil(this.data.length/cols)*this.row+'px';const wanted=new Set(this.data.slice(start,end).map(m=>m.id));for(const [id,n]of this.nodes)if(!wanted.has(id)){this.drop(n);this.nodes.delete(id);}
-  for(let i=start;i<end;i++){const m=this.data[i];let n=this.nodes.get(m.id);if(!n){const el=document.createElement('article');el.className='tile';el.tabIndex=0;el.setAttribute('role','checkbox');el.innerHTML='<div class="check"></div><div class="thumb">◌</div><div class="tile-info"><div class="tile-name"></div><div class="tile-bottom"><span></span><button class="delete" aria-label="削除">削除</button></div></div>';el.querySelector('.tile-name').textContent=m.name;el.title=m.name;el.querySelector('.tile-bottom span').textContent=m.count+' 原子';const del=el.querySelector('.delete');if(this.onDelete)del.onclick=e=>{e.stopPropagation();this.onDelete(m);};else del.remove();el.onclick=()=>{this.onSelect(m);this.render();};el.onkeydown=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();this.onSelect(m);this.render();}};if(this.onOpen)el.ondblclick=()=>this.onOpen(m);n={el,alive:true,url:null,loading:false,index:i};this.nodes.set(m.id,n);this.spacer.append(el);}
+  for(let i=start;i<end;i++){const m=this.data[i];let n=this.nodes.get(m.id);if(!n){const el=document.createElement('article');el.className='tile';el.tabIndex=0;el.setAttribute('role','checkbox');el.innerHTML='<div class="check"></div><div class="thumb">◌</div><div class="tile-info"><div class="tile-name"></div><div class="tile-bottom"><span></span><button class="delete" aria-label="削除">削除</button></div></div>';el.querySelector('.tile-name').textContent=m.name;el.title=m.name;el.querySelector('.tile-bottom span').textContent=m.count+' 原子';const del=el.querySelector('.delete');if(this.onDelete&&!m.builtin)del.onclick=e=>{e.stopPropagation();this.onDelete(m);};else del.remove();el.onclick=()=>{this.onSelect(m);this.render();};el.onkeydown=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();this.onSelect(m);this.render();}};if(this.onOpen)el.ondblclick=()=>this.onOpen(m);n={el,alive:true,url:null,loading:false,index:i};this.nodes.set(m.id,n);this.spacer.append(el);}
   n.index=i;n.el.style.cssText=`left:${i%cols*w+4}px;top:${Math.floor(i/cols)*this.row+4}px;width:${w-8}px;height:${this.row-8}px`;const selected=this.isSelected(m.id);n.el.classList.toggle('selected',selected);n.el.setAttribute('aria-checked',String(selected));n.el.querySelector('.check').textContent=selected?'✓':'';
   const visible=()=>n.alive&&Math.floor(n.index/cols)*this.row<this.el.scrollTop+this.el.clientHeight&&(Math.floor(n.index/cols)+1)*this.row>this.el.scrollTop;
   if(n.url&&!visible()){URL.revokeObjectURL(n.url);n.url=null;n.el.querySelector('.thumb').textContent='◌';}
