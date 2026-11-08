@@ -11,8 +11,7 @@
 <div class="dialog-actions">
 <button type="button" id="multiSkip">スキップ</button>
 <button type="button" id="multiImport">全分子を登録</button>
-<button type="button" id="multiAll">全分子をダウンロード</button>
-<button type="submit" class="primary">指定分子をダウンロード</button>
+<button type="submit" class="primary">指定分子だけ登録</button>
 </div></form></dialog>
 <dialog id="exportDialog"><h2>選択した分子をダウンロード</h2><label>保存する名前<input id="exportName" value="molecules"></label><label>出力形式<select id="format"><option value="zip">ZIP（分子ごとの xyz）</option><option value="xyz">1つの連結 xyz</option></select></label><p class="muted" id="exportHint"></p><div class="dialog-actions"><button id="closeDialog">戻る</button><button class="primary" id="exportStart">保存する</button></div></dialog>
 <script>
@@ -123,7 +122,7 @@ function enqueue(job){jobs.push(job);queueUI();runQueue();}function queueUI(){$(
 async function scan(job,state){if(job.files)return job.files.filter(f=>/\.xyz$/i.test(f.name));return Mol.scanEntries(job.entries,{cancelled:()=>state.cancelled,progress:n=>{$('progressText').textContent=`フォルダ走査中 · ${n.toLocaleString()} 個のxyzを発見`;},error:message=>state.scanErrors.push(message)});}
 function chooseMulti(name,total){
  const dialog=$('multiDialog'),input=$('multiRanges'),error=$('multiError');
- $('multiInfo').textContent=`${name} に ${total} 分子あります。ダウンロードは連結XYZとして保存します。`;
+ $('multiInfo').textContent=`${name} に ${total} 分子あります。登録する分子を選んでください。`;
  input.value='';error.textContent='';
  return new Promise(resolve=>{
   let choice={action:'skip'};
@@ -131,7 +130,6 @@ function chooseMulti(name,total){
   dialog.onclose=()=>resolve(choice);
   $('multiSkip').onclick=()=>finish({action:'skip'});
   $('multiImport').onclick=()=>finish({action:'import'});
-  $('multiAll').onclick=()=>finish({action:'download'});
   $('multiForm').onsubmit=event=>{
    event.preventDefault();
    const ranges=[];
@@ -143,14 +141,14 @@ function chooseMulti(name,total){
     }
     ranges.push([first,last]);
    }
-   finish({action:'download',ranges});
+   finish({action:'import',ranges});
   };
   dialog.showModal();
  });
 }
 async function runQueue(){if(active||exporting||!jobs.length)return;const state={cancelled:false,scanErrors:[],started:Date.now(),stats:{processed:0,registered:0,skipped:0,failed:0},total:0,worker:null};active=state;selectionUI();const job=jobs.shift();queueUI();$('cancel').disabled=false;$('progress').removeAttribute('value');$('progressText').textContent='ファイルを確認しています…';
  try{const found=await scan(job,state);state.total=found.length;if(state.cancelled){$('summary').textContent='フォルダ走査をキャンセルしました（登録開始前）';return;}if(found.length>2000&&!confirm(`${found.length.toLocaleString()} 個のxyzを登録します。保存容量と処理時間が必要です。続行しますか？`))return;
-  const onEvent=m=>{if(m.type==='multiDownload')Mol.downloadBlob(m.blob,Mol.safeName(m.name.replace(/\.xyz$/i,''))+'-selected.xyz');if(m.type==='saved')applyChange({type:'added',items:m.items});if(m.stats){state.stats=m.stats;progressUI(state);}if(m.type==='done'){const s=m.stats;const head=`${m.cancelled?'キャンセル':'完了'} · 登録 ${s.registered} 分子 / 分割による増加 ${s.extra} / スキップ ${s.skipped} / 失敗 ${s.failed}`;$('summary').textContent=head;$('resultText').textContent=[head,s.fatal||'',...Object.entries(s.reasons).map(([k,v])=>`${k}: ${v} 件`),'詳細（先頭30件）',...s.examples,...state.scanErrors].filter(Boolean).join('\n');if(s.fatal)notice(s.fatal+`。登録済み ${s.registered} 分子は保持しました。`);}};
+  const onEvent=m=>{if(m.type==='saved')applyChange({type:'added',items:m.items});if(m.stats){state.stats=m.stats;progressUI(state);}if(m.type==='done'){const s=m.stats;const head=`${m.cancelled?'キャンセル':'完了'} · 登録 ${s.registered} 分子 / 分割による増加 ${s.extra} / スキップ ${s.skipped} / 失敗 ${s.failed}`;$('summary').textContent=head;$('resultText').textContent=[head,s.fatal||'',...Object.entries(s.reasons).map(([k,v])=>`${k}: ${v} 件`),'詳細（先頭30件）',...s.examples,...state.scanErrors].filter(Boolean).join('\n');if(s.fatal)notice(s.fatal+`。登録済み ${s.registered} 分子は保持しました。`);}};
   let worker,waiter=null,fallback=null;
   const request=(message)=>new Promise((resolve,reject)=>{waiter={resolve,reject};worker.postMessage(message);});
   try{worker=new Worker('worker.js');state.worker=worker;worker.onmessage=e=>{if(e.data.type==='multiChoice'){chooseMulti(e.data.name,e.data.total).then(choice=>worker.postMessage({type:'multiChoice',choice}));return;}onEvent(e.data);if(['ready','done','error'].includes(e.data.type)&&waiter){const w=waiter;waiter=null;e.data.type==='error'?w.reject(Error(e.data.message)):w.resolve(e.data);}};worker.onerror=e=>{if(waiter){waiter.reject(Error(e.message||'Worker起動失敗'));waiter=null;}};await request({type:'start'});}catch(e){worker?.terminate();worker=null;state.worker=null;fallback=new MolJobs.ImportJob(onEvent,chooseMulti);state.fallback=fallback;notice('Workerを使用できないため、処理を小分けにして登録します。');}

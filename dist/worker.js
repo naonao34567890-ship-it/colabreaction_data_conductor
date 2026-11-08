@@ -24,25 +24,22 @@ class ImportJob{
     else if(!errors.length)this.reason('登録可能な分子なし',file.name);
     continue;
    }
-   if(total===2){
-    total=0;
-    for await(const block of Mol.parseFile(file,()=>this.cancelled))if(!block.error)total++;
-    if(this.cancelled)break;
-    const choice=await this.choose(file.name,total);
-    if(this.cancelled||choice.action==='skip')continue;
-    if(choice.action==='download'){
-     const parts=[];let index=0;
-     for await(const block of Mol.parseFile(file,()=>this.cancelled)){
-      if(block.error)continue;
-      index++;
-      if(choice.ranges&&!choice.ranges.some(([first,last])=>index>=first&&index<=last))continue;
-      if(parts.length)parts.push('\n');
-      parts.push(await Mol.output({raw:new Blob(block.rawParts)}));
-     }
-     if(!this.cancelled&&parts.length)this.emit({type:'multiDownload',name:file.name,blob:new Blob(parts,{type:'chemical/x-xyz'})});
-     continue;
-    }
+   total=0;
+   for await(const block of Mol.parseFile(file,()=>this.cancelled))if(!block.error)total++;
+   if(this.cancelled)break;
+   const choice=await this.choose(file.name,total);
+   if(this.cancelled||choice.action==='skip')continue;
+   const base=file.name.replace(/\.xyz$/i,'');
+   let index=0,selected=0;
+   for await(const block of Mol.parseFile(file,()=>this.cancelled)){
+    if(block.error){this.reason(block.error,file.name);continue;}
+    index++;
+    if(choice.ranges&&!choice.ranges.some(([first,last])=>index>=first&&index<=last))continue;
+    await this.add(block,`${base}(${index})`);
+    selected++;
    }
+   this.stats.extra+=Math.max(0,selected-1);
+   continue;
   }
   let first=null,count=0,errors=0;const base=file.name.replace(/\.xyz$/i,'');
   for await(const b of Mol.parseFile(file,()=>this.cancelled)){if(b.error){errors++;this.reason(b.error,file.name);continue;}count++;if(count===1)first=b;else{if(first){await this.add(first,base+'(1)');first=null;}await this.add(b,`${base}(${count})`);}}
