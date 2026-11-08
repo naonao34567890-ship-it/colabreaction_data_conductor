@@ -1,0 +1,21 @@
+occ, a library for quantum chemistry & crystallography
+Copyright (C) 2023-2025 Peter Spackman
+
+This software is dual-licensed. You may use, redistribute, and/or modify
+it under the terms of either:
+
+  - The GNU General Public License, version 3 or later (GPLv3+), OR
+  - The GNU Lesser General Public License, version 3 or later (LGPLv3+)
+
+at your option.
+
+This software is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License or GNU Lesser General Public License for
+more details.
+
+You should have received a copy of both licenses along with this software.
+If not, see <https://www.gnu.org/licenses/>.
+
+If you are interested in other licensing options, please contact the author.
