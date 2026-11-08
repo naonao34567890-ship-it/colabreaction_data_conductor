@@ -82,20 +82,30 @@ const water = {
  originalLines: 5,
  edited: true,
 };
-const waterMeta = {
- id: water.id, name: water.name, count: water.atoms.length,
- builtin: true, thumb: false, bytes: standard(water).length,
+const hydrogen = {
+ id: 'builtin-hydrogen',
+ name: '水素原子（H）',
+ comment: 'Built-in hydrogen atom',
+ atoms: [{el:'H', x:0, y:0, z:0}],
+ baseLines: 3,
+ originalLines: 3,
+ edited: true,
 };
-async function get(store,id){if(store==='body'&&id===water.id)return structuredClone(water);const d=await db();return new Promise((res,rej)=>{const r=d.transaction(store).objectStore(store).get(id);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
-async function metadata(){const d=await db();return new Promise((res,rej)=>{const result=[{...waterMeta}],t=d.transaction('meta'),r=t.objectStore('meta').openCursor();r.onsuccess=()=>{const c=r.result;if(c){result.push(c.value);c.continue();}else res(result);};r.onerror=()=>rej(r.error);});}
+const builtins = new Map([water, hydrogen].map(record => [record.id, record]));
+const builtinMeta = Array.from(builtins.values(), record => ({
+ id: record.id, name: record.name, count: record.atoms.length,
+ builtin: true, thumb: false, bytes: standard(record).length,
+}));
+async function get(store,id){if(store==='body'&&builtins.has(id))return structuredClone(builtins.get(id));const d=await db();return new Promise((res,rej)=>{const r=d.transaction(store).objectStore(store).get(id);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
+async function metadata(){const d=await db();return new Promise((res,rej)=>{const result=builtinMeta.map(record => ({...record})),t=d.transaction('meta'),r=t.objectStore('meta').openCursor();r.onsuccess=()=>{const c=r.result;if(c){result.push(c.value);c.continue();}else res(result);};r.onerror=()=>rej(r.error);});}
 async function saveBatch(records){if(!records.length)return [];const d=await db();return new Promise((res,rej)=>{
  const tx=d.transaction(['meta','body'],'readwrite'),meta=tx.objectStore('meta'),body=tx.objectStore('body'),saved=[];
  tx.oncomplete=()=>res(saved);tx.onabort=()=>rej(tx.error||Error('保存失敗'));tx.onerror=()=>{};
  // Request chaining keeps the transaction alive and serializes collision checks.
  let i=0;function next(){if(i>=records.length)return;const r=records[i++],base=r.name;let suffix=nameHints.get(base)||1;if(suffix>1)r.name=`${base} (${suffix})`;function attempt(){const q=meta.index('name').getKey(r.name);q.onsuccess=()=>{if(q.result!==undefined){r.name=`${base} (${++suffix})`;attempt();}else{nameHints.set(base,suffix+1);r.id=crypto.randomUUID();const m={id:r.id,name:r.name,count:r.atoms.length,thumb:false,bytes:r.raw?.size||standard(r).length};meta.add(m);body.add(r);saved.push(m);next();}};}attempt();}next();
  });}
-async function remove(id){if(id===water.id)throw Error('組み込みの水分子は削除できません');const d=await db();return new Promise((res,rej)=>{const t=d.transaction(['meta','body','thumb'],'readwrite');for(const s of ['meta','body','thumb'])t.objectStore(s).delete(id);t.oncomplete=res;t.onabort=()=>rej(t.error);});}
-async function cacheThumb(id,blob){const d=await db();return new Promise((res,rej)=>{const t=d.transaction(['meta','thumb'],'readwrite'),s=t.objectStore('meta'),r=s.get(id);r.onsuccess=()=>{if(r.result)s.put({...r.result,thumb:true});if(r.result||id===water.id)t.objectStore('thumb').put({id,blob});};t.oncomplete=res;t.onabort=()=>rej(t.error);});}
+async function remove(id){if(builtins.has(id))throw Error('組み込みの分子・原子は削除できません');const d=await db();return new Promise((res,rej)=>{const t=d.transaction(['meta','body','thumb'],'readwrite');for(const s of ['meta','body','thumb'])t.objectStore(s).delete(id);t.oncomplete=res;t.onabort=()=>rej(t.error);});}
+async function cacheThumb(id,blob){const d=await db();return new Promise((res,rej)=>{const t=d.transaction(['meta','thumb'],'readwrite'),s=t.objectStore('meta'),r=s.get(id);r.onsuccess=()=>{if(r.result)s.put({...r.result,thumb:true});if(r.result||builtins.has(id))t.objectStore('thumb').put({id,blob});};t.oncomplete=res;t.onabort=()=>rej(t.error);});}
 function notify(change){if(typeof BroadcastChannel!=='undefined'){const c=new BroadcastChannel('molecular-xyz');c.postMessage(change);c.close();}}
 const crcTable=Array.from({length:256},(_,n)=>{for(let k=0;k<8;k++)n=n&1?0xedb88320^(n>>>1):n>>>1;return n>>>0;});
 function crc32(bytes){let c=0xffffffff;for(const b of bytes)c=crcTable[(c^b)&255]^(c>>>8);return(c^0xffffffff)>>>0;}
