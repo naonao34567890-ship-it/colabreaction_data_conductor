@@ -3,12 +3,47 @@ if(typeof importScripts==='function')importScripts('common.js');
 (function(root){
 'use strict';
 class ImportJob{
- constructor(emit){this.emit=emit;this.cancelled=false;this.batch=[];this.batchBytes=0;this.stats={processed:0,registered:0,extra:0,skipped:0,failed:0,reasons:{},examples:[]};this.last=0;}
+ constructor(emit,choose){this.emit=emit;this.choose=choose;this.cancelled=false;this.batch=[];this.batchBytes=0;this.stats={processed:0,registered:0,extra:0,skipped:0,failed:0,reasons:{},examples:[]};this.last=0;}
  reason(reason,name,failed=false){this.stats[failed?'failed':'skipped']++;this.stats.reasons[reason]=(this.stats.reasons[reason]||0)+1;if(this.stats.examples.length<30)this.stats.examples.push(name+': '+reason);}
  async flush(){if(!this.batch.length)return;const batch=this.batch;this.batch=[];this.batchBytes=0;try{const saved=await Mol.saveBatch(batch);this.stats.registered+=saved.length;this.emit({type:'saved',items:saved});Mol.notify({type:'added',items:saved});}catch(e){this.cancelled=true;this.stats.failed+=batch.length;this.stats.fatal=(e.name==='QuotaExceededError'?'保存容量を超えました':e.message);throw e;}}
  async add(block,name){const estimated=block.rawParts.reduce((n,s)=>n+s.length*2,0)+block.atoms.length*160;if(this.batchBytes+estimated>32*1024*1024)await this.flush();this.batchBytes+=estimated;this.batch.push({name,atoms:block.atoms,comment:block.comment,raw:new Blob(block.rawParts,{type:'chemical/x-xyz'}),originalLines:block.originalLines,baseLines:block.baseLines,edited:false});if(this.batch.length>=200||this.batchBytes>=32*1024*1024)await this.flush();}
  async files(files){for(const file of files){if(this.cancelled)break;try{
   if(file.size>50*1024*1024){this.reason('50 MiBの上限超過',file.name);continue;}
+  let single=null;
+  if(this.choose){
+   let total=0;const errors=[];
+   for await(const block of Mol.parseFile(file,()=>this.cancelled)){
+    if(block.error){errors.push(block.error);continue;}
+    if(++total===2)break;
+    single=block;
+   }
+   if(this.cancelled)break;
+   if(total<2){
+    for(const error of errors)this.reason(error,file.name);
+    if(single)await this.add(single,file.name.replace(/\.xyz$/i,''));
+    else if(!errors.length)this.reason('登録可能な分子なし',file.name);
+    continue;
+   }
+   if(total===2){
+    total=0;
+    for await(const block of Mol.parseFile(file,()=>this.cancelled))if(!block.error)total++;
+    if(this.cancelled)break;
+    const choice=await this.choose(file.name,total);
+    if(this.cancelled||choice.action==='skip')continue;
+    if(choice.action==='download'){
+     const parts=[];let index=0;
+     for await(const block of Mol.parseFile(file,()=>this.cancelled)){
+      if(block.error)continue;
+      index++;
+      if(choice.ranges&&!choice.ranges.some(([first,last])=>index>=first&&index<=last))continue;
+      if(parts.length)parts.push('\n');
+      parts.push(await Mol.output({raw:new Blob(block.rawParts)}));
+     }
+     if(!this.cancelled&&parts.length)this.emit({type:'multiDownload',name:file.name,blob:new Blob(parts,{type:'chemical/x-xyz'})});
+     continue;
+    }
+   }
+  }
   let first=null,count=0,errors=0;const base=file.name.replace(/\.xyz$/i,'');
   for await(const b of Mol.parseFile(file,()=>this.cancelled)){if(b.error){errors++;this.reason(b.error,file.name);continue;}count++;if(count===1)first=b;else{if(first){await this.add(first,base+'(1)');first=null;}await this.add(b,`${base}(${count})`);}}
   if(first&&!this.cancelled)await this.add(first,base);if(!count&&!errors&&!this.cancelled)this.reason('登録可能な分子なし',file.name);this.stats.extra+=Math.max(0,count-1);
@@ -39,9 +74,9 @@ async function exportData(ids,format,send,cancelled,progress){
  }
 }
 root.MolJobs={ImportJob,exportData};
-if(typeof WorkerGlobalScope!=='undefined'&&root instanceof WorkerGlobalScope){let job=null,cancel=false,ack=null;
- root.onmessage=async({data:m})=>{if(m.type==='cancel'){cancel=true;if(job)job.cancelled=true;return;}if(m.type==='ack'){if(ack){ack();ack=null;}return;}
-  try{if(m.type==='start'){job=new ImportJob(v=>postMessage(v));cancel=false;postMessage({type:'ready'});}
+if(typeof WorkerGlobalScope!=='undefined'&&root instanceof WorkerGlobalScope){let job=null,cancel=false,ack=null,choose=null;
+ root.onmessage=async({data:m})=>{if(m.type==='cancel'){cancel=true;if(job)job.cancelled=true;if(choose){choose({action:'skip'});choose=null;}return;}if(m.type==='multiChoice'){if(choose){choose(m.choice);choose=null;}return;}if(m.type==='ack'){if(ack){ack();ack=null;}return;}
+  try{if(m.type==='start'){job=new ImportJob(v=>postMessage(v),(name,total)=>new Promise(resolve=>{choose=resolve;postMessage({type:'multiChoice',name,total});}));cancel=false;postMessage({type:'ready'});}
    else if(m.type==='files'){await job.files(m.files);postMessage({type:'ready'});}
    else if(m.type==='finish'){await job.finish();}
    else if(m.type==='export'){cancel=false;await exportData(m.ids,m.format,bytes=>new Promise(r=>{ack=r;postMessage({type:'chunk',bytes},[bytes.buffer]);}),()=>cancel,n=>postMessage({type:'exportProgress',done:n}));postMessage({type:'exportDone',cancelled:cancel});}
