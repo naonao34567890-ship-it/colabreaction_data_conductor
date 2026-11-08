@@ -39,6 +39,9 @@
     finishKeys();
     finishRotation();
     status.textContent = '初回の計算開始時に約29 MBの計算エンジンを読み込みます。';
+    $('optTarget').textContent = selected.size
+      ? `選択した ${selected.size} 原子を独立した系として最適化します。`
+      : `全 ${atoms.length} 原子を最適化します。`;
     dialog.showModal();
   };
   $('optClose').onclick = () => dialog.close();
@@ -59,9 +62,15 @@
     event.preventDefault();
     if (worker || preview) return;
     const [charge, multiplicity, maxCycles] = inputs.map(input => input.valueAsNumber);
-    const unsupported = atoms.find(atom => elements.indexOf(atom.el) < 0 ||
+    const indices = selected.size ? [...selected].sort((a, b) => a - b) : atoms.map((_, i) => i);
+    const target = indices.map(i => atoms[i]);
+    if (target.length < 2) {
+      status.textContent = '最適化する原子を2個以上選択してください。';
+      return;
+    }
+    const unsupported = target.find(atom => elements.indexOf(atom.el) < 0 ||
       elements.indexOf(atom.el) >= 86);
-    const electrons = atoms.reduce((total, atom) => total + elements.indexOf(atom.el) + 1, -charge);
+    const electrons = target.reduce((total, atom) => total + elements.indexOf(atom.el) + 1, -charge);
     if (unsupported) {
       status.textContent = 'GFN2-xTBの対応範囲はH〜Rnです。対象外の元素：' + unsupported.el;
       return;
@@ -70,15 +79,15 @@
       status.textContent = '電子数とスピン多重度が合いません。全電荷と多重度を確認してください。';
       return;
     }
-    if (atoms.length > 200) {
+    if (target.length > 200) {
       status.textContent = 'ブラウザでの計算上限は200原子です。';
       return;
     }
 
     before = snapshot();
     const geometry = {
-      elements: atoms.map(atom => atom.el),
-      coordinates: Float64Array.from(atoms.flatMap(({x, y, z}) => [x, y, z])),
+      elements: target.map(atom => atom.el),
+      coordinates: Float64Array.from(target.flatMap(({x, y, z}) => [x, y, z])),
     };
     try {
       worker = new Worker('optimize-worker.js', {type: 'module'});
@@ -98,17 +107,13 @@
         } else if (data.type === 'result') {
           stopWorker();
           const {coordinates, energy, converged, cycles} = data.result;
-          preview = before.atoms.map((atom, i) => ({
-            ...atom, x: coordinates[3*i], y: coordinates[3*i+1], z: coordinates[3*i+2],
-          }));
-          // OCC centers its result. Restore the original scene position.
-          const start = Mol.centroid(before.atoms, before.atoms.map((_, i) => i));
-          const end = Mol.centroid(preview, preview.map((_, i) => i));
-          for (const atom of preview) {
-            atom.x += start.x - end.x;
-            atom.y += start.y - end.y;
-            atom.z += start.z - end.z;
-          }
+          preview = before.atoms.slice();
+          indices.forEach((index, i) => {
+            preview[index] = {
+              ...before.atoms[index],
+              x: coordinates[3*i], y: coordinates[3*i+1], z: coordinates[3*i+2],
+            };
+          });
           showStructure(true);
           status.textContent = `${converged ? '収束' : '未収束の最終構造'} · ${cycles} ステップ · ${energy.total.toFixed(6)} Eh`
             + (multiplicity > 1 ? '。開殻はOCCのスピン分極モデルです。' : '');
@@ -125,7 +130,7 @@
       progress.max = maxCycles;
       progress.value = 0;
       status.textContent = '計算エンジンを読み込み中…';
-      worker.postMessage({geometry, settings: {charge, unpairedElectrons: multiplicity - 1, maxCycles}});
+      worker.postMessage({geometry, anchor: indices.indexOf(before.point), settings: {charge, unpairedElectrons: multiplicity - 1, maxCycles}});
     } catch (error) {
       stopWorker();
       status.textContent = '計算を開始できませんでした：' + error.message;
