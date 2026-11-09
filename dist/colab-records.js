@@ -313,7 +313,34 @@ async function countOriginalFiles(id) {
   return count;
 }
 
-async function openReaction(jobId, name, originals) {
+function connectImageSaver(params, jobId, images) {
+  const channelId = crypto.randomUUID();
+  params.set('images', channelId);
+  const channel = new BroadcastChannel('reaction-images:' + channelId);
+  channel.onmessage = async ({data}) => {
+    if (data?.close) { channel.close(); return; }
+    const {target, image, id} = data ?? {};
+    if (!['START','FINAL'].includes(target) || !(image instanceof Blob) || image.type !== 'image/png') return;
+    try {
+      await request('https://www.googleapis.com/upload/drive/v3/files/' +
+        encodeURIComponent(images.get(target+'.png')) + '?uploadType=media', {
+        method:'PATCH', headers:{'Content-Type':'image/png'}, body:image,
+      });
+      const preview = cards.get(jobId)?.card.querySelector('img[alt="'+target+'"]');
+      if (preview) {
+        URL.revokeObjectURL(preview.src);
+        imageUrls.delete(preview.src);
+        preview.src = URL.createObjectURL(image);
+        imageUrls.add(preview.src);
+      }
+      channel.postMessage({id});
+    } catch (error) {
+      channel.postMessage({id,error:error.message});
+    }
+  };
+}
+
+async function openReaction(jobId, name, originals, images) {
   const tab = window.open('about:blank', '_blank');
   if (!tab) { status('反応経路ビューアのタブを開けませんでした。'); return; }
   tab.opener = null;
@@ -339,6 +366,7 @@ async function openReaction(jobId, name, originals) {
       params.set(key,url);
     }
     if (tab.closed) throw Error('反応経路ビューアを閉じました。');
+    if (images.has('START.png') && images.has('FINAL.png')) connectImageSaver(params,jobId,images);
     tab.location.replace('reaction-viewer.html#' + params);
   } catch (error) {
     for (const url of urls) URL.revokeObjectURL(url);
@@ -396,7 +424,7 @@ async function refresh() {
     const open = document.createElement('button');
     open.type = 'button';
     open.textContent = '反応経路を開く';
-    open.onclick = () => void openReaction(job.id,job.name,files.get('計算結果'));
+    open.onclick = () => void openReaction(job.id,job.name,files.get('計算結果'),files);
     card.onclick = event => { if (!event.target.closest('button')) open.click(); };
     card.append(images, info, open);
     cards.set(job.id,{...job,card});

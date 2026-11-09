@@ -13,6 +13,42 @@ let drawStructure = () => {};
 let baseName = 'trajectory';
 let reference = -1;
 let plottedPoints = [];
+let captureImage, imageSaving = false;
+const imageChannelId = reaction && new URLSearchParams(location.hash.slice(1)).get('images');
+const imageChannel = imageChannelId && new BroadcastChannel('reaction-images:' + imageChannelId);
+
+if (imageChannel) {
+  window.addEventListener('pagehide', () => {
+    imageChannel.postMessage({close:true});
+    imageChannel.close();
+  });
+  for (const target of ['START','FINAL']) {
+    const button = $(target === 'START' ? 'saveStartImage' : 'saveFinalImage');
+    button.onclick = async () => {
+      imageSaving = true;
+      syncButtons();
+      try {
+        const image = await captureImage();
+        const id = crypto.randomUUID();
+        await new Promise((resolve,reject) => {
+          function finish(event) {
+            if (event && event.data?.id !== id) return;
+            clearTimeout(timer);
+            imageChannel.removeEventListener('message',finish);
+            if (!event) reject(Error('保存結果を確認できません。Colab計算記録のタブが開いているか確認してください。'));
+            else if (event.data.error) reject(Error(event.data.error));
+            else resolve();
+          }
+          const timer = setTimeout(finish,30000);
+          imageChannel.addEventListener('message',finish);
+          imageChannel.postMessage({id,target,image});
+        });
+        status(target+'画像を更新しました。');
+      } catch (error) { status(error.message); }
+      finally { imageSaving = false; syncButtons(); }
+    };
+  }
+}
 
 function status(message) {
   $('slideStatus').textContent = message;
@@ -24,6 +60,9 @@ function syncButtons() {
   $('next').disabled = unavailable || current === frames.length - 1;
   $('prevTen').disabled = $('prev').disabled;
   $('nextTen').disabled = $('next').disabled;
+  if (reaction) {
+    $('saveStartImage').disabled = $('saveFinalImage').disabled = unavailable || !imageChannel || !captureImage || imageSaving;
+  }
   for (const id of ['numbers','importFrame','downloadFrame','importAll','importMany']) {
     $(id).disabled = unavailable;
   }
@@ -176,6 +215,20 @@ async function setupView() {
   new ResizeObserver(resize).observe(view);
   resize();
   drawStructure(true);
+  if (imageChannel) {
+    captureImage = () => {
+      drawStructure(false);
+      const canvas = document.createElement('canvas');
+      canvas.width = renderer.domElement.width;
+      canvas.height = renderer.domElement.height;
+      const context = canvas.getContext('2d');
+      context.drawImage(renderer.domElement,0,0);
+      if (showNumbers) context.drawImage(labels,0,0,canvas.width,canvas.height);
+      return new Promise((resolve,reject) => canvas.toBlob(blob =>
+        blob ? resolve(blob) : reject(Error('画像を作成できませんでした。')), 'image/png'));
+    };
+    syncButtons();
+  }
 }
 
 async function registerFrames(ranges) {
