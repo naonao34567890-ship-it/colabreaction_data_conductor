@@ -10,7 +10,7 @@ await test('Integer footer is not false molecule',async()=>{const r=await parse(
 await test('Unknown element skipped without losing adjacent molecules',async()=>{const r=await parse('1\nA\nH 0 0 0\n1\nunknown\nXx 0 0 0\n1\nB\nO 0 1 0\n');assert.equal(r.filter(x=>x.atoms).length,2);assert.equal(r.filter(x=>x.error).length,1);});
 await test('Malformed leading block recovers',async()=>{const r=await parse('2\nbad\nH nope 0 0\nC 0 0 0\n1\nvalid\nC 1 2 3');assert.equal(r.filter(x=>x.atoms).length,1);assert.ok(r.some(x=>x.error));});
 await test('Chunk boundary CRLF and footer larger than chunk',async()=>{const s='1\n\nH 0 0 0\n'+'x'.repeat(262131)+'\r\n'+fixture;const r=await parse(s);assert.equal(r.length,2);assert.equal(r.map(x=>x.rawParts.join('')).join(''),s);});
-await test('Edited output drops extra/footer but keeps comment',async()=>{const [r]=await parse(fixture);const out=M.standard(r);assert.equal(out.trimEnd().split('\n').length,16);assert.equal(out.split('\n')[1],r.comment);assert.equal(out.split('\n')[2].trim().split(/\s+/).length,4);});
+await test('Edited output drops extra/footer and leaves a blank second line',async()=>{const [r]=await parse(fixture);const out=M.standard(r);assert.equal(out.trimEnd().split('\n').length,16);assert.equal(out.split('\n')[1],'');assert.equal(out.split('\n')[2].trim().split(/\s+/).length,4);});
 await test('Exports blank comment for edited and imported records',async()=>{
  for(const newline of ['\n','\r\n','\r']){
   const tail=['H 0 0 0 extra','footer',''].join(newline);
