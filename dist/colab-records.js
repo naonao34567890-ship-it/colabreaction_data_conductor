@@ -157,12 +157,7 @@ async function energyPlot(points) {
   ctx.fillText(String(xmin), left, 600, 160);
   if (xmax !== xmin) ctx.fillText(String(xmax), right - 38, 600, 160);
   ctx.fillText('フレーム', (left + right) / 2, 600, 335);
-  ctx.strokeStyle = ctx.fillStyle = '#62d6bf';
-  ctx.lineWidth = 5;
-  ctx.beginPath();
-  points.forEach(([frame, energy], index) =>
-    index ? ctx.lineTo(x(frame), y(energy)) : ctx.moveTo(x(frame), y(energy)));
-  ctx.stroke();
+  ctx.fillStyle = '#62d6bf';
   for (const [frame, energy] of points) {
     ctx.beginPath();
     ctx.arc(x(frame), y(energy), 4, 0, 2 * Math.PI);
