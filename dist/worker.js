@@ -6,7 +6,7 @@ class ImportJob{
  constructor(emit,choose){this.emit=emit;this.choose=choose;this.cancelled=false;this.batch=[];this.batchBytes=0;this.stats={processed:0,registered:0,extra:0,skipped:0,failed:0,reasons:{},examples:[]};this.last=0;}
  reason(reason,name,failed=false){this.stats[failed?'failed':'skipped']++;this.stats.reasons[reason]=(this.stats.reasons[reason]||0)+1;if(this.stats.examples.length<30)this.stats.examples.push(name+': '+reason);}
  async flush(){if(!this.batch.length)return;const batch=this.batch;this.batch=[];this.batchBytes=0;try{const saved=await Mol.saveBatch(batch);this.stats.registered+=saved.length;this.emit({type:'saved',items:saved});Mol.notify({type:'added',items:saved});}catch(e){this.cancelled=true;this.stats.failed+=batch.length;this.stats.fatal=(e.name==='QuotaExceededError'?'保存容量を超えました':e.message);throw e;}}
- async add(block,name){const estimated=block.rawParts.reduce((n,s)=>n+s.length*2,0)+block.atoms.length*160;if(this.batchBytes+estimated>32*1024*1024)await this.flush();this.batchBytes+=estimated;this.batch.push({name,atoms:block.atoms,comment:block.comment,raw:new Blob(block.rawParts,{type:'chemical/x-xyz'}),originalLines:block.originalLines,baseLines:block.baseLines,edited:false});if(this.batch.length>=200||this.batchBytes>=32*1024*1024)await this.flush();}
+ async add(block,name){const estimated=block.rawParts.reduce((n,s)=>n+s.length*2,0)+block.atoms.length*160;if(this.batchBytes+estimated>32*1024*1024)await this.flush();this.batchBytes+=estimated;this.batch.push({name,atoms:block.atoms,comment:block.comment,tags:Mol.readMemo(block.comment).tags,raw:new Blob(block.rawParts,{type:'chemical/x-xyz'}),originalLines:block.originalLines,baseLines:block.baseLines,edited:false});if(this.batch.length>=200||this.batchBytes>=32*1024*1024)await this.flush();}
  async files(files){for(const file of files){if(this.cancelled)break;try{
   if(file.size>50*1024*1024){this.reason('50 MiBの上限超過',file.name);continue;}
   let single=null;
@@ -49,9 +49,9 @@ class ImportJob{
  async finish(){try{await this.flush();}catch(_){}this.emit({type:'done',stats:this.stats,cancelled:this.cancelled});}
 }
 function header(size){const a=new Uint8Array(size);return{a,v:new DataView(a.buffer)};}
-async function exportData(ids,format,send,cancelled,progress){
+async function exportData(ids,format,send,cancelled,progress,withMemo=false){
  const central=[],encoder=new TextEncoder(),names=new Set();let offset=0,done=0;
- for(const id of ids){if(cancelled())return;const body=await Mol.get('body',id);if(!body)throw Error('出力対象が削除されました。選択し直してください');const blob=await Mol.output(body);
+ for(const id of ids){if(cancelled())return;const body=await Mol.get('body',id);if(!body)throw Error('出力対象が削除されました。選択し直してください');const meta=withMemo?await Mol.get('meta',id):null;const blob=await Mol.output(body,withMemo?Mol.formatMemo(body.comment,meta?.tags||[]):'');
   if(format==='zip'){
    let name=Mol.safeName(body.name)+'.xyz',n=1;while(names.has(name))name=Mol.safeName(body.name)+` (${++n}).xyz`;names.add(name);
    const filename=encoder.encode(name),bytes=new Uint8Array(await blob.arrayBuffer()),crc=Mol.crc32(bytes);if(filename.length>65535)throw Error('ZIP内のファイル名が長すぎます');
@@ -76,7 +76,7 @@ if(typeof WorkerGlobalScope!=='undefined'&&root instanceof WorkerGlobalScope){le
   try{if(m.type==='start'){job=new ImportJob(v=>postMessage(v),(name,total,file)=>new Promise(resolve=>{choose=resolve;postMessage({type:'multiChoice',name,total,file});}));cancel=false;postMessage({type:'ready'});}
    else if(m.type==='files'){await job.files(m.files);postMessage({type:'ready'});}
    else if(m.type==='finish'){await job.finish();}
-   else if(m.type==='export'){cancel=false;await exportData(m.ids,m.format,bytes=>new Promise(r=>{ack=r;postMessage({type:'chunk',bytes},[bytes.buffer]);}),()=>cancel,n=>postMessage({type:'exportProgress',done:n}));postMessage({type:'exportDone',cancelled:cancel});}
+   else if(m.type==='export'){cancel=false;await exportData(m.ids,m.format,bytes=>new Promise(r=>{ack=r;postMessage({type:'chunk',bytes},[bytes.buffer]);}),()=>cancel,n=>postMessage({type:'exportProgress',done:n}),m.withMemo);postMessage({type:'exportDone',cancelled:cancel});}
   }catch(e){postMessage({type:'error',message:e.message,name:e.name});}
  };
 }

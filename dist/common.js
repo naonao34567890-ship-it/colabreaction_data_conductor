@@ -59,17 +59,51 @@ async function* parseFile(file,cancelled=()=>false){
  if(current&&!cancelled())yield current;
  if(noise)yield {error:'有効なxyzブロックがありません',lines:noise};
 }
+function readMemo(comment=''){
+ const fields=new Map();
+ for(const part of comment.split('\t')){
+  const separator=part.indexOf('=');
+  if(separator<0)continue;
+  const key=part.slice(0,separator).trim();
+  fields.set(key,fields.has(key)?null:part.slice(separator+1).trim());
+ }
+ const memo={};
+ for(const key of ['charge','spin','multiplicity']){
+  const value=fields.get(key);
+  if(!/^[+-]?\d+$/.test(value??''))continue;
+  const n=Number(value);
+  if(Number.isSafeInteger(n)&&(key!=='multiplicity'||n>0))memo[key]=n;
+ }
+ const energy=fields.get('energy');
+ if(/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eEdD][+-]?\d+)?\s+(?:kJ\/mol|kcal\/mol|Eh|eV|Hartree)$/i.test(energy??''))memo.energy=energy;
+ let tags=[];
+ if(fields.get('tag'))tags=[fields.get('tag')];
+ if(fields.get('tags')){
+  try{const parsed=JSON.parse(fields.get('tags'));if(Array.isArray(parsed))tags=parsed;}catch{}
+ }
+ memo.tags=[...new Set(tags.filter(tag=>typeof tag==='string'&&tag.trim()&&!/[\t\r\n]/.test(tag)).map(tag=>tag.trim()))].sort(displayNames.compare);
+ return memo;
+}
+function formatMemo(comment,tags){
+ const memo=readMemo(comment);
+ const fields=[];
+ for(const key of ['energy','multiplicity','spin','charge']){
+  if(memo[key]!==undefined)fields.push(key+'='+memo[key]);
+ }
+ if(tags.length)fields.push('tags='+JSON.stringify(tags));
+ return fields.join('\t');
+}
 function standard(m){return `${m.atoms.length}\n\n`+m.atoms.map(a=>`${a.el} ${a.x.toPrecision(12)} ${a.y.toPrecision(12)} ${a.z.toPrecision(12)}`).join('\n')+'\n';}
-async function output(m){
+async function output(m,memo=''){
  const type='chemical/x-xyz';
- if(m.edited||!m.raw)return new Blob([standard(m)],{type});
+ if(m.edited||!m.raw)return new Blob([standard(m).replace('\n\n',()=> '\n'+memo+'\n')],{type});
  const header=lines(m.raw);
  try{
   const {value:count}=await header.next();
   const {value:comment}=await header.next();
   const newline=comment.raw.slice(comment.text.length);
   const offset=new TextEncoder().encode(count.raw+comment.raw).length;
-  return new Blob([count.raw,newline,m.raw.slice(offset)],{type});
+  return new Blob([count.raw,memo,newline,m.raw.slice(offset)],{type});
  }finally{await header.return();}
 }
 function centroid(atoms,indices){const ids=indices?Array.from(indices):atoms.map((_,i)=>i);const c={x:0,y:0,z:0};for(const i of ids){c.x+=atoms[i].x;c.y+=atoms[i].y;c.z+=atoms[i].z;}for(const k of ['x','y','z'])c[k]/=ids.length||1;return c;}
@@ -161,10 +195,10 @@ function compareDisplayOrder(a, b, order='name-asc') {
 }
 async function metadata(){const d=await db();return new Promise((res,rej)=>{const result=builtinMeta.map(record => ({...record})),t=d.transaction('meta'),r=t.objectStore('meta').openCursor();r.onsuccess=()=>{const c=r.result;if(c){result.push(c.value);c.continue();}else res(result);};r.onerror=()=>rej(r.error);});}
 async function saveBatch(records){if(!records.length)return [];const d=await db();return new Promise((res,rej)=>{
- const tx=d.transaction(['meta','body'],'readwrite'),meta=tx.objectStore('meta'),body=tx.objectStore('body'),saved=[];
+ const tx=d.transaction(['meta','body','tags'],'readwrite'),meta=tx.objectStore('meta'),body=tx.objectStore('body'),saved=[];
  tx.oncomplete=()=>res(saved);tx.onabort=()=>rej(tx.error||Error('保存失敗'));tx.onerror=()=>{};
  // Request chaining keeps the transaction alive and serializes collision checks.
- let i=0;function next(){if(i>=records.length)return;const r=records[i++],base=r.name;let suffix=nameHints.get(base)||1;if(suffix>1)r.name=`${base} (${suffix})`;function attempt(){const q=meta.index('name').getKey(r.name);q.onsuccess=()=>{if(q.result!==undefined){r.name=`${base} (${++suffix})`;attempt();}else{nameHints.set(base,suffix+1);r.id=crypto.randomUUID();delete r.revision;const m={id:r.id,name:r.name,count:r.atoms.length,thumb:false,addedAt:performance.timeOrigin+performance.now(),batchPosition:i,bytes:r.raw?.size||standard(r).length};meta.add(m);body.add(r);saved.push(m);next();}};}attempt();}next();
+ let i=0;function next(){if(i>=records.length)return;const r=records[i++],base=r.name;let suffix=nameHints.get(base)||1;if(suffix>1)r.name=`${base} (${suffix})`;function attempt(){const q=meta.index('name').getKey(r.name);q.onsuccess=()=>{if(q.result!==undefined){r.name=`${base} (${++suffix})`;attempt();}else{nameHints.set(base,suffix+1);r.id=crypto.randomUUID();delete r.revision;const m={id:r.id,name:r.name,count:r.atoms.length,thumb:false,addedAt:performance.timeOrigin+performance.now(),batchPosition:i,bytes:r.raw?.size||standard(r).length};if(r.tags?.length){m.tags=r.tags;for(const name of r.tags)tx.objectStore('tags').put({name});}meta.add(m);body.add(r);saved.push(m);next();}};}attempt();}next();
  });}
 async function overwrite(record, expectedRevision) {
  if(builtins.has(record.id))throw Error('組み込みの分子は上書きできません。');
@@ -222,7 +256,7 @@ function parseFrameRanges(value,total){
  });
  return ranges;
 }
-const API={compareTagNames:displayNames.compare,parseFrameRanges,scanEntries,elements,tick,atomLine,lines,parseFile,standard,compareDisplayOrder,output,centroid,swap,bonds,db,get,metadata,saveBatch,overwrite,remove,removeMany,cacheThumb,notify,crc32,safeName};root.Mol=API;if(typeof module!=='undefined')module.exports=API;
+const API={readMemo,formatMemo,compareTagNames:displayNames.compare,parseFrameRanges,scanEntries,elements,tick,atomLine,lines,parseFile,standard,compareDisplayOrder,output,centroid,swap,bonds,db,get,metadata,saveBatch,overwrite,remove,removeMany,cacheThumb,notify,crc32,safeName};root.Mol=API;if(typeof module!=='undefined')module.exports=API;
 })(globalThis);
 
 /* Browser-only presentation helpers; no DOM or Three dependency in Worker. */
