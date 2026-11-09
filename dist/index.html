@@ -7,6 +7,7 @@
 #colabJobs { display: grid; gap: 12px; }
 .colab-job { padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
 .colab-images { display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 8px; }
+.colab-meta { display: flex; gap: 16px; overflow-x: auto; white-space: nowrap; padding: 8px 0; }
 .colab-images figure { min-width: 0; margin: 0; }
 .colab-images img { display: block; width: 100%; height: 150px; object-fit: contain; }
 #grid { user-select: none; }
@@ -23,11 +24,13 @@
 <button id="driveConnect" type="button" class="primary">Google Driveに接続</button>
 <div id="colabDrop">
 <label>計算結果のZIPまたはフォルダーをドロップ
-<input id="colabZip" type="file" accept=".zip,application/zip" disabled>
+<input id="colabZip" type="file" multiple accept=".zip,application/zip" disabled>
 </label>
 <label>フォルダーを選択 <input id="colabFolder" type="file" webkitdirectory multiple disabled></label>
 </div>
 <p id="colabStatus" role="status">Google Driveに接続すると計算記録を表示します。</p>
+<p id="colabQueue" role="status">待機中 0件</p>
+<div id="colabErrors" role="status"></div>
 <div id="colabJobs"></div>
 </section></div>
 <style>

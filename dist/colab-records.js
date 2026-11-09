@@ -9,6 +9,33 @@ const folderType = 'application/vnd.google-apps.folder';
 const drive = 'https://www.googleapis.com/drive/v3';
 let token, root, client, renderer;
 const imageUrls = new Set();
+const pending = [];
+let active = null, connecting = false;
+
+function showQueue() {
+  get('colabQueue').textContent = (active ? '処理中 ' + active.name + ' ／ ' : '')
+    + '待機中 ' + pending.length + '件';
+}
+
+function enqueue(records) {
+  pending.push(...records);
+  showQueue();
+  void runQueue();
+}
+
+async function runQueue() {
+  if (active || connecting || !token || !root) return;
+  while (pending.length && token) {
+    active = pending.shift();
+    showQueue();
+    connect.disabled = true;
+    await importRecords(active.name, active.sourceLabel, active.readFiles);
+    active = null;
+    showQueue();
+  }
+  connect.disabled = false;
+}
+
 
 async function request(url, options = {}) {
   const response = await fetch(url, {
@@ -188,8 +215,6 @@ function readFolder(files, relativePath) {
 }
 
 async function importRecords(name, sourceLabel, readFiles) {
-  if (input.disabled || !token || !root) return;
-  input.disabled = folderInput.disabled = connect.disabled = true;
   let parent;
   try {
     const files = await readFiles();
@@ -244,11 +269,10 @@ async function importRecords(name, sourceLabel, readFiles) {
           headers:{'Content-Type':'application/json'}, body:JSON.stringify({trashed:true})});
       } catch { partial = ' 未完了のフォルダがDriveに残っている可能性があります。'; }
     }
+    const message = document.createElement('div');
+    message.textContent = name + ' — ' + error.message + partial;
+    get('colabErrors').append(message);
     status(error.message + partial);
-  } finally {
-    input.disabled = folderInput.disabled = !token;
-    connect.disabled = false;
-    input.value = folderInput.value = '';
   }
 }
 
@@ -279,8 +303,15 @@ async function refresh() {
       images.append(figure);
     }
     const info = document.createElement('div');
-    info.style.whiteSpace = 'pre-wrap';
-    info.textContent = await (await download(files.get('config.txt'))).text();
+    info.className = 'colab-meta';
+    const config = await (await download(files.get('config.txt'))).text();
+    for (const line of config.split(/\r?\n/)) {
+      if (!/^(ZIP名|フォルダー名|プロット点数|電荷|spin(?:（出力値）)?|結果出力日時):/.test(line)) continue;
+      const field = document.createElement('span');
+      field.textContent = line.replace(/^spin（出力値）:/, 'spin:')
+        .replace(/^(結果出力日時:.*?)（[^）]*）$/, '$1');
+      info.append(field);
+    }
     card.append(images, info);
     jobs.append(card);
   }
@@ -291,7 +322,9 @@ async function authorize(response) {
     status('Google Driveへの接続が完了しませんでした。');
     return;
   }
+  connecting = true;
   token = response.access_token;
+  root = null;
   connect.disabled = input.disabled = folderInput.disabled = true;
   try {
     status('Google Driveの計算記録を読み込んでいます…');
@@ -303,7 +336,11 @@ async function authorize(response) {
     connect.textContent = 'Google Driveに再接続';
   } catch (error) {
     status(error.message);
-  } finally { connect.disabled = false; }
+  } finally {
+    connecting = false;
+    connect.disabled = false;
+    void runQueue();
+  }
 }
 
 connect.disabled = true;
@@ -320,17 +357,38 @@ authScript.onload = () => {
 authScript.onerror = () => status('Googleの接続機能を読み込めませんでした。');
 document.head.append(authScript);
 connect.onclick = () => client.requestAccessToken({prompt: 'select_account'});
-function importZip(file) {
-  return importRecords(file.name, 'ZIP', () => readZip(file));
+function zipJob(file) {
+  return {name: file.name, sourceLabel: 'ZIP', readFiles: () => readZip(file)};
 }
-input.onchange = () => { if (input.files[0]) void importZip(input.files[0]); };
+
+input.onchange = () => {
+  enqueue([...input.files].map(zipJob));
+  input.value = '';
+};
+
 folderInput.onchange = () => {
   const files = [...folderInput.files];
+  folderInput.value = '';
   if (!files.length) return;
   const name = files[0].webkitRelativePath.split('/')[0];
-  void importRecords(name, 'フォルダー', () =>
-    readFolder(files, file => file.webkitRelativePath.slice(name.length + 1)));
+  enqueue([{name, sourceLabel: 'フォルダー', readFiles: () =>
+    readFolder(files, file => file.webkitRelativePath.slice(name.length + 1))}]);
 };
+
+function folderJob(entry) {
+  return {name: entry.name, sourceLabel: 'フォルダー', async readFiles() {
+    status('フォルダーを読み込んでいます…');
+    const entries = await Mol.scanEntries([entry], {
+      accept: () => true,
+      error: message => { throw Error(message); },
+    });
+    const files = await Promise.all(entries.map(child =>
+      new Promise((resolve, reject) => child.file(resolve, reject))));
+    const paths = new Map(files.map((file, index) =>
+      [file, entries[index].fullPath.slice(entry.fullPath.length + 1)]));
+    return readFolder(files, file => paths.get(file));
+  }};
+}
 
 const drop = get('colabDrop');
 drop.ondragover = event => event.preventDefault();
@@ -338,27 +396,21 @@ drop.ondrop = event => {
   event.preventDefault();
   if (input.disabled) return;
   const {files, items} = event.dataTransfer;
-  if (items.length > 1 || files.length > 1) {
-    status('ZIPまたはフォルダーを1件ずつ追加してください。');
-    return;
-  }
-  const entry = items[0]?.webkitGetAsEntry?.();
-  if (entry?.isDirectory) {
-    void importRecords(entry.name, 'フォルダー', async () => {
-      status('フォルダーを読み込んでいます…');
-      const entries = await Mol.scanEntries([entry], {
-        accept: () => true,
-        error: message => { throw Error(message); },
-      });
-      const files = await Promise.all(entries.map(child =>
-        new Promise((resolve, reject) => child.file(resolve, reject))));
-      const paths = new Map(files.map((file, index) =>
-        [file, entries[index].fullPath.slice(entry.fullPath.length + 1)]));
-      return readFolder(files, file => paths.get(file));
-    });
-  } else if (files[0] && /\.zip$/i.test(files[0].name)) {
-    void importZip(files[0]);
+  const records = [];
+  const dropped = [...items].filter(item => item.kind === 'file');
+  if (dropped.length) {
+    for (const item of dropped) {
+      const entry = item.webkitGetAsEntry?.();
+      if (entry?.isDirectory) {
+        records.push(folderJob(entry));
+      } else {
+        const file = item.getAsFile();
+        if (file && /\.zip$/i.test(file.name)) records.push(zipJob(file));
+      }
+    }
   } else {
-    status('計算結果のZIPまたはフォルダーをドロップしてください。');
+    records.push(...[...files].filter(file => /\.zip$/i.test(file.name)).map(zipJob));
   }
+  if (records.length) enqueue(records);
+  else status('計算結果のZIPまたはフォルダーをドロップしてください。');
 };
