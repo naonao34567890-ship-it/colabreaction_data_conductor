@@ -295,8 +295,19 @@ async function importRecords(name, sourceLabel, readFiles) {
   }
 }
 
+function compareClassifications(a,b) {
+  const first = a.appProperties?.classification;
+  const second = b.appProperties?.classification;
+  if (Boolean(first) !== Boolean(second)) return first ? -1 : 1;
+  const byName = Mol.compareTagNames(first || '',second || '');
+  if (byName) return byName;
+  const byDate = (b.resultDate || '').localeCompare(a.resultDate || '');
+  return byDate || Mol.compareDisplayOrder(a,b,'id');
+}
+
 function sortCards() {
-  const entries = [...cards.values()].sort((a,b) => Mol.compareDisplayOrder(a,b,order.value));
+  const entries = [...cards.values()].sort((a,b) => order.value === 'classification'
+    ? compareClassifications(a,b) : Mol.compareDisplayOrder(a,b,order.value));
   for (const entry of entries) jobs.append(entry.card);
 }
 
@@ -424,6 +435,7 @@ async function saveClassification(name) {
     if (job) {
       job.appProperties = appProperties;
       job.classificationButton.textContent = name ? '分類：' + name : '分類を設定';
+      if (order.value === 'classification') sortCards();
     }
     classificationDialog.close();
   } catch (error) {
@@ -506,7 +518,8 @@ async function refresh() {
       ? '分類：' + job.appProperties.classification : '分類を設定';
     classificationButton.onclick = () => openClassification(job.id);
     card.append(images, info, open, classificationButton);
-    cards.set(job.id,{...job,card,classificationButton});
+    const resultDate = config.match(/^結果出力日時: (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/m)?.[1];
+    cards.set(job.id,{...job,card,classificationButton,resultDate});
     jobs.append(card);
   }
   sortCards();
