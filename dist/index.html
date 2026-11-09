@@ -2,7 +2,7 @@
 #grid { user-select: none; }
 .selection-box { position: absolute; z-index: 10; pointer-events: none; box-sizing: border-box; border: 1px solid #62d6bf; background: #62d6bf33; }
 </style></head>
-<body><div class="page"><header><div class="heading"><div><div class="eyebrow">MOLECULAR WORKSPACE / 01</div><h1>分子 XYZ ライブラリ</h1></div><div class="badge">ローカル保存 · XYZ / QM9</div></div><div class="toolbar"><button class="primary" id="fileButton">＋ ファイルを選択</button><button id="folderButton">フォルダを選択</button><input hidden type="file" id="files" multiple accept=".xyz"><input hidden type="file" id="folder" multiple webkitdirectory><span class="spacer"></span><button id="all">全選択</button><button id="none">全解除</button><button id="deleteSelected" title="Ctrl＋Shift＋Backspace" disabled>削除</button><button id="open" disabled>エディタで開く ↗</button><button id="download" disabled>ダウンロード ↓</button></div><div class="progress-area"><div class="row"><span id="progressText">ファイル・フォルダを登録できます</span><span class="spacer"></span><span id="queued">待機中 0件</span><button id="cancel" disabled>キャンセル</button></div><progress id="progress" value="0" max="1"></progress></div></header><main class="workspace"><div class="row"><h2>すべての分子</h2><span id="count" class="muted">0 分子</span><span class="spacer"></span><label>並び順 <select id="libraryOrder" autocomplete="off"><option value="name-asc">名前順</option><option value="added-asc">追加時間昇順</option><option value="added-desc">追加時間降順</option><option value="name-desc">名前逆順</option><option value="id">内部ID順</option></select></label><small id="selected">0 選択中</small></div><div class="grid-view" id="grid"><div id="empty" class="empty"><div><b>分子を、ひとつの場所に。</b>xyz ファイルやフォルダをドロップして登録<br><small>複数分子ファイル・QM9形式に対応</small></div></div></div><div class="drop-hint">このページに xyz ファイル・フォルダをドロップ　／　左ドラッグで範囲内の選択を反転（Shiftで追加）　／　ダブルクリックで分子エディタを開く</div><details id="results"><summary id="summary">読み込み結果</summary><pre id="resultText"></pre></details><div class="status" id="notice" role="status" aria-live="polite"></div></main></div>
+<body><div class="page"><header><div class="heading"><div><div class="eyebrow">MOLECULAR WORKSPACE / 01</div><h1>分子 XYZ ライブラリ</h1></div><div class="badge">ローカル保存 · XYZ / QM9</div></div><div class="toolbar"><button class="primary" id="fileButton">＋ ファイルを選択</button><button id="folderButton">フォルダを選択</button><input hidden type="file" id="files" multiple accept=".xyz"><input hidden type="file" id="folder" multiple webkitdirectory><span class="spacer"></span><button id="all">全選択</button><button id="none">全解除</button><button id="deleteSelected" title="Ctrl＋Shift＋Backspace" disabled>削除</button><button id="open" disabled>エディタで開く ↗</button><button id="download" disabled>ダウンロード ↓</button></div><div class="progress-area"><div class="row"><span id="progressText">ファイル・フォルダを登録できます</span><span class="spacer"></span><span id="queued">待機中 0件</span><button id="cancel" disabled>キャンセル</button></div><progress id="progress" value="0" max="1"></progress></div></header><main class="workspace"><div class="row"><h2>すべての分子</h2><span id="count" class="muted">0 分子</span><span class="spacer"></span><label>並び順 <select id="libraryOrder" autocomplete="off"><option value="name-asc">名前順</option><option value="added-asc">追加時間昇順</option><option value="added-desc">追加時間降順</option><option value="name-desc">名前逆順</option><option value="id">内部ID順</option></select></label><small id="selected">0 選択中</small></div><div class="grid-view" id="grid"><div id="empty" class="empty"><div><b>分子を、ひとつの場所に。</b>xyz ファイルやフォルダをドロップして登録<br><small>複数分子ファイル・QM9形式に対応</small></div></div></div><div class="drop-hint">このページに xyz ファイル・フォルダをドロップ　／　左ドラッグで範囲選択（Shiftで範囲内の選択を反転）　／　ダブルクリックで分子エディタを開く</div><details id="results"><summary id="summary">読み込み結果</summary><pre id="resultText"></pre></details><div class="status" id="notice" role="status" aria-live="polite"></div></main></div>
 <dialog id="multiDialog" aria-labelledby="multiTitle">
 <h2 id="multiTitle">複数分子入りのXYZ</h2><p id="multiInfo"></p>
 <form id="multiForm">
@@ -73,7 +73,7 @@ gridView.addEventListener('pointerdown',e=>{
     e.clientX>=left+gridView.clientWidth||e.clientY>=top+gridView.clientHeight)return;
  marquee={id:e.pointerId,startX:e.clientX,startY:e.clientY,
    x:e.clientX-left+gridView.scrollLeft,y:e.clientY-top+gridView.scrollTop,
-   additive:e.shiftKey&&!e.ctrlKey&&!e.metaKey,original:new Set(selected),active:false};
+   toggle:e.shiftKey||e.ctrlKey||e.metaKey,original:new Set(selected),active:false};
 });
 gridView.addEventListener('dragstart',e=>e.preventDefault());
 gridView.addEventListener('click',e=>{
@@ -82,7 +82,7 @@ gridView.addEventListener('click',e=>{
  e.stopImmediatePropagation();
 },true);
 function drawSelection(){
- const {x,y,clientX,clientY,original,additive}=marquee;
+ const {x,y,clientX,clientY,original,toggle}=marquee;
  const viewport=gridViewport();
  const clamp=(v,max)=>Math.max(0,Math.min(v,max));
  const endX=clamp(clientX-viewport.left,gridView.clientWidth)+gridView.scrollLeft;
@@ -90,7 +90,7 @@ function drawSelection(){
  const left=Math.min(x,endX),right=Math.max(x,endX);
  const top=Math.min(y,endY),bottom=Math.max(y,endY);
  Object.assign(selectionBox.style,{left:left+'px',top:top+'px',width:(right-left)+'px',height:(bottom-top)+'px'});
- selected=new Set([...original].filter(id=>metaMap.has(id)));
+ selected=toggle?new Set([...original].filter(id=>metaMap.has(id))):new Set();
  const cols=Math.max(1,Math.floor(gridView.clientWidth/180)),width=gridView.clientWidth/cols;
  const first=Math.max(0,Math.floor(top/grid.row))*cols;
  const end=Math.min(grid.data.length,(Math.floor(bottom/grid.row)+1)*cols);
@@ -98,7 +98,7 @@ function drawSelection(){
   const tileX=i%cols*width+4,tileY=Math.floor(i/cols)*grid.row+4;
   if(tileX>right||tileX+width-8<left||tileY>bottom||tileY+grid.row-8<top)continue;
   const {id}=grid.data[i];
-  if(!additive&&original.has(id))selected.delete(id);
+  if(toggle&&original.has(id))selected.delete(id);
   else selected.add(id);
  }
  selectionUI();
