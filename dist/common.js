@@ -302,9 +302,9 @@ Mol.VirtualGrid=class{
   el.onclick=e=>{
    openOnDoubleClick=e.detail===2&&firstTileClick;
    firstTileClick=e.detail===1;
-   this.onSelect(m);this.render();
+   this.onSelect(m,e);this.render();
   };
-  el.onkeydown=e=>{if(e.target!==el)return;if(e.key===' '||e.key==='Enter'){e.preventDefault();this.onSelect(m);this.render();}};if(this.onOpen)el.ondblclick=()=>{if(openOnDoubleClick)this.onOpen(m);openOnDoubleClick=false;};n={el,revision:m.revision,alive:true,url:null,loading:false,index:i};this.nodes.set(m.id,n);this.spacer.append(el);}
+  el.onkeydown=e=>{if(e.target!==el)return;if(e.key===' '||e.key==='Enter'){e.preventDefault();this.onSelect(m,e);this.render();}};if(this.onOpen)el.ondblclick=()=>{if(openOnDoubleClick)this.onOpen(m);openOnDoubleClick=false;};n={el,revision:m.revision,alive:true,url:null,loading:false,index:i};this.nodes.set(m.id,n);this.spacer.append(el);}
   n.index=i;n.el.style.cssText=`left:${i%cols*w+4}px;top:${Math.floor(i/cols)*this.row+4}px;width:${w-8}px;height:${this.row-8}px`;const tagLine=n.el.querySelector('.tile-tags'),tags=this.mini?'':(m.tags||[]).join(' · ');
   if(tagLine.textContent!==tags){tagLine.textContent=tags;tagLine.hidden=!tags;n.el.title=tags?m.name+' — '+tags:m.name;}
   const selected=this.isSelected(m.id);n.el.classList.toggle('selected',selected);n.el.setAttribute('aria-checked',String(selected));n.el.querySelector('.check').textContent=selected?'✓':'';

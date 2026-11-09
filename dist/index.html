@@ -107,7 +107,12 @@
 <script>
 'use strict';
 const $=id=>document.getElementById(id);let meta=[],selected=new Set(),jobs=[],active=null,exporting=false,exportCancel=null,deleting=false;const channel=new BroadcastChannel('molecular-xyz');
-const grid=new Mol.VirtualGrid($('grid'),{onSelect:m=>{selected.has(m.id)?selected.delete(m.id):selected.add(m.id);selectionUI();},isSelected:id=>selected.has(id),onOpen:openEditor,onDelete:m=>deleteFiles([m.id])});
+const grid=new Mol.VirtualGrid($('grid'),{onSelect:(m,event)=>{
+ if(!event.ctrlKey)selected.clear();
+ if(selected.has(m.id))selected.delete(m.id);
+ else selected.add(m.id);
+ selectionUI();
+},isSelected:id=>selected.has(id),onOpen:openEditor,onDelete:m=>deleteFiles([m.id])});
 function notice(s){$('notice').textContent=s;}
 function openEditor(m){window.open('editor.html?id='+encodeURIComponent(m.id),'_blank','noopener');}
 function selectionUI(){ $('selected').textContent=selected.size.toLocaleString()+' 選択中';$('download').disabled=!selected.size||exporting||!!active;$('open').disabled=selected.size!==1;$('tagSelected').disabled=![...selected].some(id=>metaMap.has(id)&&!metaMap.get(id).builtin);$('deleteSelected').disabled=deleting||!!active||exporting||![...selected].some(id=>!metaMap.get(id)?.builtin);}
