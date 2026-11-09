@@ -309,6 +309,7 @@ async function refresh() {
     images.className = 'colab-images';
     for (const [name, label] of [['START.png','START'], ['FINAL.png','FINAL'], ['Energy.png','エネルギープロファイル']]) {
       const figure = document.createElement('figure'), caption = document.createElement('figcaption');
+      if (name === 'Energy.png') figure.className = 'energy-profile';
       caption.textContent = label;
       figure.append(caption);
       if (files.has(name)) {
