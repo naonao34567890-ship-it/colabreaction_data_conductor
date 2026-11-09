@@ -47,8 +47,8 @@
     finishKeys();
     finishRotation();
     $('optTitle').textContent = method+'-xTB 構造最適化';
-    $('optRun').textContent = method==='GFN0'?'コマンドを生成':'計算開始';
-    status.textContent = method==='GFN0'
+    $('optRun').textContent = method==='GFN1'?'コマンドを生成':'計算開始';
+    status.textContent = method==='GFN1'
       ? '公式xTBで実行するコマンドを生成し、結果をこの画面に読み戻します。'
       : '初回の計算開始時に約29 MBの計算エンジンを読み込みます。';
     $('optTarget').textContent = selected.size
@@ -57,7 +57,7 @@
     dialog.showModal();
   }
   $('optimize').onclick = () => openOptimization('GFN2');
-  $('optimizeGfn0').onclick = () => openOptimization('GFN0');
+  $('optimizeGfn1').onclick = () => openOptimization('GFN1');
   $('optClose').onclick = () => dialog.close();
   dialog.addEventListener('close', reset);
   $('optCompare').onclick = () => showStructure(!showingPreview);
@@ -87,7 +87,7 @@
   }
 
   $('optInput').onclick = () => {
-    if (externalRequest) Mol.downloadBlob(externalRequest.input, 'gfn0-input.xyz');
+    if (externalRequest) Mol.downloadBlob(externalRequest.input, 'gfn1-input.xyz');
   };
 
   resultFile.onchange = async () => {
@@ -110,7 +110,7 @@
       const coords = Float64Array.from(result.flatMap(({x,y,z}) => [x,y,z]));
       external.hidden = true;
       presentResult(indices, alignGeometry(geometry.coordinates,coords,anchor),
-        'GFN0の結果XYZを読み込みました。収束の有無はxTBの出力ログを確認してください。', '座標を適用');
+        'GFN1の結果XYZを読み込みました。収束の有無はxTBの出力ログを確認してください。', '座標を適用');
     } catch (error) {
       if (externalRequest === request) status.textContent = '読み込み失敗：'+error.message;
     }
@@ -147,11 +147,11 @@
       elements: target.map(atom => atom.el),
       coordinates: Float64Array.from(target.flatMap(({x, y, z}) => [x, y, z])),
     };
-    if (method==='GFN0') {
+    if (method==='GFN1') {
       const input = new Blob([Mol.standard({atoms:target,comment:''})],{type:'chemical/x-xyz'});
       externalRequest = {input, geometry, indices, anchor:indices.indexOf(before.point)};
-      $('optCommand').value = `printf '%s\n' '$opt' ' maxcycle=${maxCycles}' '$end' > gfn0.inp
-xtb gfn0-input.xyz --gfn 0 --chrg ${charge} --uhf ${multiplicity-1} --opt --input gfn0.inp`;
+      $('optCommand').value = `printf '%s\n' '$opt' ' maxcycle=${maxCycles}' '$end' > gfn1.inp
+xtb gfn1-input.xyz --gfn 1 --chrg ${charge} --uhf ${multiplicity-1} --opt --input gfn1.inp`;
       external.hidden = false;
       for (const field of inputs) field.disabled = true;
       $('optRun').hidden = true;
