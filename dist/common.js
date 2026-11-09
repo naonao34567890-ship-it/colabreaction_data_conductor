@@ -164,8 +164,33 @@ async function saveBatch(records){if(!records.length)return [];const d=await db(
  const tx=d.transaction(['meta','body'],'readwrite'),meta=tx.objectStore('meta'),body=tx.objectStore('body'),saved=[];
  tx.oncomplete=()=>res(saved);tx.onabort=()=>rej(tx.error||Error('保存失敗'));tx.onerror=()=>{};
  // Request chaining keeps the transaction alive and serializes collision checks.
- let i=0;function next(){if(i>=records.length)return;const r=records[i++],base=r.name;let suffix=nameHints.get(base)||1;if(suffix>1)r.name=`${base} (${suffix})`;function attempt(){const q=meta.index('name').getKey(r.name);q.onsuccess=()=>{if(q.result!==undefined){r.name=`${base} (${++suffix})`;attempt();}else{nameHints.set(base,suffix+1);r.id=crypto.randomUUID();const m={id:r.id,name:r.name,count:r.atoms.length,thumb:false,addedAt:performance.timeOrigin+performance.now(),batchPosition:i,bytes:r.raw?.size||standard(r).length};meta.add(m);body.add(r);saved.push(m);next();}};}attempt();}next();
+ let i=0;function next(){if(i>=records.length)return;const r=records[i++],base=r.name;let suffix=nameHints.get(base)||1;if(suffix>1)r.name=`${base} (${suffix})`;function attempt(){const q=meta.index('name').getKey(r.name);q.onsuccess=()=>{if(q.result!==undefined){r.name=`${base} (${++suffix})`;attempt();}else{nameHints.set(base,suffix+1);r.id=crypto.randomUUID();delete r.revision;const m={id:r.id,name:r.name,count:r.atoms.length,thumb:false,addedAt:performance.timeOrigin+performance.now(),batchPosition:i,bytes:r.raw?.size||standard(r).length};meta.add(m);body.add(r);saved.push(m);next();}};}attempt();}next();
  });}
+async function overwrite(record, expectedRevision) {
+ if(builtins.has(record.id))throw Error('組み込みの分子は上書きできません。');
+ const d=await db();
+ return new Promise((resolve,reject)=>{
+  const tx=d.transaction(['meta','body','thumb'],'readwrite');
+  const meta=tx.objectStore('meta');
+  const request=meta.get(record.id);
+  let result,failure;
+  tx.oncomplete=()=>resolve(result);
+  tx.onabort=()=>reject(failure||tx.error||Error('上書き保存できませんでした。'));
+  request.onsuccess=()=>{
+   const current=request.result;
+   if(!current||current.revision!==expectedRevision){
+    failure=Error(current?'別のタブで上書きされています。新しい分子として保存するか、開き直してください。':'元の分子が削除されています。新しい分子として保存してください。');
+    tx.abort();
+    return;
+   }
+   const revision=crypto.randomUUID();
+   result={...current,revision,count:record.atoms.length,bytes:record.raw.size,thumb:false};
+   tx.objectStore('body').put({...record,name:current.name,revision});
+   meta.put(result);
+   tx.objectStore('thumb').delete(record.id);
+  };
+ });
+}
 async function remove(id){return removeMany([id]);}
 async function removeMany(ids) {
  if(ids.some(id=>builtins.has(id)))throw Error('組み込みの分子・原子は削除できません');
@@ -182,7 +207,7 @@ async function removeMany(ids) {
   }
  });
 }
-async function cacheThumb(id,blob){const d=await db();return new Promise((res,rej)=>{const t=d.transaction(['meta','thumb'],'readwrite'),s=t.objectStore('meta'),r=s.get(id);r.onsuccess=()=>{if(r.result)s.put({...r.result,thumb:true});if(r.result||builtins.has(id))t.objectStore('thumb').put({id,blob});};t.oncomplete=res;t.onabort=()=>rej(t.error);});}
+async function cacheThumb(id,blob,revision){const d=await db();return new Promise((res,rej)=>{const t=d.transaction(['meta','thumb'],'readwrite'),s=t.objectStore('meta'),r=s.get(id);r.onsuccess=()=>{if(r.result&&r.result.revision!==revision)return;if(r.result)s.put({...r.result,thumb:true});if(r.result||builtins.has(id))t.objectStore('thumb').put({id,blob});};t.oncomplete=res;t.onabort=()=>rej(t.error);});}
 function notify(change){if(typeof BroadcastChannel!=='undefined'){const c=new BroadcastChannel('molecular-xyz');c.postMessage(change);c.close();}}
 const crcTable=Array.from({length:256},(_,n)=>{for(let k=0;k<8;k++)n=n&1?0xedb88320^(n>>>1):n>>>1;return n>>>0;});
 function crc32(bytes){let c=0xffffffff;for(const b of bytes)c=crcTable[(c^b)&255]^(c>>>8);return(c^0xffffffff)>>>0;}
@@ -197,7 +222,7 @@ function parseFrameRanges(value,total){
  });
  return ranges;
 }
-const API={compareTagNames:displayNames.compare,parseFrameRanges,scanEntries,elements,tick,atomLine,lines,parseFile,standard,compareDisplayOrder,output,centroid,swap,bonds,db,get,metadata,saveBatch,remove,removeMany,cacheThumb,notify,crc32,safeName};root.Mol=API;if(typeof module!=='undefined')module.exports=API;
+const API={compareTagNames:displayNames.compare,parseFrameRanges,scanEntries,elements,tick,atomLine,lines,parseFile,standard,compareDisplayOrder,output,centroid,swap,bonds,db,get,metadata,saveBatch,overwrite,remove,removeMany,cacheThumb,notify,crc32,safeName};root.Mol=API;if(typeof module!=='undefined')module.exports=API;
 })(globalThis);
 
 /* Browser-only presentation helpers; no DOM or Three dependency in Worker. */
@@ -224,7 +249,7 @@ Mol.graphics.catch(e=>{document.dispatchEvent(new CustomEvent('graphics-error',{
 class Thumbnails{
  constructor(){this.queue=[];this.running=false;this.renderer=null;this.unavailable=false;}
  request(id,alive){return new Promise((resolve)=>{this.queue.push({id,alive,resolve});this.run();});}
- async run(){if(this.running)return;this.running=true;try{while(this.queue.length){this.queue.sort((a,b)=>Number(b.alive(true))-Number(a.alive(true)));const task=this.queue.shift();if(!task.alive()){task.resolve(null);continue;}try{let cached=await Mol.get('thumb',task.id);if(!cached&&task.alive(true)&&!this.unavailable){const m=await Mol.get('body',task.id);if(!m){task.resolve(null);continue;}const g=await Mol.graphics;if(!task.alive(true)){task.resolve(null);continue;}if(!this.renderer){try{this.renderer=new g.T.WebGLRenderer({alpha:true,antialias:true,preserveDrawingBuffer:true});}catch(e){this.unavailable=true;document.dispatchEvent(new CustomEvent('webgl-error'));throw e;}this.renderer.setSize(160,160);this.renderer.setPixelRatio(1);}const scene=new g.T.Scene(),camera=new g.T.PerspectiveCamera(38,1,.01,2000);g.light(scene);const model=g.model(m.atoms);scene.add(model);g.fit(camera,m.atoms);this.renderer.render(scene,camera);const blob=await new Promise(r=>this.renderer.domElement.toBlob(r,'image/png'));g.dispose(model);if(blob){await Mol.cacheThumb(task.id,blob);cached={blob};}}
+ async run(){if(this.running)return;this.running=true;try{while(this.queue.length){this.queue.sort((a,b)=>Number(b.alive(true))-Number(a.alive(true)));const task=this.queue.shift();if(!task.alive()){task.resolve(null);continue;}try{let cached=await Mol.get('thumb',task.id);if(!cached&&task.alive(true)&&!this.unavailable){const m=await Mol.get('body',task.id);if(!m){task.resolve(null);continue;}const g=await Mol.graphics;if(!task.alive(true)){task.resolve(null);continue;}if(!this.renderer){try{this.renderer=new g.T.WebGLRenderer({alpha:true,antialias:true,preserveDrawingBuffer:true});}catch(e){this.unavailable=true;document.dispatchEvent(new CustomEvent('webgl-error'));throw e;}this.renderer.setSize(160,160);this.renderer.setPixelRatio(1);}const scene=new g.T.Scene(),camera=new g.T.PerspectiveCamera(38,1,.01,2000);g.light(scene);const model=g.model(m.atoms);scene.add(model);g.fit(camera,m.atoms);this.renderer.render(scene,camera);const blob=await new Promise(r=>this.renderer.domElement.toBlob(r,'image/png'));g.dispose(model);if(blob){await Mol.cacheThumb(task.id,blob,m.revision);cached={blob};}}
  task.resolve(cached?.blob||null);}catch(e){task.resolve(null);}await new Promise(requestAnimationFrame);}}finally{this.running=false;}}
 }
 Mol.thumbnails=new Thumbnails();
@@ -235,7 +260,7 @@ Mol.VirtualGrid=class{
  clear(){for(const n of this.nodes.values())this.drop(n);this.nodes.clear();}
  drop(n){n.alive=false;if(n.url)URL.revokeObjectURL(n.url);n.el.remove();}
  render(){const cols=Math.max(1,Math.floor(this.el.clientWidth/(this.mini?128:180))),w=this.el.clientWidth/cols,first=Math.max(0,Math.floor(this.el.scrollTop/this.row)-2),last=Math.ceil((this.el.scrollTop+this.el.clientHeight)/this.row)+2,start=first*cols,end=Math.min(this.data.length,last*cols);this.spacer.style.height=Math.ceil(this.data.length/cols)*this.row+'px';const wanted=new Set(this.data.slice(start,end).map(m=>m.id));for(const [id,n]of this.nodes)if(!wanted.has(id)){this.drop(n);this.nodes.delete(id);}
-  for(let i=start;i<end;i++){const m=this.data[i];let n=this.nodes.get(m.id);if(!n){const el=document.createElement('article');el.className='tile';el.tabIndex=0;el.setAttribute('role','checkbox');el.innerHTML='<div class="check"></div><div class="thumb">◌</div><div class="tile-info"><div class="tile-name"></div><div class="tile-tags" hidden></div><div class="tile-bottom"><span></span><button class="delete" aria-label="削除">削除</button></div></div>';el.querySelector('.tile-name').textContent=m.name;el.title=m.name;el.querySelector('.tile-bottom span').textContent=m.count+' 原子';const del=el.querySelector('.delete');let openOnDoubleClick=false,firstTileClick=false;
+  for(let i=start;i<end;i++){const m=this.data[i];let n=this.nodes.get(m.id);if(n&&n.revision!==m.revision){this.drop(n);n=null;}if(!n){const el=document.createElement('article');el.className='tile';el.tabIndex=0;el.setAttribute('role','checkbox');el.innerHTML='<div class="check"></div><div class="thumb">◌</div><div class="tile-info"><div class="tile-name"></div><div class="tile-tags" hidden></div><div class="tile-bottom"><span></span><button class="delete" aria-label="削除">削除</button></div></div>';el.querySelector('.tile-name').textContent=m.name;el.title=m.name;el.querySelector('.tile-bottom span').textContent=m.count+' 原子';const del=el.querySelector('.delete');let openOnDoubleClick=false,firstTileClick=false;
   if(this.onDelete&&!m.builtin){
    del.onclick=e=>{e.stopPropagation();firstTileClick=false;openOnDoubleClick=false;this.onDelete(m);};
    del.ondblclick=e=>e.stopPropagation();
@@ -245,7 +270,7 @@ Mol.VirtualGrid=class{
    firstTileClick=e.detail===1;
    this.onSelect(m);this.render();
   };
-  el.onkeydown=e=>{if(e.target!==el)return;if(e.key===' '||e.key==='Enter'){e.preventDefault();this.onSelect(m);this.render();}};if(this.onOpen)el.ondblclick=()=>{if(openOnDoubleClick)this.onOpen(m);openOnDoubleClick=false;};n={el,alive:true,url:null,loading:false,index:i};this.nodes.set(m.id,n);this.spacer.append(el);}
+  el.onkeydown=e=>{if(e.target!==el)return;if(e.key===' '||e.key==='Enter'){e.preventDefault();this.onSelect(m);this.render();}};if(this.onOpen)el.ondblclick=()=>{if(openOnDoubleClick)this.onOpen(m);openOnDoubleClick=false;};n={el,revision:m.revision,alive:true,url:null,loading:false,index:i};this.nodes.set(m.id,n);this.spacer.append(el);}
   n.index=i;n.el.style.cssText=`left:${i%cols*w+4}px;top:${Math.floor(i/cols)*this.row+4}px;width:${w-8}px;height:${this.row-8}px`;const tagLine=n.el.querySelector('.tile-tags'),tags=this.mini?'':(m.tags||[]).join(' · ');
   if(tagLine.textContent!==tags){tagLine.textContent=tags;tagLine.hidden=!tags;n.el.title=tags?m.name+' — '+tags:m.name;}
   const selected=this.isSelected(m.id);n.el.classList.toggle('selected',selected);n.el.setAttribute('aria-checked',String(selected));n.el.querySelector('.check').textContent=selected?'✓':'';
