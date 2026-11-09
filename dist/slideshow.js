@@ -1,5 +1,8 @@
 import {readFrameEnergy} from './frame-energy.js';
 
+import {readEnergy} from './dmf-energy.js';
+
+const reaction = document.body.dataset.viewer === 'reaction';
 const $ = id => document.getElementById(id);
 const frames = [];
 let current = 0;
@@ -9,6 +12,7 @@ let showNumbers = false;
 let drawStructure = () => {};
 let baseName = 'trajectory';
 let reference = -1;
+let plottedPoints = [];
 
 function status(message) {
   $('slideStatus').textContent = message;
@@ -49,6 +53,7 @@ function drawPlot() {
   const left = 90, top = 24, right = 552, bottom = 348;
   const x = index => left+(right-left)*index/Math.max(1,frames.length-1);
   const y = energy => bottom-(bottom-top)*(energy-min)/(max-min);
+  plottedPoints = points.map(point => ({index:point.index,x:x(point.index),y:y(point.delta)}));
   ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.font = '23px system-ui';
   ctx.fillStyle = '#a8b6b2';
@@ -83,6 +88,19 @@ function drawPlot() {
     ctx.lineWidth = 1;
   }
 }
+
+if (reaction) $('energyPlot').addEventListener('click',event => {
+  if (busy) return;
+  const canvas = event.currentTarget;
+  const rect = canvas.getBoundingClientRect();
+  let nearest, distance = 14;
+  for (const point of plottedPoints) {
+    const d = Math.hypot(event.clientX - rect.left - point.x * rect.width / canvas.width,
+      event.clientY - rect.top - point.y * rect.height / canvas.height);
+    if (d < distance) { nearest = point; distance = d; }
+  }
+  if (nearest) void showFrame(nearest.index);
+});
 
 async function showFrame(index) {
   busy = true;
@@ -223,21 +241,33 @@ async function init() {
   const name = params.get('name') || 'trajectory.xyz';
   baseName = name.replace(/\.xyz$/i,'');
   $('title').textContent = name;
-  document.title = name+' — 構造のスライドショー';
+  document.title = name+' — '+(reaction?'反応経路ビューア':'構造のスライドショー');
   const response = await fetch(source);
   if (!response.ok) throw Error('元のXYZを読み込めません。ライブラリから開き直してください。');
   const file = await response.blob();
   URL.revokeObjectURL(source);
+  let csvPoints;
+  const energySource = params.get('energy');
+  if (reaction && energySource?.startsWith('blob:'+location.origin+'/')) {
+    try {
+      const csv = await fetch(energySource);
+      if (csv.ok) csvPoints = new Map(readEnergy(await csv.text()));
+    } catch { /* Fall back to the trajectory comments. */ }
+    finally { URL.revokeObjectURL(energySource); }
+  }
   let skipped = 0;
   for await (const block of Mol.parseFile(file)) {
     if (block.error) {skipped++;continue;}
-    frames.push({raw:new Blob(block.rawParts),energy:readFrameEnergy(block.comment)});
+    frames.push({raw:new Blob(block.rawParts),energy:csvPoints ? csvPoints.get(frames.length+skipped) ?? null :
+      readFrameEnergy(reaction && /(?:^|\s)energy=/.test(block.comment)
+        ? (block.comment.match(/(?:^|\s)energy=([^\s]+)/)?.[1] ?? '')+' eV' : block.comment)});
   }
   if (!frames.length) throw Error('表示できる構造がありません。');
   reference = frames.findIndex(frame => frame.energy !== null);
   $('energyHint').textContent = reference < 0 ? '2行目に読み取れるエネルギーがありません。'
     : '基準はフレーム '+(reference+1)+'。単位のないエネルギーは Eh として換算します。'
       +(reference>0?' フレーム1にはエネルギーがありません。':'');
+  if (csvPoints) $('energyHint').textContent = 'DMF_energy.csv · 点をクリックすると対応する構造へ移動します。';
   await showFrame(0);
   try {await setupView();}
   catch (error) {

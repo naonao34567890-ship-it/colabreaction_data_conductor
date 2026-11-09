@@ -1,3 +1,5 @@
+import {readEnergy} from './dmf-energy.js';
+
 const get = id => document.getElementById(id);
 const connect = get('driveConnect');
 const input = get('colabZip');
@@ -170,23 +172,6 @@ async function energyPlot(points) {
   return canvasPng(canvas);
 }
 
-function readEnergy(csv) {
-  const [header, ...rows] = csv.trim().split(/\r?\n/);
-  const columns = header.split(',').map(s => s.trim());
-  const frame = columns.indexOf('image');
-  const energy = columns.indexOf('Delta E vs. reactant [kcal/mol]');
-  if (frame < 0 || energy < 0) throw Error('DMF_energy.csv の列を認識できません。');
-  const points = [];
-  for (const line of rows) {
-    const fields = line.split(',');
-    if (!fields[frame]?.trim() || !fields[energy]?.trim()) continue;
-    const x = Number(fields[frame]), y = Number(fields[energy]) * 4.184;
-    if (Number.isSafeInteger(x) && Number.isFinite(y)) points.push([x, y]);
-  }
-  if (!points.length) throw Error('プロットできるエネルギーがありません。');
-  return points.sort((a,b) => a[0]-b[0]);
-}
-
 async function outputValue(trajectory, field) {
   if (!trajectory) return '不明';
   const values = new Set();
@@ -328,6 +313,40 @@ async function countOriginalFiles(id) {
   return count;
 }
 
+async function openReaction(jobId, name, originals) {
+  const tab = window.open('about:blank', '_blank');
+  if (!tab) { status('反応経路ビューアのタブを開けませんでした。'); return; }
+  tab.opener = null;
+  tab.document.body.textContent = '反応経路を読み込み中…';
+  const urls = [];
+  try {
+    if (!originals) throw Error('計算結果フォルダーがありません。');
+    const directories = [originals];
+    const found = new Map();
+    while (directories.length && found.size < 2) {
+      for (const file of await list("'" + directories.pop() + "' in parents")) {
+        if (file.mimeType === folderType) directories.push(file.id);
+        else if (['DMF_final.xyz','DMF_energy.csv'].includes(file.name)) found.set(file.name,file.id);
+      }
+    }
+    if (!found.has('DMF_final.xyz')) throw Error('DMF_final.xyz が見つかりません。');
+    const params = new URLSearchParams({name, job:jobId});
+    for (const [file, key] of [['DMF_final.xyz','source'], ['DMF_energy.csv','energy']]) {
+      if (!found.has(file)) continue;
+      const blob = await (await download(found.get(file))).blob();
+      const url = URL.createObjectURL(blob);
+      urls.push(url);
+      params.set(key,url);
+    }
+    if (tab.closed) throw Error('反応経路ビューアを閉じました。');
+    tab.location.replace('reaction-viewer.html#' + params);
+  } catch (error) {
+    for (const url of urls) URL.revokeObjectURL(url);
+    if (!tab.closed) tab.document.body.textContent = error.message;
+    status(error.message);
+  }
+}
+
 async function refresh() {
   for (const url of imageUrls) URL.revokeObjectURL(url);
   imageUrls.clear();
@@ -374,7 +393,12 @@ async function refresh() {
         .replace(/^(結果出力日時:.*?)（[^）]*）$/, '$1');
       info.append(field);
     }
-    card.append(images, info);
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.textContent = '反応経路を開く';
+    open.onclick = () => void openReaction(job.id,job.name,files.get('計算結果'));
+    card.onclick = event => { if (!event.target.closest('button')) open.click(); };
+    card.append(images, info, open);
     cards.set(job.id,{...job,card});
     jobs.append(card);
   }
