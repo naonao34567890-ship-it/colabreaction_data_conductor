@@ -1,8 +1,8 @@
 <!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>分子 XYZ ライブラリ</title><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script><script src="common.js"></script><script src="worker.js"></script><style>
 #grid { user-select: none; }
-.selection-box { position: fixed; z-index: 10; pointer-events: none; box-sizing: border-box; border: 1px solid #62d6bf; background: #62d6bf33; }
+.selection-box { position: absolute; z-index: 10; pointer-events: none; box-sizing: border-box; border: 1px solid #62d6bf; background: #62d6bf33; }
 </style></head>
-<body><div class="page"><header><div class="heading"><div><div class="eyebrow">MOLECULAR WORKSPACE / 01</div><h1>分子 XYZ ライブラリ</h1></div><div class="badge">ローカル保存 · XYZ / QM9</div></div><div class="toolbar"><button class="primary" id="fileButton">＋ ファイルを選択</button><button id="folderButton">フォルダを選択</button><input hidden type="file" id="files" multiple accept=".xyz"><input hidden type="file" id="folder" multiple webkitdirectory><span class="spacer"></span><button id="all">全選択</button><button id="none">全解除</button><button id="deleteSelected" title="Ctrl＋Shift＋Backspace" disabled>削除</button><button id="open" disabled>エディタで開く ↗</button><button id="download" disabled>ダウンロード ↓</button></div><div class="progress-area"><div class="row"><span id="progressText">ファイル・フォルダを登録できます</span><span class="spacer"></span><span id="queued">待機中 0件</span><button id="cancel" disabled>キャンセル</button></div><progress id="progress" value="0" max="1"></progress></div></header><main class="workspace"><div class="row"><h2>すべての分子</h2><span id="count" class="muted">0 分子</span><span class="spacer"></span><label>並び順 <select id="libraryOrder" autocomplete="off"><option value="name-asc">名前順</option><option value="added-asc">追加時間昇順</option><option value="added-desc">追加時間降順</option><option value="name-desc">名前逆順</option><option value="id">内部ID順</option></select></label><small id="selected">0 選択中</small></div><div class="grid-view" id="grid"><div id="empty" class="empty"><div><b>分子を、ひとつの場所に。</b>xyz ファイルやフォルダをドロップして登録<br><small>複数分子ファイル・QM9形式に対応</small></div></div></div><div class="drop-hint">このページに xyz ファイル・フォルダをドロップ　／　左ドラッグで範囲選択　／　ダブルクリックで分子エディタを開く</div><details id="results"><summary id="summary">読み込み結果</summary><pre id="resultText"></pre></details><div class="status" id="notice" role="status" aria-live="polite"></div></main></div>
+<body><div class="page"><header><div class="heading"><div><div class="eyebrow">MOLECULAR WORKSPACE / 01</div><h1>分子 XYZ ライブラリ</h1></div><div class="badge">ローカル保存 · XYZ / QM9</div></div><div class="toolbar"><button class="primary" id="fileButton">＋ ファイルを選択</button><button id="folderButton">フォルダを選択</button><input hidden type="file" id="files" multiple accept=".xyz"><input hidden type="file" id="folder" multiple webkitdirectory><span class="spacer"></span><button id="all">全選択</button><button id="none">全解除</button><button id="deleteSelected" title="Ctrl＋Shift＋Backspace" disabled>削除</button><button id="open" disabled>エディタで開く ↗</button><button id="download" disabled>ダウンロード ↓</button></div><div class="progress-area"><div class="row"><span id="progressText">ファイル・フォルダを登録できます</span><span class="spacer"></span><span id="queued">待機中 0件</span><button id="cancel" disabled>キャンセル</button></div><progress id="progress" value="0" max="1"></progress></div></header><main class="workspace"><div class="row"><h2>すべての分子</h2><span id="count" class="muted">0 分子</span><span class="spacer"></span><label>並び順 <select id="libraryOrder" autocomplete="off"><option value="name-asc">名前順</option><option value="added-asc">追加時間昇順</option><option value="added-desc">追加時間降順</option><option value="name-desc">名前逆順</option><option value="id">内部ID順</option></select></label><small id="selected">0 選択中</small></div><div class="grid-view" id="grid"><div id="empty" class="empty"><div><b>分子を、ひとつの場所に。</b>xyz ファイルやフォルダをドロップして登録<br><small>複数分子ファイル・QM9形式に対応</small></div></div></div><div class="drop-hint">このページに xyz ファイル・フォルダをドロップ　／　左ドラッグで範囲内の選択を反転（Shiftで追加）　／　ダブルクリックで分子エディタを開く</div><details id="results"><summary id="summary">読み込み結果</summary><pre id="resultText"></pre></details><div class="status" id="notice" role="status" aria-live="polite"></div></main></div>
 <dialog id="multiDialog" aria-labelledby="multiTitle">
 <h2 id="multiTitle">複数分子入りのXYZ</h2><p id="multiInfo"></p>
 <form id="multiForm">
@@ -59,16 +59,21 @@ const gridView=$('grid');
 const selectionBox=document.createElement('div');
 selectionBox.className='selection-box';
 selectionBox.hidden=true;
-document.body.append(selectionBox);
+grid.spacer.append(selectionBox);
 let marquee=null;
 let suppressClick=false;
+function gridViewport(){
+ const rect=gridView.getBoundingClientRect();
+ return {left:rect.left+gridView.clientLeft,top:rect.top+gridView.clientTop};
+}
 gridView.addEventListener('pointerdown',e=>{
  suppressClick=false;
+ const {left,top}=gridViewport();
  if(e.pointerType!=='mouse'||e.button!==0||e.target.closest('button')||
-    !gridView.contains(e.target)||e.clientX>=gridView.getBoundingClientRect().left+gridView.clientLeft+gridView.clientWidth)return;
- marquee={id:e.pointerId,x:e.clientX,y:e.clientY,
-   base:e.ctrlKey||e.metaKey||e.shiftKey?new Set(selected):new Set(),
-   original:new Set(selected),active:false};
+    e.clientX>=left+gridView.clientWidth||e.clientY>=top+gridView.clientHeight)return;
+ marquee={id:e.pointerId,startX:e.clientX,startY:e.clientY,
+   x:e.clientX-left+gridView.scrollLeft,y:e.clientY-top+gridView.scrollTop,
+   additive:e.shiftKey&&!e.ctrlKey&&!e.metaKey,original:new Set(selected),active:false};
 });
 gridView.addEventListener('dragstart',e=>e.preventDefault());
 gridView.addEventListener('click',e=>{
@@ -76,36 +81,65 @@ gridView.addEventListener('click',e=>{
  suppressClick=false;
  e.stopImmediatePropagation();
 },true);
-function drawSelection(e) {
- const {x,y,base}=marquee;
- const rect=gridView.getBoundingClientRect();
- const left=Math.max(rect.left,Math.min(x,e.clientX)),right=Math.min(rect.right,Math.max(x,e.clientX));
- const top=Math.max(rect.top,Math.min(y,e.clientY)),bottom=Math.min(rect.bottom,Math.max(y,e.clientY));
- Object.assign(selectionBox.style,{left:left+'px',top:top+'px',width:Math.max(0,right-left)+'px',height:Math.max(0,bottom-top)+'px'});
- selected=new Set([...base].filter(id=>metaMap.has(id)));
- for(const [id,node] of grid.nodes){
-  const tile=node.el.getBoundingClientRect();
-  if(left<=right&&top<=bottom&&tile.left<=right&&tile.right>=left&&tile.top<=bottom&&tile.bottom>=top)selected.add(id);
+function drawSelection(){
+ const {x,y,clientX,clientY,original,additive}=marquee;
+ const viewport=gridViewport();
+ const clamp=(v,max)=>Math.max(0,Math.min(v,max));
+ const endX=clamp(clientX-viewport.left,gridView.clientWidth)+gridView.scrollLeft;
+ const endY=clamp(clientY-viewport.top,gridView.clientHeight)+gridView.scrollTop;
+ const left=Math.min(x,endX),right=Math.max(x,endX);
+ const top=Math.min(y,endY),bottom=Math.max(y,endY);
+ Object.assign(selectionBox.style,{left:left+'px',top:top+'px',width:(right-left)+'px',height:(bottom-top)+'px'});
+ selected=new Set([...original].filter(id=>metaMap.has(id)));
+ const cols=Math.max(1,Math.floor(gridView.clientWidth/180)),width=gridView.clientWidth/cols;
+ const first=Math.max(0,Math.floor(top/grid.row))*cols;
+ const end=Math.min(grid.data.length,(Math.floor(bottom/grid.row)+1)*cols);
+ for(let i=first;i<end;i++){
+  const tileX=i%cols*width+4,tileY=Math.floor(i/cols)*grid.row+4;
+  if(tileX>right||tileX+width-8<left||tileY>bottom||tileY+grid.row-8<top)continue;
+  const {id}=grid.data[i];
+  if(!additive&&original.has(id))selected.delete(id);
+  else selected.add(id);
  }
  selectionUI();
  grid.render();
 }
+function autoScrollSelection(){
+ if(!marquee?.active)return;
+ const y=marquee.clientY-gridViewport().top,edge=32;
+ const amount=y<edge?-Math.min(24,Math.ceil((edge-y)/2)):
+   y>gridView.clientHeight-edge?Math.min(24,Math.ceil((y-gridView.clientHeight+edge)/2)):0;
+ if(amount)gridView.scrollTop+=amount;
+ marquee.frame=requestAnimationFrame(autoScrollSelection);
+}
+gridView.addEventListener('scroll',()=>{if(marquee?.active)drawSelection();});
 window.addEventListener('pointermove',e=>{
  if(marquee?.id!==e.pointerId)return;
+ marquee.clientX=e.clientX;
+ marquee.clientY=e.clientY;
  if(!marquee.active){
-  if(Math.hypot(e.clientX-marquee.x,e.clientY-marquee.y)<4)return;
+  if(Math.hypot(e.clientX-marquee.startX,e.clientY-marquee.startY)<4)return;
   marquee.active=true;
   suppressClick=true;
   gridView.setPointerCapture(e.pointerId);
   selectionBox.hidden=false;
+  marquee.frame=requestAnimationFrame(autoScrollSelection);
  }
- drawSelection(e);
+ drawSelection();
 });
-window.addEventListener('pointerup',e=>{
- if(marquee?.id!==e.pointerId)return;
- if(marquee.active)drawSelection(e);
+function endSelection(){
+ cancelAnimationFrame(marquee.frame);
  marquee=null;
  selectionBox.hidden=true;
+}
+window.addEventListener('pointerup',e=>{
+ if(marquee?.id!==e.pointerId)return;
+ if(marquee.active){
+  marquee.clientX=e.clientX;
+  marquee.clientY=e.clientY;
+  drawSelection();
+ }
+ endSelection();
 });
 function cancelSelection(e){
  if(!marquee||(e.pointerId!==undefined&&marquee.id!==e.pointerId))return;
@@ -114,8 +148,7 @@ function cancelSelection(e){
   selectionUI();
   grid.render();
  }
- marquee=null;
- selectionBox.hidden=true;
+ endSelection();
 }
 window.addEventListener('pointercancel',cancelSelection);
 window.addEventListener('blur',cancelSelection);
