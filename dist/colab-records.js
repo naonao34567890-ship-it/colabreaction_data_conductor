@@ -232,9 +232,24 @@ function readFolder(files, relativePath) {
   return result;
 }
 
+async function alreadyRegistered(name) {
+  const escaped = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const matches = await list("'" + root + "' in parents and mimeType = '" + folderType +
+    "' and name = '" + escaped + "'");
+  for (const match of matches) {
+    const completed = await list("'" + match.id + "' in parents and name = 'config.txt'");
+    if (completed.length) return true;
+  }
+  return false;
+}
+
 async function importRecords(name, sourceLabel, readFiles) {
   let parent;
   try {
+    if (await alreadyRegistered(name)) {
+      status('登録済みのためスキップしました。' + name);
+      return;
+    }
     const files = await readFiles();
     function find(name) {
       const matches = [...files].filter(([path]) => path.split('/').at(-1) === name);
