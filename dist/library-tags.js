@@ -78,7 +78,7 @@
    entry.append(choices);
    list.append(entry);
   }
-  $('tagCreate').disabled=busy||!input.value.trim();
+  $('tagCreate').disabled=busy||input.value.includes('\t')||!input.value.trim();
   $('tagNew').disabled=$('tagDelete').disabled=$('tagCancel').disabled=busy;
  }
 
@@ -152,9 +152,19 @@
  };
  $('tagCancel').onclick=()=>dialog.close();
  dialog.addEventListener('cancel',event=>{if(busy)event.preventDefault();});
- input.oninput=()=>{$('tagCreate').disabled=busy||!input.value.trim();};
+ const tabError='タグ名にタブ文字は使えません。';
+ input.oninput=()=>{
+  const hasTab=input.value.includes('\t');
+  $('tagCreate').disabled=busy||hasTab||!input.value.trim();
+  if(hasTab)status.textContent=tabError;
+  else if(status.textContent===tabError)status.textContent='';
+ };
  form.onsubmit=event=>{
   event.preventDefault();
+  if(input.value.includes('\t')){
+   status.textContent=tabError;
+   return;
+  }
   const name=input.value.trim();
   if(!name)return;
   void mutate(async()=>{
