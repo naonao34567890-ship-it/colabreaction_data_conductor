@@ -322,12 +322,17 @@ class Thumbnails{
 }
 Mol.thumbnails=new Thumbnails();
 Mol.VirtualGrid=class{
- constructor(el,{mini=false,onSelect=()=>{},onOpen=null,onDelete=null,isSelected=()=>false}={}){this.el=el;this.mini=mini;this.onSelect=onSelect;this.onOpen=onOpen;this.onDelete=onDelete;this.isSelected=isSelected;this.data=[];this.nodes=new Map();this.row=mini?160:218;this.spacer=document.createElement('div');this.spacer.className='grid-spacer';el.append(this.spacer);el.addEventListener('scroll',()=>this.schedule());new ResizeObserver(()=>this.schedule()).observe(el);}
+ constructor(el,{mini=false,scrollport=el,onSelect=()=>{},onOpen=null,onDelete=null,isSelected=()=>false}={}){this.el=el;this.scrollport=scrollport;this.mini=mini;this.onSelect=onSelect;this.onOpen=onOpen;this.onDelete=onDelete;this.isSelected=isSelected;this.data=[];this.nodes=new Map();this.row=mini?160:218;this.spacer=document.createElement('div');this.spacer.className='grid-spacer';el.append(this.spacer);scrollport.addEventListener('scroll',()=>this.schedule());const observer=new ResizeObserver(()=>this.schedule());observer.observe(el);if(scrollport!==el)observer.observe(scrollport);}
  setData(data){this.data=data;this.render();}
  schedule(){if(this.pending)return;this.pending=requestAnimationFrame(()=>{this.pending=null;this.render();});}
  clear(){for(const n of this.nodes.values())this.drop(n);this.nodes.clear();}
  drop(n){n.alive=false;if(n.url)URL.revokeObjectURL(n.url);n.el.remove();}
- render(){const cols=Math.max(1,Math.floor(this.el.clientWidth/(this.mini?128:180))),w=this.el.clientWidth/cols,first=Math.max(0,Math.floor(this.el.scrollTop/this.row)-2),last=Math.ceil((this.el.scrollTop+this.el.clientHeight)/this.row)+2,start=first*cols,end=Math.min(this.data.length,last*cols);this.spacer.style.height=Math.ceil(this.data.length/cols)*this.row+'px';const wanted=new Set(this.data.slice(start,end).map(m=>m.id));for(const [id,n]of this.nodes)if(!wanted.has(id)){this.drop(n);this.nodes.delete(id);}
+ viewport(){
+  if(this.scrollport===this.el)return {top:this.el.scrollTop,bottom:this.el.scrollTop+this.el.clientHeight};
+  const offset=this.scrollport.getBoundingClientRect().top-this.el.getBoundingClientRect().top;
+  return {top:Math.max(0,offset),bottom:Math.max(0,offset+this.scrollport.clientHeight)};
+ }
+ render(){const {top,bottom}=this.viewport();const cols=Math.max(1,Math.floor(this.el.clientWidth/(this.mini?128:180))),w=this.el.clientWidth/cols,first=Math.max(0,Math.floor(top/this.row)-2),last=Math.ceil(bottom/this.row)+2,start=first*cols,end=Math.min(this.data.length,last*cols);this.spacer.style.height=Math.ceil(this.data.length/cols)*this.row+'px';const wanted=new Set(this.data.slice(start,end).map(m=>m.id));for(const [id,n]of this.nodes)if(!wanted.has(id)){this.drop(n);this.nodes.delete(id);}
   for(let i=start;i<end;i++){const m=this.data[i];let n=this.nodes.get(m.id);if(n&&n.revision!==m.revision){this.drop(n);n=null;}if(!n){const el=document.createElement('article');el.className='tile';el.tabIndex=0;el.setAttribute('role','checkbox');el.innerHTML='<div class="check"></div><div class="thumb">◌</div><div class="tile-info"><div class="tile-name"></div><div class="tile-tags" hidden></div><div class="tile-bottom"><span></span><button class="delete" aria-label="削除">削除</button></div></div>';el.querySelector('.tile-name').textContent=m.name;el.title=m.name;el.querySelector('.tile-bottom span').textContent=m.count+' 原子';const del=el.querySelector('.delete');let openOnDoubleClick=false,firstTileClick=false;
   if(this.onDelete&&!m.builtin){
    del.onclick=e=>{e.stopPropagation();firstTileClick=false;openOnDoubleClick=false;this.onDelete(m);};
@@ -342,7 +347,7 @@ Mol.VirtualGrid=class{
   n.index=i;n.el.style.cssText=`left:${i%cols*w+4}px;top:${Math.floor(i/cols)*this.row+4}px;width:${w-8}px;height:${this.row-8}px`;const tagLine=n.el.querySelector('.tile-tags'),tags=this.mini?'':(m.tags||[]).join(' · ');
   if(tagLine.textContent!==tags){tagLine.textContent=tags;tagLine.hidden=!tags;n.el.title=tags?m.name+' — '+tags:m.name;}
   const selected=this.isSelected(m.id);n.el.classList.toggle('selected',selected);n.el.setAttribute('aria-checked',String(selected));n.el.querySelector('.check').textContent=selected?'✓':'';
-  const visible=()=>n.alive&&Math.floor(n.index/cols)*this.row<this.el.scrollTop+this.el.clientHeight&&(Math.floor(n.index/cols)+1)*this.row>this.el.scrollTop;
+  const visible=()=>{const {top,bottom}=this.viewport();const y=Math.floor(n.index/cols)*this.row;return n.alive&&y<bottom&&y+this.row>top;};
   if(n.url&&!visible()){URL.revokeObjectURL(n.url);n.url=null;n.el.querySelector('.thumb').textContent='◌';}
   if(!n.url&&!n.loading&&visible()){n.loading=true;Mol.thumbnails.request(m.id,strict=>strict?visible():n.alive).then(blob=>{n.loading=false;if(blob&&visible()){n.url=URL.createObjectURL(blob);const img=new Image();img.alt=m.name+' の分子モデル';img.src=n.url;n.el.querySelector('.thumb').replaceChildren(img);}else if(n.alive&&Mol.thumbnails.unavailable){n.el.querySelector('.thumb').textContent='WebGL 利用不可';}});}
  }
