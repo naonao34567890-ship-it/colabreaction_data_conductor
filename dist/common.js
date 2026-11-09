@@ -143,7 +143,16 @@ const crcTable=Array.from({length:256},(_,n)=>{for(let k=0;k<8;k++)n=n&1?0xedb88
 function crc32(bytes){let c=0xffffffff;for(const b of bytes)c=crcTable[(c^b)&255]^(c>>>8);return(c^0xffffffff)>>>0;}
 function safeName(n){return n.replace(/[\\/:*?"<>|\x00-\x1f]/g,'_').trim()||'molecule';}
 async function scanEntries(entries,{cancelled=()=>false,progress=()=>{},error=()=>{}}={}){const found=[],stack=entries.slice();let visited=0;while(stack.length&&!cancelled()){const entry=stack.pop();if(entry.isFile){if(/\.xyz$/i.test(entry.name))found.push(entry);}else if(entry.isDirectory){const reader=entry.createReader();while(!cancelled()){let batch;try{batch=await new Promise((r,j)=>reader.readEntries(r,j));}catch(e){error(entry.fullPath+': '+e.message);break;}if(!batch.length)break;for(const child of batch)stack.push(child);progress(found.length);await tick();}}if(++visited%100===0){progress(found.length);await tick();}}progress(found.length);return found;}
-const API={scanEntries,elements,tick,atomLine,lines,parseFile,standard,compareDisplayOrder,output,centroid,swap,bonds,db,get,metadata,saveBatch,remove,removeMany,cacheThumb,notify,crc32,safeName};root.Mol=API;if(typeof module!=='undefined')module.exports=API;
+function parseFrameRanges(value,total){
+ const ranges=value.normalize('NFKC').split(',').map(entry=>{
+  const match=/^(\d+)\s*(?:-\s*(\d+))?$/.exec(entry.trim());
+  const first=Number(match?.[1]),last=Number(match?.[2]??match?.[1]);
+  if(!match||first<1||last<first||last>total)throw Error(`1〜${total} の番号または範囲をカンマ区切りで指定してください。`);
+  return [first,last];
+ });
+ return ranges;
+}
+const API={parseFrameRanges,scanEntries,elements,tick,atomLine,lines,parseFile,standard,compareDisplayOrder,output,centroid,swap,bonds,db,get,metadata,saveBatch,remove,removeMany,cacheThumb,notify,crc32,safeName};root.Mol=API;if(typeof module!=='undefined')module.exports=API;
 })(globalThis);
 
 /* Browser-only presentation helpers; no DOM or Three dependency in Worker. */
