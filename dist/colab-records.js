@@ -7,7 +7,7 @@ const folderInput = get('colabFolder');
 const jobs = get('colabJobs');
 const order = get('colabOrder');
 const cards = new Map();
-order.value = 'name-asc';
+order.value = 'classification';
 order.onchange = sortCards;
 const status = message => { get('colabStatus').textContent = message; };
 const folderType = 'application/vnd.google-apps.folder';
