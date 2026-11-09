@@ -1,6 +1,7 @@
 const get = id => document.getElementById(id);
 const connect = get('driveConnect');
 const input = get('colabZip');
+const folderInput = get('colabFolder');
 const jobs = get('colabJobs');
 const status = message => { get('colabStatus').textContent = message; };
 const scope = 'https://www.googleapis.com/auth/drive.file';
@@ -15,7 +16,7 @@ async function request(url, options = {}) {
   });
   if (response.status === 401) {
     token = null;
-    input.disabled = true;
+    input.disabled = folderInput.disabled = true;
     throw Error('接続の有効期限が切れました。Google Driveに再接続してください。');
   }
   if (!response.ok) throw Error('Google Driveへのアクセスに失敗しました（' + response.status + '）。');
@@ -152,28 +153,46 @@ async function outputValue(trajectory, field) {
   return [...values][0] ?? '不明';
 }
 
-async function importZip(file) {
+async function readZip(file) {
+  status('ZIPを読み込んでいます…');
+  if (file.size > 50 * 1024 ** 2) throw Error('ZIPは50 MiB以内にしてください。');
+  const {unzipSync} = await import('https://cdn.jsdelivr.net/npm/fflate@0.8.2/esm/browser.js');
+  let total = 0, count = 0;
+  const entries = unzipSync(new Uint8Array(await file.arrayBuffer()), {filter(entry) {
+    total += entry.originalSize;
+    if (total > 100 * 1024 ** 2 || ++count > 500) throw Error('展開後は100 MiB・500項目までです。');
+    return !entry.name.endsWith('/');
+  }});
+  const files = new Map();
+  for (const [path, bytes] of Object.entries(entries)) {
+    const parts = path.split('/');
+    if (path.includes('\\') || parts.some(part => !part || part === '.' || part === '..')) {
+      throw Error('ZIP内に無効なファイルパスがあります。');
+    }
+    files.set(path, new Blob([bytes]));
+  }
+  return files;
+}
+
+function readFolder(files, relativePath) {
+  const result = new Map();
+  let bytes = 0;
+  for (const file of files) {
+    bytes += file.size;
+    if (bytes > 100 * 1024 ** 2 || result.size >= 500) {
+      throw Error('フォルダーは100 MiB・500ファイルまでです。');
+    }
+    result.set(relativePath(file), file);
+  }
+  return result;
+}
+
+async function importRecords(name, sourceLabel, readFiles) {
   if (input.disabled || !token || !root) return;
-  input.disabled = connect.disabled = true;
+  input.disabled = folderInput.disabled = connect.disabled = true;
   let parent;
   try {
-    status('ZIPを読み込んでいます…');
-    if (file.size > 50 * 1024 ** 2) throw Error('ZIPは50 MiB以内にしてください。');
-    const {unzipSync} = await import('https://cdn.jsdelivr.net/npm/fflate@0.8.2/esm/browser.js');
-    let total = 0, count = 0;
-    const entries = unzipSync(new Uint8Array(await file.arrayBuffer()), {filter(entry) {
-      total += entry.originalSize;
-      if (total > 100 * 1024 ** 2 || ++count > 500) throw Error('展開後は100 MiB・500項目までです。');
-      return !entry.name.endsWith('/');
-    }});
-    const files = new Map();
-    for (const [path, bytes] of Object.entries(entries)) {
-      const parts = path.split('/');
-      if (path.includes('\\') || parts.some(part => !part || part === '.' || part === '..')) {
-        throw Error('ZIP内に無効なファイルパスがあります。');
-      }
-      files.set(path, new Blob([bytes]));
-    }
+    const files = await readFiles();
     function find(name) {
       const matches = [...files].filter(([path]) => path.split('/').at(-1) === name);
       if (matches.length > 1) throw Error(name + ' が複数あります。計算結果を1件ずつ取り込んでください。');
@@ -185,16 +204,16 @@ async function importZip(file) {
     const points = readEnergy(await csv.text());
     const charge = await outputValue(trajectory, 'charge');
     const spin = await outputValue(trajectory, 'spin');
-    const match = file.name.match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
+    const match = name.match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
     const date = match ? match.slice(1,4).join('-') + ' ' + match.slice(4).join(':') : '不明';
     const start = await thumbnail(reactant), final = await thumbnail(product), plot = await energyPlot(points);
     const config = [
-      'ZIP名: ' + file.name.replace(/[\r\n]/g, ' '), 'プロット点数: ' + points.length,
+      sourceLabel + '名: ' + name.replace(/[\r\n]/g, ' '), 'プロット点数: ' + points.length,
       '電荷: ' + charge, 'spin（出力値）: ' + spin, '電荷・spinの取得元: DMF_final.xyz',
-      '結果出力日時: ' + date + (match ? '（ZIP名由来・タイムゾーン不明）' : ''),
+      '結果出力日時: ' + date + (match ? '（' + sourceLabel + '名由来・タイムゾーン不明）' : ''),
     ].join('\n');
     status('Google Driveに保存しています…');
-    parent = await folder(file.name, root);
+    parent = await folder(name, root);
     const originals = await folder('計算結果', parent);
     const directories = new Map([['', originals]]);
     let saved = 0;
@@ -227,9 +246,9 @@ async function importZip(file) {
     }
     status(error.message + partial);
   } finally {
-    input.disabled = !token;
+    input.disabled = folderInput.disabled = !token;
     connect.disabled = false;
-    input.value = '';
+    input.value = folderInput.value = '';
   }
 }
 
@@ -273,14 +292,14 @@ async function authorize(response) {
     return;
   }
   token = response.access_token;
-  connect.disabled = input.disabled = true;
+  connect.disabled = input.disabled = folderInput.disabled = true;
   try {
     status('Google Driveの計算記録を読み込んでいます…');
     const folders = await list("mimeType = '" + folderType + "' and appProperties has { key='xyzStudio' and value='colabRecords' }");
     root = folders[0]?.id ?? await folder('分子 XYZ スタジオ Colab計算記録', null, 'colabRecords');
     await refresh();
-    status(jobs.childElementCount + ' 件の計算記録。ZIPを追加できます。');
-    input.disabled = false;
+    status(jobs.childElementCount + ' 件の計算記録。ZIPまたはフォルダーを追加できます。');
+    input.disabled = folderInput.disabled = false;
     connect.textContent = 'Google Driveに再接続';
   } catch (error) {
     status(error.message);
@@ -301,15 +320,45 @@ authScript.onload = () => {
 authScript.onerror = () => status('Googleの接続機能を読み込めませんでした。');
 document.head.append(authScript);
 connect.onclick = () => client.requestAccessToken({prompt: 'select_account'});
+function importZip(file) {
+  return importRecords(file.name, 'ZIP', () => readZip(file));
+}
 input.onchange = () => { if (input.files[0]) void importZip(input.files[0]); };
+folderInput.onchange = () => {
+  const files = [...folderInput.files];
+  if (!files.length) return;
+  const name = files[0].webkitRelativePath.split('/')[0];
+  void importRecords(name, 'フォルダー', () =>
+    readFolder(files, file => file.webkitRelativePath.slice(name.length + 1)));
+};
+
 const drop = get('colabDrop');
 drop.ondragover = event => event.preventDefault();
 drop.ondrop = event => {
   event.preventDefault();
-  if (event.dataTransfer.files.length !== 1) {
-    status('ZIPを1件ずつ追加してください。');
+  if (input.disabled) return;
+  const {files, items} = event.dataTransfer;
+  if (items.length > 1 || files.length > 1) {
+    status('ZIPまたはフォルダーを1件ずつ追加してください。');
     return;
   }
-  if (input.disabled) return;
-  void importZip(event.dataTransfer.files[0]);
+  const entry = items[0]?.webkitGetAsEntry?.();
+  if (entry?.isDirectory) {
+    void importRecords(entry.name, 'フォルダー', async () => {
+      status('フォルダーを読み込んでいます…');
+      const entries = await Mol.scanEntries([entry], {
+        accept: () => true,
+        error: message => { throw Error(message); },
+      });
+      const files = await Promise.all(entries.map(child =>
+        new Promise((resolve, reject) => child.file(resolve, reject))));
+      const paths = new Map(files.map((file, index) =>
+        [file, entries[index].fullPath.slice(entry.fullPath.length + 1)]));
+      return readFolder(files, file => paths.get(file));
+    });
+  } else if (files[0] && /\.zip$/i.test(files[0].name)) {
+    void importZip(files[0]);
+  } else {
+    status('計算結果のZIPまたはフォルダーをドロップしてください。');
+  }
 };

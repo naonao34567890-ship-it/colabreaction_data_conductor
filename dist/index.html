@@ -22,9 +22,10 @@
 <h1 id="colabTitle">Colab計算記録</h1>
 <button id="driveConnect" type="button" class="primary">Google Driveに接続</button>
 <div id="colabDrop">
-<label>計算結果のZIPをドロップ、または選択
+<label>計算結果のZIPまたはフォルダーをドロップ
 <input id="colabZip" type="file" accept=".zip,application/zip" disabled>
 </label>
+<label>フォルダーを選択 <input id="colabFolder" type="file" webkitdirectory multiple disabled></label>
 </div>
 <p id="colabStatus" role="status">Google Driveに接続すると計算記録を表示します。</p>
 <div id="colabJobs"></div>
