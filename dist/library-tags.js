@@ -64,36 +64,54 @@
    button.textContent=name;
    button.title=name;
    button.disabled=busy;
-   button.onclick=()=>mutate(async()=>{
-    const updated=await transact('readwrite',(catalog,meta,done,abort)=>{
-     const exists=catalog.getKey(name);
-     exists.onsuccess=()=>{
-      if(exists.result===undefined){abort('このタグは削除されています。');return;}
-      const items=[];
-      done(items);
-      for(const id of targets){
-       const request=meta.get(id);
-       request.onsuccess=()=>{
-        const item=request.result;
-        if(!item)return;
-        item.tags=[...new Set([...(item.tags||[]),name])].sort(Mol.compareTagNames);
-        meta.put(item);
-        items.push(item);
-       };
-      }
-     };
-    });
-    const change={type:'tags-updated',items:updated};
-    applyChange(change);
-    Mol.notify(change);
-    dialog.close();
-    notice(updated.length+' 件に「'+name+'」を付けました。');
-   });
-   entry.append(button);
+   button.onclick=()=>changeTag(name,true);
+   const untag=document.createElement('button');
+   untag.type='button';
+   untag.className='danger tag-choice';
+   untag.textContent='「'+name+'」を外す';
+   untag.title=untag.textContent;
+   untag.disabled=busy||!targets.some(id=>metaMap.get(id)?.tags?.includes(name));
+   untag.onclick=()=>changeTag(name,false);
+   const choices=document.createElement('div');
+   choices.className='tag-choices';
+   choices.append(button,untag);
+   entry.append(choices);
    list.append(entry);
   }
   $('tagCreate').disabled=busy||!input.value.trim();
   $('tagNew').disabled=$('tagDelete').disabled=$('tagCancel').disabled=busy;
+ }
+
+ function changeTag(name,attach) {
+  return mutate(async()=>{
+   const updated=await transact('readwrite',(catalog,meta,done,abort)=>{
+    const exists=catalog.getKey(name);
+    exists.onsuccess=()=>{
+     if(exists.result===undefined){abort('このタグは削除されています。');return;}
+     const items=[];
+     done(items);
+     for(const id of targets){
+      const request=meta.get(id);
+      request.onsuccess=()=>{
+       const item=request.result;
+       if(!item)return;
+       const tags=item.tags||[];
+       if(!attach&&!tags.includes(name))return;
+       item.tags=attach?[...new Set([...tags,name])].sort(Mol.compareTagNames)
+        :tags.filter(tag=>tag!==name);
+       meta.put(item);
+       items.push(item);
+      };
+     }
+    };
+   });
+   const change={type:'tags-updated',items:updated};
+   applyChange(change);
+   Mol.notify(change);
+   dialog.close();
+   notice(attach?updated.length+' 件に「'+name+'」を付けました。'
+    :updated.length+' 件から「'+name+'」を外しました。');
+  });
  }
 
  async function refreshTags() {
