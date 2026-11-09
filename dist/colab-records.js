@@ -4,10 +4,9 @@ const input = get('colabZip');
 const folderInput = get('colabFolder');
 const jobs = get('colabJobs');
 const status = message => { get('colabStatus').textContent = message; };
-const scope = 'https://www.googleapis.com/auth/drive.file';
 const folderType = 'application/vnd.google-apps.folder';
 const drive = 'https://www.googleapis.com/drive/v3';
-let token, root, client, renderer;
+let token, root, renderer, persistent = false;
 const imageUrls = new Set();
 const pending = [];
 let active = null, connecting = false;
@@ -37,11 +36,22 @@ async function runQueue() {
 }
 
 
-async function request(url, options = {}) {
+async function request(url, options = {}, retry = true) {
   const response = await fetch(url, {
     ...options, headers: { ...options.headers, Authorization: 'Bearer ' + token },
   });
   if (response.status === 401) {
+    if (retry && persistent) {
+      const renewed = await fetch('/api/drive/token', {cache: 'no-store'});
+      const result = await renewed.json();
+      if (result.state === 'connected' && result.access_token) {
+        token = result.access_token;
+        return request(url, options, false);
+      }
+    }
+    connect.hidden = false;
+    connect.textContent = '接続を再確認';
+    connectionState = null;
     token = null;
     input.disabled = folderInput.disabled = true;
     throw Error('接続の有効期限が切れました。Google Driveに再接続してください。');
@@ -343,20 +353,111 @@ async function authorize(response) {
   }
 }
 
-connect.disabled = true;
+const setup = get('driveSetup');
+const secretInput = get('driveSecret');
+let connectionState, checking;
+const temporary = get('driveTemporary');
+let temporaryClient;
 const authScript = document.createElement('script');
 authScript.src = 'https://accounts.google.com/gsi/client';
+temporary.onclick = () => {
+  if (active || connecting || checking) return;
+  if (temporaryClient) temporaryClient.requestAccessToken();
+  else status('Googleの接続機能を読み込み中です。少し待ってからもう一度押してください。');
+};
 authScript.onload = () => {
-  client = google.accounts.oauth2.initTokenClient({
+  temporaryClient = google.accounts.oauth2.initTokenClient({
     client_id: '816593665225-jlsi7t1qdl5icihukahrb3t567qu9qnj.apps.googleusercontent.com',
-    scope, include_granted_scopes: false, callback: authorize,
+    scope: 'https://www.googleapis.com/auth/drive.file',
+    include_granted_scopes: false,
+    callback: result => {
+      if (!result.access_token) {
+        status('Google Driveへの接続が完了しませんでした。');
+        return;
+      }
+      connect.hidden = true;
+      setup.hidden = true;
+      persistent = false;
+      void authorize(result);
+    },
     error_callback: () => status('Googleの許可画面を開けませんでした。'),
   });
-  connect.disabled = false;
 };
-authScript.onerror = () => status('Googleの接続機能を読み込めませんでした。');
+authScript.onerror = () => { temporary.disabled = true; };
 document.head.append(authScript);
-connect.onclick = () => client.requestAccessToken({prompt: 'select_account'});
+async function restoreDrive() {
+  if (checking || active || connecting) return;
+  checking = true;
+  connect.disabled = true;
+  try {
+    const response = await fetch('/api/drive/token', {cache: 'no-store'});
+    const result = await response.json();
+    connectionState = result.state;
+    setup.hidden = !['setup', 'invalid_secret'].includes(result.state);
+    if (result.state === 'connected') {
+      persistent = true;
+      connect.hidden = true;
+      await authorize(result);
+      return;
+    }
+    connect.hidden = !['signin', 'connect', 'unavailable', 'google_error'].includes(result.state);
+    connect.textContent = result.state === 'signin' ? 'ChatGPTでログイン' :
+      result.state === 'connect' ? 'Google Driveに接続' : '接続を再確認';
+    const messages = {
+      signin: '継続接続を利用するにはChatGPTでログインしてください。',
+      forbidden: 'このサイトの継続接続はオーナー専用です。',
+      setup: 'Googleで作成したクライアントシークレットを登録してください。',
+      invalid_secret: 'Googleがシークレットを認識できませんでした。値を登録し直してください。',
+      connect: 'Google Driveに一度接続してください。',
+      unavailable: 'サーバーの接続設定を確認できませんでした。',
+      google_error: 'Googleとの接続を更新できませんでした。',
+    };
+    status(messages[result.state] ?? '接続を確認できませんでした。');
+    const error = new URLSearchParams(location.search).get('drive_error');
+    if (error && result.state === 'connect') {
+      status(error === 'exchange' ? 'Googleの許可を保存できませんでした。シークレットとOAuth設定を確認してください。' :
+        'Googleの許可が完了しませんでした。もう一度接続できます。');
+      setup.hidden = false;
+    }
+  } catch {
+    connect.hidden = false;
+    connect.textContent = '接続を再確認';
+    status('接続を確認できませんでした。');
+  } finally {
+    checking = false;
+    connect.disabled = false;
+  }
+}
+connect.onclick = () => {
+  if (connectionState === 'signin') {
+    window.top.location.href = '/signin-with-chatgpt?return_to=' + encodeURIComponent('/?drive=1');
+  } else if (connectionState === 'connect') {
+    window.top.location.href = '/api/drive/connect';
+  } else {
+    void restoreDrive();
+  }
+};
+setup.onsubmit = async event => {
+  event.preventDefault();
+  const submit = setup.querySelector('button');
+  submit.disabled = true;
+  try {
+    const response = await fetch('/api/drive/setup', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({secret: secretInput.value.trim()}),
+    });
+    if (!response.ok) throw Error('シークレットを保存できませんでした。値を確認してください。');
+    await restoreDrive();
+  } catch (error) {
+    status(error.message);
+  } finally {
+    secretInput.value = '';
+    submit.disabled = false;
+  }
+};
+get('colabMode').addEventListener('click', () => { if (!token) void restoreDrive(); });
+if (new URLSearchParams(location.search).has('drive')) get('colabMode').click();
+
 function zipJob(file) {
   return {name: file.name, sourceLabel: 'ZIP', readFiles: () => readZip(file)};
 }
