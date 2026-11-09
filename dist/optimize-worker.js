@@ -3,6 +3,7 @@ import { loadOccModule } from './xtb/engines/occModule.js';
 import { relaxInProcess } from './xtb/engines/occRelax.js';
 
 self.onmessage = async ({data}) => {
+  let sccTotal = 0;
   try {
     const module = await loadOccModule({
       wasmPath: new URL('./xtb/occ/occjs.wasm', import.meta.url).href,
@@ -10,7 +11,14 @@ self.onmessage = async ({data}) => {
     });
     self.postMessage({type: 'ready'});
     const result = relaxInProcess(module, data, {
-      onCycle: (cycle, energy) => self.postMessage({type: 'cycle', cycle, energy}),
+      onElectronic: sccIterations => {
+        sccTotal += sccIterations;
+        self.postMessage({type: 'electronic', sccIterations, sccTotal});
+      },
+      onCycle: (cycle, energy, sccIterations) => {
+        sccTotal += sccIterations;
+        self.postMessage({type: 'cycle', cycle, energy, sccIterations, sccTotal});
+      },
     });
     if (!Number.isFinite(result.energy.total) ||
         result.coordinates.length !== data.geometry.coordinates.length ||
@@ -21,8 +29,9 @@ self.onmessage = async ({data}) => {
       throw new Error('指定したスピン状態で計算できませんでした');
     }
     result.coordinates = alignGeometry(data.geometry.coordinates, result.coordinates, data.anchor);
+    result.sccTotal = sccTotal;
     self.postMessage({type: 'result', result}, [result.coordinates.buffer]);
   } catch (error) {
-    self.postMessage({type: 'error', message: error.message || String(error)});
+    self.postMessage({type: 'error', message: error.message || String(error), sccTotal});
   }
 };

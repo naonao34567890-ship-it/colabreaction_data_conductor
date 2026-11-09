@@ -1,3 +1,4 @@
+import { readElectronicResult } from "./occSetup.js";
 import { ANGSTROM_PER_BOHR } from "../chemistry/constants.js";
 import { describeOccError } from "./occModule.js";
 import { createHandleScope, withHandleScope } from "./occScope.js";
@@ -59,9 +60,10 @@ export function optimizeGeometry(module, molecule, calculator, options) {
                 cycleScope.keep(evaluated.gradient);
                 cycleScope.keep(evaluated);
                 energy = evaluated.energy;
+                const sccIterations = readElectronicResult(calculator);
                 optimizer.update(energy, evaluated.gradient);
                 cycles = cycle + 1;
-                options.onCycle?.(cycles, energy);
+                options.onCycle?.(cycles, energy, sccIterations);
                 converged = optimizer.step();
             }
             catch (error) {
@@ -70,7 +72,7 @@ export function optimizeGeometry(module, molecule, calculator, options) {
                 // geometry is stationary, so accept it rather than failing the run.
                 const message = describeOccError(module, error);
                 if (!message.includes('trust radius')) {
-                    throw new Error(message, { cause: error });
+                    throw error instanceof Error ? error : new Error(message, { cause: error });
                 }
                 converged = true;
             }

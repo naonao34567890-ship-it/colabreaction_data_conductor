@@ -29,6 +29,7 @@ export function prepareSystem(module, geometry, settings, scope) {
     catch (error) {
         throw new Error(describeOccError(module, error), { cause: error });
     }
+    const electronic = readElectronicResult(calculator);
     const warnings = [];
     const isUnrestricted = calculator.isUnrestricted();
     if (settings.unpairedElectrons > 0 && !isUnrestricted) {
@@ -38,6 +39,7 @@ export function prepareSystem(module, geometry, settings, scope) {
         warnings.push('Open-shell GFN2: occ runs a spin-polarized SCF with its own spin constants, which is not what xtb --uhf does, so frequencies may differ from a native xtb reference by more than the closed-shell tolerance.');
     }
     return {
+        electronic,
         molecule,
         calculator,
         atoms,
@@ -58,3 +60,16 @@ function readAngstromCoordinates(molecule, atoms, scope) {
     return readCoordinates(scope.keep(molecule.positions()), atoms);
 }
 //# sourceMappingURL=occSetup.js.map
+export function readElectronicResult(calculator) {
+    const result = calculator.lastResult();
+    try {
+        if (!result.converged) {
+            const error = new Error(`SCC did not converge (${result.nIterations} iterations)`);
+            error.sccIterations = result.nIterations;
+            throw error;
+        }
+        return result.nIterations;
+    } finally {
+        result.delete();
+    }
+}

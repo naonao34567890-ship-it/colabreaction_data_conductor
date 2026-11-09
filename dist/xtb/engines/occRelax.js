@@ -42,6 +42,7 @@ export function relaxInProcess(module, request, options = {}) {
         const scope = createHandleScope();
         try {
             const system = prepareSystem(module, request.geometry, full, scope);
+            options.onElectronic?.(system.electronic);
             const relaxed = optimizeGeometry(module, system.molecule, system.calculator, {
                 maxCycles: settings.maxCycles,
                 signal: options.signal,
@@ -61,6 +62,7 @@ export function relaxInProcess(module, request, options = {}) {
     const scope = createHandleScope();
     try {
         const final = prepareSystem(module, { elements: request.geometry.elements, coordinates }, full, scope);
+        options.onElectronic?.(final.electronic);
         warnings.push(...final.warnings);
         return {
             coordinates: final.coordinates,
