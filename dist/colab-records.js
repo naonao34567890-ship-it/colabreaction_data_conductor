@@ -3,6 +3,10 @@ const connect = get('driveConnect');
 const input = get('colabZip');
 const folderInput = get('colabFolder');
 const jobs = get('colabJobs');
+const order = get('colabOrder');
+const cards = new Map();
+order.value = 'name-asc';
+order.onchange = sortCards;
 const status = message => { get('colabStatus').textContent = message; };
 const folderType = 'application/vnd.google-apps.folder';
 const drive = 'https://www.googleapis.com/drive/v3';
@@ -65,7 +69,7 @@ async function list(query) {
   let pageToken;
   do {
     const params = new URLSearchParams({q: query + ' and trashed = false',
-      fields: 'nextPageToken,files(id,name,appProperties)', pageSize: '100'});
+      fields: 'nextPageToken,files(id,name,appProperties,createdTime,mimeType)', pageSize: '100'});
     if (pageToken) params.set('pageToken', pageToken);
     const page = await (await request(drive + '/files?' + params)).json();
     files.push(...page.files);
@@ -248,6 +252,7 @@ async function importRecords(name, sourceLabel, readFiles) {
     const start = await thumbnail(reactant), final = await thumbnail(product), plot = await energyPlot(points);
     const config = [
       sourceLabel + '名: ' + name.replace(/[\r\n]/g, ' '), 'プロット点数: ' + points.length,
+      'ファイル数: ' + files.size,
       '電荷: ' + charge, 'spin（出力値）: ' + spin, '電荷・spinの取得元: DMF_final.xyz',
       '結果出力日時: ' + date + (match ? '（' + sourceLabel + '名由来・タイムゾーン不明）' : ''),
     ].join('\n');
@@ -290,12 +295,33 @@ async function importRecords(name, sourceLabel, readFiles) {
   }
 }
 
+function sortCards() {
+  const entries = [...cards.values()].sort((a,b) => Mol.compareDisplayOrder(a,b,order.value));
+  for (const entry of entries) jobs.append(entry.card);
+}
+
+async function countOriginalFiles(id) {
+  const pendingFolders = [id];
+  let count = 0;
+  while (pendingFolders.length) {
+    const files = await list("'" + pendingFolders.pop() + "' in parents");
+    for (const file of files) {
+      if (file.mimeType === folderType) pendingFolders.push(file.id);
+      else count++;
+    }
+  }
+  return count;
+}
+
 async function refresh() {
   for (const url of imageUrls) URL.revokeObjectURL(url);
   imageUrls.clear();
   jobs.replaceChildren();
+  cards.clear();
   const folders = await list("'" + root + "' in parents and mimeType = '" + folderType + "'");
-  for (const job of folders.reverse()) {
+  folders.forEach(job => { job.addedAt = Date.parse(job.createdTime); });
+  folders.sort((a,b) => Mol.compareDisplayOrder(a,b,order.value));
+  for (const job of folders) {
     const files = new Map((await list("'" + job.id + "' in parents")).map(file => [file.name, file.id]));
     if (!files.has('config.txt')) continue;
     const card = document.createElement('article');
@@ -319,16 +345,25 @@ async function refresh() {
     const info = document.createElement('div');
     info.className = 'colab-meta';
     const config = await (await download(files.get('config.txt'))).text();
+    const savedCount = config.match(/^ファイル数: (\d+)$/m)?.[1];
+    const count = document.createElement('span');
+    count.textContent = savedCount !== undefined ? savedCount + 'ファイル'
+      : files.has('計算結果') ? (await countOriginalFiles(files.get('計算結果'))) + 'ファイル'
+      : 'ファイル数不明';
+    info.append(count);
     for (const line of config.split(/\r?\n/)) {
-      if (!/^(ZIP名|フォルダー名|プロット点数|電荷|spin(?:（出力値）)?|結果出力日時):/.test(line)) continue;
+      if (!/^(プロット点数|電荷|spin(?:（出力値）)?|結果出力日時):/.test(line)) continue;
       const field = document.createElement('span');
-      field.textContent = line.replace(/^spin（出力値）:/, 'spin:')
+      field.textContent = line.replace(/^電荷:\s*/, '⚡ ')
+        .replace(/^spin(?:（出力値）)?:\s*/, '🌀 ')
         .replace(/^(結果出力日時:.*?)（[^）]*）$/, '$1');
       info.append(field);
     }
     card.append(images, info);
+    cards.set(job.id,{...job,card});
     jobs.append(card);
   }
+  sortCards();
 }
 
 async function authorize(response) {

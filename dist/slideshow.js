@@ -18,6 +18,8 @@ function syncButtons() {
   const unavailable = busy || !currentBlock;
   $('prev').disabled = unavailable || current === 0;
   $('next').disabled = unavailable || current === frames.length - 1;
+  $('prevTen').disabled = $('prev').disabled;
+  $('nextTen').disabled = $('next').disabled;
   for (const id of ['numbers','importFrame','downloadFrame','importAll','importMany']) {
     $(id).disabled = unavailable;
   }
@@ -179,6 +181,8 @@ async function registerFrames(ranges) {
   }
 }
 
+$('prevTen').onclick = () => showFrame(Math.max(0,current-10));
+$('nextTen').onclick = () => showFrame(Math.min(frames.length-1,current+10));
 $('prev').onclick = () => showFrame(current-1);
 $('next').onclick = () => showFrame(current+1);
 $('numbers').onclick = () => {

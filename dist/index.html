@@ -38,6 +38,13 @@
 <p id="colabStatus" role="status">Google Driveに接続すると計算記録を表示します。</p>
 <p id="colabQueue" role="status">待機中 0件</p>
 <div id="colabErrors" role="status"></div>
+<label>並び順 <select id="colabOrder" autocomplete="off">
+<option value="name-asc">名前順</option>
+<option value="added-asc">追加時間昇順</option>
+<option value="added-desc">追加時間降順</option>
+<option value="name-desc">名前逆順</option>
+<option value="id">内部ID順</option>
+</select></label>
 <div id="colabJobs"></div>
 </section></div>
 <style>
@@ -91,6 +98,12 @@ let metaMap=new Map();function applyChange(m){if(m.type==='added'){for(const ite
 channel.onmessage=e=>applyChange(e.data);Mol.metadata().then(v=>{for(const m of v)if(!metaMap.has(m.id)){meta.push(m);metaMap.set(m.id,m);}refresh();}).catch(e=>notice('保存領域を開けません: '+e.message));
 $('all').onclick=()=>{selected=new Set(meta.map(m=>m.id));selectionUI();grid.render();};$('none').onclick=()=>{selected.clear();selectionUI();grid.render();};$('open').onclick=()=>{const m=metaMap.get(selected.values().next().value);if(m)openEditor(m);};
 async function deleteFiles(ids) {
+ if(deleting||active||exporting)return;
+ ids=ids.filter(id=>metaMap.has(id)&&!metaMap.get(id).builtin);
+ if(!ids.length)return;
+ const description=ids.length===1?'「'+metaMap.get(ids[0]).name+'」を削除します。':ids.length+' 件のファイルを削除します。';
+ const label=ids.length===1?'このファイルを削除する':'選択したファイルを削除する';
+ if(!await Mol.confirmFileAction('ファイルの削除',description,label))return;
  if(deleting||active||exporting)return;
  ids=ids.filter(id=>metaMap.has(id)&&!metaMap.get(id).builtin);
  if(!ids.length)return;
