@@ -8,9 +8,6 @@
   const elements = Object.keys(Mol.elements);
   let worker = null;
   let method = 'GFN2';
-  let externalRequest = null;
-  const external = $('optExternal');
-  const resultFile = $('optResultFile');
   let before = null;
   let preview = null;
   let showingPreview = false;
@@ -35,9 +32,6 @@
     stopWorker();
     if (preview && showingPreview) showStructure(false);
     preview = null;
-    externalRequest = null;
-    external.hidden = true;
-    resultFile.value = '';
     $('optApply').hidden = $('optCompare').hidden = true;
   }
 
@@ -47,9 +41,8 @@
     finishKeys();
     finishRotation();
     $('optTitle').textContent = method+'-xTB 構造最適化';
-    $('optRun').textContent = method==='GFN1'?'コマンドを生成':'計算開始';
     status.textContent = method==='GFN1'
-      ? '公式xTBで実行するコマンドを生成し、結果をこの画面に読み戻します。'
+      ? 'ブラウザ内でGFN1-xTBを実行します（xTBloom）。'
       : '初回の計算開始時に約29 MBの計算エンジンを読み込みます。';
     $('optTarget').textContent = selected.size
       ? `選択した ${selected.size} 原子を独立した系として最適化します。`
@@ -86,36 +79,6 @@
     $('optClose').textContent = '結果を破棄';
   }
 
-  $('optInput').onclick = () => {
-    if (externalRequest) Mol.downloadBlob(externalRequest.input, 'gfn1-input.xyz');
-  };
-
-  resultFile.onchange = async () => {
-    const file = resultFile.files[0], request = externalRequest;
-    resultFile.value = '';
-    if (!file || !request) return;
-    try {
-      const blocks = [];
-      for await (const block of Mol.parseFile(file)) {
-        if (block.error || blocks.length) throw new Error('1構造だけの有効なXYZを選択してください。');
-        blocks.push(block);
-      }
-      const result = blocks[0]?.atoms, {geometry, indices, anchor} = request;
-      if (!result || result.length !== indices.length ||
-          result.some((atom,i) => atom.el !== geometry.elements[i])) {
-        throw new Error('入力と結果の原子数・元素順が一致しません。');
-      }
-      const {alignGeometry} = await import('./align-geometry.js');
-      if (externalRequest !== request || !dialog.open) return;
-      const coords = Float64Array.from(result.flatMap(({x,y,z}) => [x,y,z]));
-      external.hidden = true;
-      presentResult(indices, alignGeometry(geometry.coordinates,coords,anchor),
-        'GFN1の結果XYZを読み込みました。収束の有無はxTBの出力ログを確認してください。', '座標を適用');
-    } catch (error) {
-      if (externalRequest === request) status.textContent = '読み込み失敗：'+error.message;
-    }
-  };
-
   $('optForm').onsubmit = event => {
     event.preventDefault();
     if (worker || preview) return;
@@ -147,17 +110,6 @@
       elements: target.map(atom => atom.el),
       coordinates: Float64Array.from(target.flatMap(({x, y, z}) => [x, y, z])),
     };
-    if (method==='GFN1') {
-      const input = new Blob([Mol.standard({atoms:target,comment:''})],{type:'chemical/x-xyz'});
-      externalRequest = {input, geometry, indices, anchor:indices.indexOf(before.point)};
-      $('optCommand').value = `printf '%s\n' '$opt' ' maxcycle=${maxCycles}' '$end' > gfn1.inp
-xtb gfn1-input.xyz --gfn 1 --chrg ${charge} --uhf ${multiplicity-1} --opt --input gfn1.inp`;
-      external.hidden = false;
-      for (const field of inputs) field.disabled = true;
-      $('optRun').hidden = true;
-      status.textContent = '入力XYZを保存し、実行後に結果を選択してください。';
-      return;
-    }
     try {
       worker = new Worker('optimize-worker.js', {type: 'module'});
       worker.onerror = event => {
@@ -171,18 +123,20 @@ xtb gfn1-input.xyz --gfn 1 --chrg ${charge} --uhf ${multiplicity-1} --opt --inpu
           status.textContent = `電子状態評価：SCC ${data.sccIterations} 回 · 累計 ${data.sccTotal} 回`;
         } else if (data.type === 'cycle') {
           progress.value = data.cycle;
-          status.textContent = `ステップ ${data.cycle} / ${maxCycles} · ${data.energy.toFixed(6)} Eh · SCC ${data.sccIterations} 回（累計 ${data.sccTotal} 回）`;
+          status.textContent = `ステップ ${data.cycle} / ${maxCycles} · ${data.energy.toFixed(6)} Eh`
+            + (method==='GFN2' ? ` · SCC ${data.sccIterations} 回（累計 ${data.sccTotal} 回）` : '');
         } else if (data.type === 'error') {
           stopWorker();
-          status.textContent = /(?:SCC|SCF).*?(?:not converge|failed)/i.test(data.message)
+          status.textContent = /(?:SCC|SCF).*?(?:not converge|failed)|err_scc/i.test(data.message)
             ? `計算失敗：電子状態（SCC）が収束しませんでした。成功した評価のSCC累計 ${data.sccTotal} 回。詳細：${data.message}`
             : '計算失敗：' + data.message;
         } else if (data.type === 'result') {
           stopWorker();
           const {coordinates, energy, converged, cycles} = data.result;
           presentResult(indices, coordinates,
-            `${converged ? '収束' : '未収束の最終構造'} · ${cycles} ステップ · ${energy.total.toFixed(6)} Eh · SCC累計 ${data.result.sccTotal} 回（初期・最終評価を含む）`
-            + (multiplicity > 1 ? '。開殻はOCCのスピン分極モデルです。' : ''),
+            `${converged ? '収束' : '未収束の最終構造'} · ${cycles} ステップ · ${energy.total.toFixed(6)} Eh`
+            + (Number.isInteger(data.result.sccTotal) ? ` · SCC累計 ${data.result.sccTotal} 回` : '')
+            + (method==='GFN2' && multiplicity > 1 ? '。開殻はOCCのスピン分極モデルです。' : ''),
             converged ? '座標を適用' : '未収束の座標を適用');
 
         }
@@ -194,7 +148,7 @@ xtb gfn1-input.xyz --gfn 1 --chrg ${charge} --uhf ${multiplicity-1} --opt --inpu
       progress.max = maxCycles;
       progress.value = 0;
       status.textContent = '計算エンジンを読み込み中…';
-      worker.postMessage({geometry, anchor: indices.indexOf(before.point), settings: {charge, unpairedElectrons: multiplicity - 1, maxCycles}});
+      worker.postMessage({method, geometry, anchor: indices.indexOf(before.point), settings: {charge, unpairedElectrons: multiplicity - 1, maxCycles}});
     } catch (error) {
       stopWorker();
       status.textContent = '計算を開始できませんでした：' + error.message;
