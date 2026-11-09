@@ -301,6 +301,7 @@ function compareClassifications(a,b) {
   if (Boolean(first) !== Boolean(second)) return first ? -1 : 1;
   const byName = Mol.compareTagNames(first || '',second || '');
   if (byName) return byName;
+  if (first !== second) return first < second ? -1 : 1;
   const byDate = (b.resultDate || '').localeCompare(a.resultDate || '');
   return byDate || Mol.compareDisplayOrder(a,b,'id');
 }
@@ -308,7 +309,20 @@ function compareClassifications(a,b) {
 function sortCards() {
   const entries = [...cards.values()].sort((a,b) => order.value === 'classification'
     ? compareClassifications(a,b) : Mol.compareDisplayOrder(a,b,order.value));
-  for (const entry of entries) jobs.append(entry.card);
+  const content = document.createDocumentFragment();
+  let previous;
+  for (const entry of entries) {
+    const name = entry.appProperties?.classification || '';
+    if (order.value === 'classification' && name !== previous) {
+      const heading = document.createElement('h2');
+      heading.className = 'colab-group-heading';
+      heading.textContent = name || '未分類';
+      content.append(heading);
+    }
+    previous = name;
+    content.append(entry.card);
+  }
+  jobs.replaceChildren(content);
 }
 
 async function countOriginalFiles(id) {
@@ -539,7 +553,7 @@ async function authorize(response) {
     const folders = await list("mimeType = '" + folderType + "' and appProperties has { key='xyzStudio' and value='colabRecords' }");
     root = folders[0]?.id ?? await folder('分子 XYZ スタジオ Colab計算記録', null, 'colabRecords');
     await refresh();
-    status(jobs.childElementCount + ' 件の計算記録。ZIPまたはフォルダーを追加できます。');
+    status(cards.size + ' 件の計算記録。ZIPまたはフォルダーを追加できます。');
     input.disabled = folderInput.disabled = false;
     connect.textContent = 'Google Driveに再接続';
   } catch (error) {
