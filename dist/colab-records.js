@@ -124,39 +124,48 @@ async function thumbnail(blob) {
 
 async function energyPlot(points) {
   const canvas = document.createElement('canvas');
-  canvas.width = 720;
-  canvas.height = 360;
+  canvas.width = 960;
+  canvas.height = 650;
   const ctx = canvas.getContext('2d');
   const xmin = points[0][0], xmax = points.at(-1)[0];
   const values = points.map(p => p[1]);
   const ymin = Math.min(...values), ymax = Math.max(...values);
-  const x = value => 72 + 620 * (value - xmin) / (xmax - xmin || 1);
-  const y = value => 304 - 252 * (value - ymin) / (ymax - ymin || 1);
+  const low = ymin === ymax ? ymin - 0.5 : ymin;
+  const high = ymin === ymax ? ymax + 0.5 : ymax;
+  const left = 350, right = 920, top = 155, bottom = 515;
+  const x = value => xmin === xmax ? (left + right) / 2 :
+    left + (right - left) * (value - xmin) / (xmax - xmin);
+  const y = value => bottom - (bottom - top) * (value - low) / (high - low);
   ctx.fillStyle = '#101313';
-  ctx.fillRect(0, 0, 720, 360);
-  ctx.font = '16px sans-serif';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = '#e8efed';
-  ctx.fillText('ΔE (kJ/mol)', 16, 25);
-  ctx.fillText('フレーム番号', 580, 345);
-  for (let tick = 0; tick <= 4; tick++) {
-    const energy = ymin + (ymax - ymin || 1) * tick / 4;
+  ctx.font = 'bold 90px sans-serif';
+  ctx.fillText('ΔE (kJ/mol)', 20, 95);
+  ctx.font = 'bold 100px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (let tick = 0; tick <= 3; tick++) {
+    const energy = low + (high - low) * tick / 3;
     const yy = y(energy);
-    ctx.fillText(energy.toFixed(1), 8, yy + 5);
+    ctx.fillText(energy.toFixed(1), left - 18, yy, left - 28);
     ctx.fillStyle = '#34413f';
-    ctx.fillRect(72, yy, 620, 1);
+    ctx.fillRect(left, yy, right - left, 2);
     ctx.fillStyle = '#e8efed';
   }
-  ctx.fillText(String(xmin), 72, 325);
-  if (xmax !== xmin) ctx.fillText(String(xmax), 665, 325);
+  ctx.font = 'bold 84px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(String(xmin), left, 600, 160);
+  if (xmax !== xmin) ctx.fillText(String(xmax), right - 38, 600, 160);
+  ctx.fillText('フレーム', (left + right) / 2, 600, 335);
   ctx.strokeStyle = ctx.fillStyle = '#62d6bf';
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 5;
   ctx.beginPath();
   points.forEach(([frame, energy], index) =>
     index ? ctx.lineTo(x(frame), y(energy)) : ctx.moveTo(x(frame), y(energy)));
   ctx.stroke();
   for (const [frame, energy] of points) {
     ctx.beginPath();
-    ctx.arc(x(frame), y(energy), 2, 0, 2 * Math.PI);
+    ctx.arc(x(frame), y(energy), 4, 0, 2 * Math.PI);
     ctx.fill();
   }
   return canvasPng(canvas);
@@ -300,6 +309,7 @@ async function refresh() {
     images.className = 'colab-images';
     for (const [name, label] of [['START.png','START'], ['FINAL.png','FINAL'], ['Energy.png','エネルギープロファイル']]) {
       const figure = document.createElement('figure'), caption = document.createElement('figcaption');
+      if (name === 'Energy.png') figure.className = 'energy-profile';
       caption.textContent = label;
       figure.append(caption);
       if (files.has(name)) {
