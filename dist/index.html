@@ -46,6 +46,21 @@
 <option value="id">内部ID順</option>
 </select></label>
 <div id="colabJobs"></div>
+<dialog id="classificationDialog" aria-labelledby="classificationTitle">
+<h2 id="classificationTitle">分類を選ぶ</h2>
+<p id="classificationCurrent"></p>
+<div id="classificationChoices" class="row" style="flex-wrap:wrap"></div>
+<div class="dialog-actions">
+<button type="button" id="classificationNew">新規に作る</button>
+<button type="button" id="classificationRemove" class="danger">分類を外す</button>
+<button type="button" id="classificationCancel">キャンセル</button>
+</div>
+<form id="classificationForm" hidden>
+<label>分類名<input id="classificationName" required></label>
+<button id="classificationCreate" class="danger" disabled>作成して設定</button>
+</form>
+<p id="classificationStatus" role="status"></p>
+</dialog>
 </section></div>
 <style>
 #tagList{display:flex;gap:8px;flex-wrap:wrap;max-height:45vh;overflow:auto;padding:4px}

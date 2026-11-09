@@ -375,6 +375,80 @@ async function openReaction(jobId, name, originals, images) {
   }
 }
 
+const classificationDialog = get('classificationDialog');
+const classificationForm = get('classificationForm');
+const classificationName = get('classificationName');
+const classificationCreate = get('classificationCreate');
+let classificationJob;
+let classificationSaving = false;
+
+function openClassification(jobId) {
+  classificationJob = cards.get(jobId);
+  if (!classificationJob || classificationDialog.open) return;
+  const current = classificationJob.appProperties?.classification;
+  get('classificationCurrent').textContent = '現在の分類：' + (current || 'なし');
+  get('classificationStatus').textContent = '';
+  classificationName.value = '';
+  classificationForm.hidden = classificationCreate.disabled = true;
+  get('classificationRemove').disabled = !current;
+  const choices = get('classificationChoices');
+  choices.replaceChildren();
+  const names = new Set([...cards.values()].map(job => job.appProperties?.classification).filter(Boolean));
+  for (const name of [...names].sort(Mol.compareTagNames)) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = name;
+    button.onclick = () => void saveClassification(name);
+    choices.append(button);
+  }
+  classificationDialog.showModal();
+}
+
+async function saveClassification(name) {
+  if (classificationSaving) return;
+  const feedback = get('classificationStatus');
+  if (new TextEncoder().encode(name).length > 100) {
+    feedback.textContent = '分類名が長すぎます。短くしてください。';
+    return;
+  }
+  classificationSaving = true;
+  const jobId = classificationJob.id;
+  feedback.textContent = '保存中…';
+  try {
+    const response = await request(drive + '/files/' + encodeURIComponent(jobId) + '?fields=appProperties', {
+      method:'PATCH', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({appProperties:{classification:name || null}}),
+    });
+    const {appProperties} = await response.json();
+    const job = cards.get(jobId);
+    if (job) {
+      job.appProperties = appProperties;
+      job.classificationButton.textContent = name ? '分類：' + name : '分類を設定';
+    }
+    classificationDialog.close();
+  } catch (error) {
+    feedback.textContent = error.message;
+  } finally {
+    classificationSaving = false;
+  }
+}
+
+classificationDialog.addEventListener('cancel',event => {
+  if (classificationSaving) event.preventDefault();
+});
+get('classificationCancel').onclick = () => { if (!classificationSaving) classificationDialog.close(); };
+get('classificationRemove').onclick = () => void saveClassification('');
+get('classificationNew').onclick = () => {
+  classificationForm.hidden = false;
+  classificationName.focus();
+};
+classificationName.oninput = () => { classificationCreate.disabled = !classificationName.value.trim(); };
+classificationForm.onsubmit = event => {
+  event.preventDefault();
+  const name = classificationName.value.trim();
+  if (name) void saveClassification(name);
+};
+
 async function refresh() {
   for (const url of imageUrls) URL.revokeObjectURL(url);
   imageUrls.clear();
@@ -426,8 +500,13 @@ async function refresh() {
     open.textContent = '反応経路を開く';
     open.onclick = () => void openReaction(job.id,job.name,files.get('計算結果'),files);
     card.onclick = event => { if (!event.target.closest('button')) open.click(); };
-    card.append(images, info, open);
-    cards.set(job.id,{...job,card});
+    const classificationButton = document.createElement('button');
+    classificationButton.type = 'button';
+    classificationButton.textContent = job.appProperties?.classification
+      ? '分類：' + job.appProperties.classification : '分類を設定';
+    classificationButton.onclick = () => openClassification(job.id);
+    card.append(images, info, open, classificationButton);
+    cards.set(job.id,{...job,card,classificationButton});
     jobs.append(card);
   }
   sortCards();
