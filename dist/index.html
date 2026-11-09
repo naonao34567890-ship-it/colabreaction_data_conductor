@@ -1,8 +1,15 @@
 <!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>分子 XYZ ライブラリ</title><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script><script src="common.js"></script><script src="worker.js"></script><style>
+.mode-switch { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.page.colab-mode > header, .page.colab-mode > main { display: none; }
 #grid { user-select: none; }
 .selection-box { position: absolute; z-index: 10; pointer-events: none; box-sizing: border-box; border: 1px solid #62d6bf; background: #62d6bf33; }
 </style></head>
-<body><div class="page"><header><div class="heading"><div><div class="eyebrow">MOLECULAR WORKSPACE / 01</div><h1>分子 XYZ ライブラリ</h1></div><div class="badge">ローカル保存 · XYZ / QM9</div></div><div class="toolbar"><button class="primary" id="fileButton">＋ ファイルを選択</button><button id="folderButton">フォルダを選択</button><input hidden type="file" id="files" multiple accept=".xyz"><input hidden type="file" id="folder" multiple webkitdirectory><span class="spacer"></span><button id="all">全選択</button><button id="none">全解除</button><button id="tagSelected" disabled>タグ付け</button><button id="deleteSelected" title="Ctrl＋Shift＋Backspace" disabled>削除</button><button id="open" disabled>エディタで開く ↗</button><button id="download" disabled>ダウンロード ↓</button></div><div class="progress-area"><div class="row"><span id="progressText">ファイル・フォルダを登録できます</span><span class="spacer"></span><span id="queued">待機中 0件</span><button id="cancel" disabled>キャンセル</button></div><progress id="progress" value="0" max="1"></progress></div></header><main class="workspace"><div class="row"><h2>すべての分子</h2><span id="count" class="muted">0 分子</span><span class="spacer"></span><label>並び順 <select id="libraryOrder" autocomplete="off"><option value="name-asc">名前順</option><option value="added-asc">追加時間昇順</option><option value="added-desc">追加時間降順</option><option value="name-desc">名前逆順</option><option value="id">内部ID順</option><option value="tag-added">タグ順＋アイテム追加順</option><option value="tag-name">タグ順＋名前順</option></select></label><small id="selected">0 選択中</small></div><div class="grid-view" id="grid"><div id="empty" class="empty"><div><b>分子を、ひとつの場所に。</b>xyz ファイルやフォルダをドロップして登録<br><small>複数分子ファイル・QM9形式に対応</small></div></div></div><div class="drop-hint">このページに xyz ファイル・フォルダをドロップ　／　左ドラッグで範囲選択（Shiftで範囲内の選択を反転）　／　ダブルクリックで分子エディタを開く</div><details id="results"><summary id="summary">読み込み結果</summary><pre id="resultText"></pre></details><div class="status" id="notice" role="status" aria-live="polite"></div></main></div>
+<body><div class="page" id="libraryPage">
+<nav class="mode-switch" aria-label="表示モード">
+<button type="button" id="libraryMode" class="primary" aria-pressed="true">ライブラリ</button>
+<button type="button" id="colabMode" aria-pressed="false">Colab計算記録</button>
+</nav>
+<header><div class="heading"><div><div class="eyebrow">MOLECULAR WORKSPACE / 01</div><h1>分子 XYZ ライブラリ</h1></div><div class="badge">ローカル保存 · XYZ / QM9</div></div><div class="toolbar"><button class="primary" id="fileButton">＋ ファイルを選択</button><button id="folderButton">フォルダを選択</button><input hidden type="file" id="files" multiple accept=".xyz"><input hidden type="file" id="folder" multiple webkitdirectory><span class="spacer"></span><button id="all">全選択</button><button id="none">全解除</button><button id="tagSelected" disabled>タグ付け</button><button id="deleteSelected" title="Ctrl＋Shift＋Backspace" disabled>削除</button><button id="open" disabled>エディタで開く ↗</button><button id="download" disabled>ダウンロード ↓</button></div><div class="progress-area"><div class="row"><span id="progressText">ファイル・フォルダを登録できます</span><span class="spacer"></span><span id="queued">待機中 0件</span><button id="cancel" disabled>キャンセル</button></div><progress id="progress" value="0" max="1"></progress></div></header><main class="workspace"><div class="row"><h2>すべての分子</h2><span id="count" class="muted">0 分子</span><span class="spacer"></span><label>並び順 <select id="libraryOrder" autocomplete="off"><option value="name-asc">名前順</option><option value="added-asc">追加時間昇順</option><option value="added-desc">追加時間降順</option><option value="name-desc">名前逆順</option><option value="id">内部ID順</option><option value="tag-added">タグ順＋アイテム追加順</option><option value="tag-name">タグ順＋名前順</option></select></label><small id="selected">0 選択中</small></div><div class="grid-view" id="grid"><div id="empty" class="empty"><div><b>分子を、ひとつの場所に。</b>xyz ファイルやフォルダをドロップして登録<br><small>複数分子ファイル・QM9形式に対応</small></div></div></div><div class="drop-hint">このページに xyz ファイル・フォルダをドロップ　／　左ドラッグで範囲選択（Shiftで範囲内の選択を反転）　／　ダブルクリックで分子エディタを開く</div><details id="results"><summary id="summary">読み込み結果</summary><pre id="resultText"></pre></details><div class="status" id="notice" role="status" aria-live="polite"></div></main></div>
 <style>
 #tagList{display:flex;gap:8px;flex-wrap:wrap;max-height:45vh;overflow:auto;padding:4px}
 .tag-entry{display:inline-flex;gap:4px;align-items:center;max-width:100%}
@@ -74,7 +81,7 @@ async function deleteFiles(ids) {
 }
 $('deleteSelected').onclick=()=>deleteFiles([...selected]);
 window.addEventListener('keydown',e=>{
- if(e.key!=='Backspace'||!e.ctrlKey||!e.shiftKey||e.altKey||e.metaKey||
+ if($('colabMode').getAttribute('aria-pressed')==='true'||e.key!=='Backspace'||!e.ctrlKey||!e.shiftKey||e.altKey||e.metaKey||
     $('exportDialog').open||e.target.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))return;
  e.preventDefault();
  if(!e.repeat)deleteFiles([...selected]);
@@ -178,7 +185,20 @@ function cancelSelection(e){
 window.addEventListener('pointercancel',cancelSelection);
 window.addEventListener('blur',cancelSelection);
 $('fileButton').onclick=()=>$('files').click();$('folderButton').onclick=()=>$('folder').click();for(const id of ['files','folder'])$(id).onchange=e=>{enqueue({files:Array.from(e.target.files)});e.target.value='';};
-let dragDepth=0;document.addEventListener('dragenter',e=>{if(e.dataTransfer.types.includes('Files')){e.preventDefault();dragDepth++;document.body.classList.add('dragging');}});document.addEventListener('dragover',e=>e.preventDefault());document.addEventListener('dragleave',()=>{if(--dragDepth<=0)document.body.classList.remove('dragging');});document.addEventListener('drop',e=>{e.preventDefault();dragDepth=0;document.body.classList.remove('dragging');const items=Array.from(e.dataTransfer.items||[]);const entries=items.map(i=>i.webkitGetAsEntry?.()).filter(Boolean);enqueue(entries.length?{entries}:{files:Array.from(e.dataTransfer.files)});});
+let dragDepth=0;
+function setColabMode(enabled){
+ $('libraryPage').classList.toggle('colab-mode',enabled);
+ $('libraryMode').classList.toggle('primary',!enabled);
+ $('colabMode').classList.toggle('primary',enabled);
+ $('libraryMode').setAttribute('aria-pressed',String(!enabled));
+ $('colabMode').setAttribute('aria-pressed',String(enabled));
+ dragDepth=0;
+ document.body.classList.remove('dragging');
+}
+$('libraryMode').onclick=()=>setColabMode(false);
+$('colabMode').onclick=()=>setColabMode(true);
+
+document.addEventListener('dragenter',e=>{if($('colabMode').getAttribute('aria-pressed')!=='true'&&e.dataTransfer.types.includes('Files')){e.preventDefault();dragDepth++;document.body.classList.add('dragging');}});document.addEventListener('dragover',e=>e.preventDefault());document.addEventListener('dragleave',()=>{if(--dragDepth<=0)document.body.classList.remove('dragging');});document.addEventListener('drop',e=>{e.preventDefault();dragDepth=0;document.body.classList.remove('dragging');if($('colabMode').getAttribute('aria-pressed')==='true')return;const items=Array.from(e.dataTransfer.items||[]);const entries=items.map(i=>i.webkitGetAsEntry?.()).filter(Boolean);enqueue(entries.length?{entries}:{files:Array.from(e.dataTransfer.files)});});
 function enqueue(job){jobs.push(job);queueUI();runQueue();}function queueUI(){$('queued').textContent=`待機中 ${jobs.length}件`;}
 async function scan(job,state){if(job.files)return job.files.filter(f=>/\.xyz$/i.test(f.name));return Mol.scanEntries(job.entries,{cancelled:()=>state.cancelled,progress:n=>{$('progressText').textContent=`フォルダ走査中 · ${n.toLocaleString()} 個のxyzを発見`;},error:message=>state.scanErrors.push(message)});}
 function chooseMulti(name,total,file){
