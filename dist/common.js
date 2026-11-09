@@ -109,17 +109,30 @@ const builtinMeta = Array.from(builtins.values(), record => ({
 }));
 async function get(store,id){if(store==='body'&&builtins.has(id))return structuredClone(builtins.get(id));const d=await db();return new Promise((res,rej)=>{const r=d.transaction(store).objectStore(store).get(id);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
 const displayNames = new Intl.Collator('ja', {numeric: true});
-function compareDisplayOrder(a, b) {
+function compareDisplayOrder(a, b, order='name-asc') {
  const pinned = id => id === water.id ? 0 : id === hydrogen.id ? 1 : 2;
- return pinned(a.id) - pinned(b.id) || displayNames.compare(a.name, b.name) ||
-  (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+ const pinOrder = pinned(a.id) - pinned(b.id);
+ if(pinOrder)return pinOrder;
+ const byId = a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+ if(order==='id')return byId;
+ const byName = displayNames.compare(a.name, b.name);
+ if(order==='name-desc')return -byName || byId;
+ if(order==='added-asc'||order==='added-desc'){
+  const hasA=Number.isFinite(a.addedAt),hasB=Number.isFinite(b.addedAt);
+  if(hasA!==hasB)return hasA?-1:1;
+  if(hasA){
+   const byAdded=a.addedAt-b.addedAt || a.batchPosition-b.batchPosition;
+   return (order==='added-desc'?-byAdded:byAdded) || byId;
+  }
+ }
+ return byName || byId;
 }
 async function metadata(){const d=await db();return new Promise((res,rej)=>{const result=builtinMeta.map(record => ({...record})),t=d.transaction('meta'),r=t.objectStore('meta').openCursor();r.onsuccess=()=>{const c=r.result;if(c){result.push(c.value);c.continue();}else res(result);};r.onerror=()=>rej(r.error);});}
 async function saveBatch(records){if(!records.length)return [];const d=await db();return new Promise((res,rej)=>{
  const tx=d.transaction(['meta','body'],'readwrite'),meta=tx.objectStore('meta'),body=tx.objectStore('body'),saved=[];
  tx.oncomplete=()=>res(saved);tx.onabort=()=>rej(tx.error||Error('保存失敗'));tx.onerror=()=>{};
  // Request chaining keeps the transaction alive and serializes collision checks.
- let i=0;function next(){if(i>=records.length)return;const r=records[i++],base=r.name;let suffix=nameHints.get(base)||1;if(suffix>1)r.name=`${base} (${suffix})`;function attempt(){const q=meta.index('name').getKey(r.name);q.onsuccess=()=>{if(q.result!==undefined){r.name=`${base} (${++suffix})`;attempt();}else{nameHints.set(base,suffix+1);r.id=crypto.randomUUID();const m={id:r.id,name:r.name,count:r.atoms.length,thumb:false,bytes:r.raw?.size||standard(r).length};meta.add(m);body.add(r);saved.push(m);next();}};}attempt();}next();
+ let i=0;function next(){if(i>=records.length)return;const r=records[i++],base=r.name;let suffix=nameHints.get(base)||1;if(suffix>1)r.name=`${base} (${suffix})`;function attempt(){const q=meta.index('name').getKey(r.name);q.onsuccess=()=>{if(q.result!==undefined){r.name=`${base} (${++suffix})`;attempt();}else{nameHints.set(base,suffix+1);r.id=crypto.randomUUID();const m={id:r.id,name:r.name,count:r.atoms.length,thumb:false,addedAt:performance.timeOrigin+performance.now(),batchPosition:i,bytes:r.raw?.size||standard(r).length};meta.add(m);body.add(r);saved.push(m);next();}};}attempt();}next();
  });}
 async function remove(id){return removeMany([id]);}
 async function removeMany(ids) {
