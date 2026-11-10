@@ -30,6 +30,7 @@ const ReactionStore = (() => {
     if (!request.result) { abort('反応が見つかりません。'); return; }
     if (check && !check(request.result)) { abort("別のタブで構造が更新されました。開き直してからもう一度操作してください。"); return; }
     const value = {...request.result,...fields};
+    if (Object.hasOwn(fields,'START')) delete value.startPreview;
     store.put(value);
     done(value);
    };
@@ -58,5 +59,15 @@ const ReactionStore = (() => {
    }
   });
  }
- return {read,update,remove,tag,create:(slot,structure,name)=>createReaction({[slot]:structure},name),createReaction};
+ function cacheStartPreview(id,revision,image) {
+  return transaction('readwrite',store=>{
+   const request=store.get(id);
+   request.onsuccess=()=>{
+    const item=request.result;
+    if(!item?.START || item.START.revision!==revision)return;
+    store.put({...item,startPreview:{revision,image}});
+   };
+  });
+ }
+ return {read,update,remove,tag,cacheStartPreview,create:(slot,structure,name)=>createReaction({[slot]:structure},name),createReaction};
 })();

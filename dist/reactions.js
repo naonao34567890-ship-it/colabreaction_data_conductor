@@ -9,14 +9,26 @@ const status = document.getElementById('reactionStatus');
 const dayKey = new Intl.DateTimeFormat('ja-JP',{dateStyle:'long'});
 let renderer;
 const previews = new WeakMap();
+function showPreview(target,source) {
+ const image = new Image();
+ image.alt = 'START構造';
+ image.src = source;
+ target.replaceChildren(image);
+}
 const observer = new IntersectionObserver(async entries=>{
  for (const {target,isIntersecting} of entries) {
   if (!isIntersecting) continue;
   observer.unobserve(target);
   try {
+   const reaction = previews.get(target);
+   const cached = reaction.startPreview;
+   if (cached && cached.revision === reaction.START.revision) {
+    showPreview(target,cached.image);
+    continue;
+   }
    const graphics = await Mol.graphics;
    if (!target.isConnected) continue;
-   const atoms = previews.get(target);
+   const atoms = reaction.START.atoms;
    const {T} = graphics;
    if (!renderer) {
     renderer = new T.WebGLRenderer({alpha:true,antialias:true});
@@ -30,10 +42,10 @@ const observer = new IntersectionObserver(async entries=>{
     graphics.light(scene);
     graphics.fit(camera,atoms);
     renderer.render(scene,camera);
-    const image = new Image();
-    image.alt = 'START構造';
-    image.src = renderer.domElement.toDataURL('image/png');
-    target.replaceChildren(image);
+    const image = renderer.domElement.toDataURL('image/png');
+    showPreview(target,image);
+    reaction.startPreview = {revision:reaction.START.revision,image};
+    void ReactionStore.cacheStartPreview(reaction.id,reaction.START.revision,image).catch(()=>{});
    } finally { graphics.dispose(model); }
   } catch { target.textContent = 'サムネイルを表示できません'; }
  }
@@ -72,7 +84,7 @@ function cardFor(reaction) {
  preview.className = 'reaction-preview muted';
  preview.textContent = reaction.START ? 'STARTを描画中…' : 'START未作成';
  if (reaction.START) {
-  previews.set(preview,reaction.START.atoms);
+  previews.set(preview,reaction);
   observer.observe(preview);
  }
  card.append(header,preview);
