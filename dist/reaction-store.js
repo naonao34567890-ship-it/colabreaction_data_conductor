@@ -23,21 +23,22 @@ const ReactionStore = (() => {
    request.onsuccess = () => done(request.result);
   });
  }
- function update(id, fields) {
+ function update(id, fields, check) {
   return transaction('readwrite',(store,done,abort)=>{
    const request = store.get(id);
    request.onsuccess = () => {
     if (!request.result) { abort('反応が見つかりません。'); return; }
+    if (check && !check(request.result)) { abort("別のタブで生成物が更新されました。もう一度操作してください。"); return; }
     const value = {...request.result,...fields};
     store.put(value);
     done(value);
    };
   });
  }
- function create(slot, structure) {
+ function create(slot, structure, reactionName) {
   const date = new Date();
   const name = [date.getHours(),date.getMinutes()].map(n=>String(n).padStart(2,'0')).join('');
-  const value = {id:crypto.randomUUID(), createdAt:date.getTime(), name, [slot]:structure};
+  const value = {id:crypto.randomUUID(), createdAt:date.getTime(), name:reactionName || name, [slot]:structure};
   return transaction('readwrite',(store,done)=>{ store.add(value); done(value); });
  }
  return {read,update,create};
