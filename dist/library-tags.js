@@ -3,6 +3,7 @@
 {
  const dialog=$('tagDialog'), list=$('tagList'), form=$('tagForm'), input=$('tagName');
  const status=$('tagStatus');
+ let renameMode=false, renameFrom=null;
  let targets=[], deletingTags=false, busy=false, tags=[];
 
  async function transact(mode, run) {
@@ -64,7 +65,15 @@
    button.textContent=name;
    button.title=name;
    button.disabled=busy;
-   button.onclick=()=>changeTag(name,true);
+   button.onclick=()=>{
+    if(!renameMode){void changeTag(name,true);return;}
+    renameFrom=name;
+    input.value=name;
+    form.hidden=false;
+    renderTags();
+    input.focus();
+    input.select();
+   };
    const untag=document.createElement('button');
    untag.type='button';
    untag.className='danger tag-choice';
@@ -74,11 +83,13 @@
    untag.onclick=()=>changeTag(name,false);
    const choices=document.createElement('div');
    choices.className='tag-choices';
-   choices.append(button,untag);
+   choices.append(button);
+   if(!renameMode)choices.append(untag);
    entry.append(choices);
    list.append(entry);
   }
   $('tagCreate').disabled=busy||input.value.includes('\t')||!input.value.trim();
+  $('tagRename').disabled=busy||!tags.length;
   $('tagNew').disabled=$('tagDelete').disabled=$('tagCancel').disabled=busy;
  }
 
@@ -134,6 +145,8 @@
   targets=[...selected].filter(id=>metaMap.has(id)&&!metaMap.get(id).builtin);
   if(!targets.length)return;
   deletingTags=false;
+  renameMode=false;renameFrom=null;
+  $('tagCreate').textContent='作成';
   $('tagDelete').setAttribute('aria-pressed','false');
   $('tagDelete').textContent='タグの削除';
   form.hidden=true;
@@ -143,8 +156,22 @@
   dialog.showModal();
   void mutate(refreshTags);
  };
- $('tagNew').onclick=()=>{form.hidden=false;input.focus();};
+ $('tagNew').onclick=()=>{
+  renameMode=false;renameFrom=null;
+  $('tagCreate').textContent='作成';
+  input.value='';form.hidden=false;renderTags();input.focus();
+ };
+ $('tagRename').onclick=()=>{
+  renameMode=true;renameFrom=null;deletingTags=false;
+  $('tagDelete').setAttribute('aria-pressed','false');
+  $('tagDelete').textContent='タグの削除';
+  $('tagCreate').textContent='更新';
+  form.hidden=true;
+  status.textContent='名前を変更するタグを選んでください。';
+  renderTags();
+ };
  $('tagDelete').onclick=()=>{
+  if(renameMode){renameMode=false;renameFrom=null;form.hidden=true;$('tagCreate').textContent='作成';}
   deletingTags=!deletingTags;
   $('tagDelete').setAttribute('aria-pressed',String(deletingTags));
   $('tagDelete').textContent=deletingTags?'削除モードを終了':'タグの削除';
@@ -168,6 +195,34 @@
   const name=input.value.trim();
   if(!name)return;
   void mutate(async()=>{
+   if(renameFrom!==null){
+    const from=renameFrom;
+    renameFrom=null;input.value='';form.hidden=true;
+    const updated=await transact('readwrite',(catalog,meta,done,abort)=>{
+     const keys=catalog.getAllKeys();
+     keys.onsuccess=()=>{
+      if(keys.result.includes(name)){abort('同じ名前のタグがあります。');return;}
+      if(!keys.result.includes(from)){abort('このタグは削除されています。');return;}
+      const matches=meta.index('tags').getAll(from);
+      matches.onsuccess=()=>{
+       for(const item of matches.result){
+        item.tags=item.tags.map(tag=>tag===from?name:tag).sort(Mol.compareTagNames);
+        meta.put(item);
+       }
+       catalog.delete(from);
+       catalog.add({name});
+       done(matches.result);
+      };
+     };
+    });
+    const change={type:'tags-updated',items:updated};
+    applyChange(change);
+    Mol.notify(change);
+    Mol.notify({type:'tag-catalog'});
+    status.textContent='「'+name+'」に変更しました。';
+    await refreshTags();
+    return;
+   }
    if(tags.some(tag=>tag.name===name))throw Error('同じ名前のタグがあります。');
    await transact('readwrite',catalog=>catalog.add({name}));
    input.value='';

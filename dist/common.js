@@ -322,8 +322,67 @@ class Thumbnails{
  task.resolve(cached?.blob||null);}catch(e){task.resolve(null);}await new Promise(requestAnimationFrame);}}finally{this.running=false;}}
 }
 Mol.thumbnails=new Thumbnails();
+Mol.renameMolecule = async (id, name) => {
+ const connection = await db();
+ return new Promise((resolve, reject) => {
+  const tx = connection.transaction(['meta','body'],'readwrite');
+  const meta = tx.objectStore('meta'), body = tx.objectStore('body');
+  let failure;
+  tx.onabort = () => reject(failure || tx.error);
+  tx.oncomplete = () => resolve({type:'renamed',id,name});
+  const request = meta.get(id);
+  request.onsuccess = () => {
+   const item = request.result;
+   const read = body.get(id);
+   read.onsuccess = () => {
+    if (!item || !read.result) {
+     failure = Error('対象の分子が見つかりません。');
+     tx.abort();
+     return;
+    }
+    const write = meta.put({...item,name});
+    write.onerror = () => { if (write.error.name === 'ConstraintError') failure = Error('同じ名前の分子があります。'); };
+    body.put({...read.result,name});
+   };
+  };
+ });
+};
+Mol.editName = (title, save, report) => {
+ title.title = 'ダブルクリックで名前を変更';
+ title.addEventListener('dblclick', event => {
+  event.stopPropagation();
+  if (title.hidden) return;
+  const input = document.createElement('input');
+  input.value = title.textContent;
+  input.setAttribute('aria-label','名前');
+  input.style.cssText = 'width:100%;min-width:0;padding:0 4px;font-size:inherit';
+  input.addEventListener('click', event => event.stopPropagation());
+  input.addEventListener('dblclick', event => event.stopPropagation());
+  title.after(input);
+  title.hidden = true;
+  let saving = false;
+  const close = () => { input.remove(); title.hidden = false; };
+  input.onblur = () => { if (!saving) close(); };
+  input.onkeydown = async event => {
+   event.stopPropagation();
+   if (event.isComposing || saving) return;
+   if (event.key === 'Escape') { event.preventDefault(); close(); }
+   if (event.key !== 'Enter') return;
+   event.preventDefault();
+   const name = input.value.trim();
+   if (!name || name === title.textContent) { close(); return; }
+   saving = true;
+   input.disabled = true;
+   try { title.textContent = (await save(name)) || name; }
+   catch (error) { report(error.message); }
+   finally { close(); }
+  };
+  input.focus();
+  input.select();
+ });
+};
 Mol.VirtualGrid=class{
- constructor(el,{mini=false,scrollport=el,onSelect=()=>{},onOpen=null,onDelete=null,isSelected=()=>false}={}){this.el=el;this.scrollport=scrollport;this.mini=mini;this.onSelect=onSelect;this.onOpen=onOpen;this.onDelete=onDelete;this.isSelected=isSelected;this.data=[];this.nodes=new Map();this.row=mini?160:218;this.spacer=document.createElement('div');this.spacer.className='grid-spacer';el.append(this.spacer);scrollport.addEventListener('scroll',()=>this.schedule());const observer=new ResizeObserver(()=>this.schedule());observer.observe(el);if(scrollport!==el)observer.observe(scrollport);}
+ constructor(el,{mini=false,scrollport=el,onSelect=()=>{},onOpen=null,onDelete=null,onRename=null,onRenameError=()=>{},isSelected=()=>false}={}){this.el=el;this.scrollport=scrollport;this.mini=mini;this.onSelect=onSelect;this.onOpen=onOpen;this.onDelete=onDelete;this.onRename=onRename;this.onRenameError=onRenameError;this.isSelected=isSelected;this.data=[];this.nodes=new Map();this.row=mini?160:218;this.spacer=document.createElement('div');this.spacer.className='grid-spacer';el.append(this.spacer);scrollport.addEventListener('scroll',()=>this.schedule());const observer=new ResizeObserver(()=>this.schedule());observer.observe(el);if(scrollport!==el)observer.observe(scrollport);}
  setData(data){this.data=data;this.render();}
  schedule(){if(this.pending)return;this.pending=requestAnimationFrame(()=>{this.pending=null;this.render();});}
  clear(){for(const n of this.nodes.values())this.drop(n);this.nodes.clear();}
@@ -335,6 +394,7 @@ Mol.VirtualGrid=class{
  }
  render(){const {top,bottom}=this.viewport();const cols=Math.max(1,Math.floor(this.el.clientWidth/(this.mini?128:180))),w=this.el.clientWidth/cols,first=Math.max(0,Math.floor(top/this.row)-2),last=Math.ceil(bottom/this.row)+2,start=first*cols,end=Math.min(this.data.length,last*cols);this.spacer.style.height=Math.ceil(this.data.length/cols)*this.row+'px';const wanted=new Set(this.data.slice(start,end).map(m=>m.id));for(const [id,n]of this.nodes)if(!wanted.has(id)){this.drop(n);this.nodes.delete(id);}
   for(let i=start;i<end;i++){const m=this.data[i];let n=this.nodes.get(m.id);if(n&&n.revision!==m.revision){this.drop(n);n=null;}if(!n){const el=document.createElement('article');el.className='tile';el.tabIndex=0;el.setAttribute('role','checkbox');el.innerHTML='<div class="check"></div><div class="thumb">◌</div><div class="tile-info"><div class="tile-name"></div><div class="tile-tags" hidden></div><div class="tile-bottom"><span></span><button class="delete" aria-label="削除">削除</button></div></div>';el.querySelector('.tile-name').textContent=m.name;el.title=m.name;el.querySelector('.tile-bottom span').textContent=m.count+' 原子';const del=el.querySelector('.delete');let openOnDoubleClick=false,firstTileClick=false;
+  if(this.onRename&&!m.builtin)Mol.editName(el.querySelector('.tile-name'),name=>this.onRename(m,name),this.onRenameError);
   if(this.onDelete&&!m.builtin){
    del.onclick=e=>{e.stopPropagation();firstTileClick=false;openOnDoubleClick=false;this.onDelete(m);};
    del.ondblclick=e=>e.stopPropagation();
@@ -345,6 +405,7 @@ Mol.VirtualGrid=class{
    this.onSelect(m,e);this.render();
   };
   el.onkeydown=e=>{if(e.target!==el)return;if(e.key===' '||e.key==='Enter'){e.preventDefault();this.onSelect(m,e);this.render();}};if(this.onOpen)el.ondblclick=()=>{if(openOnDoubleClick)this.onOpen(m);openOnDoubleClick=false;};n={el,revision:m.revision,alive:true,url:null,loading:false,index:i};this.nodes.set(m.id,n);this.spacer.append(el);}
+  n.el.querySelector(".tile-name").textContent=m.name;
   n.index=i;n.el.style.cssText=`left:${i%cols*w+4}px;top:${Math.floor(i/cols)*this.row+4}px;width:${w-8}px;height:${this.row-8}px`;const tagLine=n.el.querySelector('.tile-tags'),tags=this.mini?'':(m.tags||[]).join(' · ');
   if(tagLine.textContent!==tags){tagLine.textContent=tags;tagLine.hidden=!tags;n.el.title=tags?m.name+' — '+tags:m.name;}
   const selected=this.isSelected(m.id);n.el.classList.toggle('selected',selected);n.el.setAttribute('aria-checked',String(selected));n.el.querySelector('.check').textContent=selected?'✓':'';

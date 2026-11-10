@@ -15,6 +15,7 @@ let reference = -1;
 let plottedPoints = [];
 let captureImage, imageSaving = false;
 const imageChannelId = reaction && new URLSearchParams(location.hash.slice(1)).get('images');
+const imageSavingEnabled = new URLSearchParams(location.hash.slice(1)).get('imageSaving') === '1';
 const imageChannel = imageChannelId && new BroadcastChannel('reaction-images:' + imageChannelId);
 
 if (imageChannel) {
@@ -61,7 +62,7 @@ function syncButtons() {
   $('prevTen').disabled = $('prev').disabled;
   $('nextTen').disabled = $('next').disabled;
   if (reaction) {
-    $('saveStartImage').disabled = $('saveFinalImage').disabled = unavailable || !imageChannel || !captureImage || imageSaving;
+    $('saveStartImage').disabled = $('saveFinalImage').disabled = unavailable || !imageSavingEnabled || !imageChannel || !captureImage || imageSaving;
   }
   if (reaction) $('importFrameEdit').disabled = unavailable;
   for (const id of ['numbers','importFrame','downloadFrame','importAll','importMany']) {
@@ -314,7 +315,31 @@ async function init() {
   const name = params.get('name') || 'trajectory.xyz';
   baseName = name.replace(/\.(?:py)?xyz$/i,'');
   $('title').textContent = name;
-  document.title = name+' — '+(reaction?'反応経路ビューア':'構造のスライドショー');
+  const suffix = ' — ' + (reaction?'反応経路ビューア':'構造のスライドショー');
+  document.title = name + suffix;
+  if (!reaction || imageChannel) Mol.editName($('title'),async value=>{
+    let renamed = Mol.safeName(value);
+    if (reaction) renamed = await new Promise((resolve,reject)=>{
+      const id = crypto.randomUUID();
+      const cleanup = () => imageChannel.removeEventListener('message',reply);
+      const timeout = setTimeout(()=>{
+        cleanup();
+        reject(Error('計算記録の一覧を開いた状態で再試行してください。'));
+      },20000);
+      function reply({data}) {
+        if (data?.id !== id) return;
+        clearTimeout(timeout);
+        cleanup();
+        if (data.error) reject(Error(data.error));
+        else resolve(data.name);
+      }
+      imageChannel.addEventListener('message',reply);
+      imageChannel.postMessage({id,name:renamed});
+    });
+    baseName = renamed.replace(/\.(?:py)?xyz$/i,'');
+    document.title = renamed + suffix;
+    return renamed;
+  },status);
   const response = await fetch(source);
   if (!response.ok) throw Error('元のXYZを読み込めません。ライブラリから開き直してください。');
   const file = await response.blob();

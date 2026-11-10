@@ -217,11 +217,18 @@ function readFolder(files, relativePath) {
   return result;
 }
 
+async function importKey(name) {
+  const digest = await crypto.subtle.digest('SHA-256',new TextEncoder().encode(name));
+  return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
+}
+
 async function alreadyRegistered(name) {
+  const key = await importKey(name);
   const escaped = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   const matches = await list("'" + root + "' in parents and mimeType = '" + folderType +
-    "' and name = '" + escaped + "'");
+    "' and (name = '" + escaped + "' or appProperties has { key='importKey' and value='" + key + "' })");
   for (const match of matches) {
+    if (match.appProperties?.importKey && match.appProperties.importKey !== key) continue;
     const completed = await list("'" + match.id + "' in parents and name = 'config.txt'");
     if (completed.length) return true;
   }
@@ -338,13 +345,32 @@ async function countOriginalFiles(id) {
   return count;
 }
 
+async function renameRecord(jobId, name) {
+  const job = cards.get(jobId);
+  if (!job) throw Error('計算記録を一覧から開き直してください。');
+  const appProperties = job.appProperties?.importKey ? undefined : {importKey:await importKey(job.name)};
+  const response = await request(drive + '/files/' + encodeURIComponent(jobId) + '?fields=name,appProperties',{
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name,appProperties}),
+  });
+  Object.assign(job,await response.json());
+  job.title.textContent = job.name;
+  sortCards();
+  return job.name;
+}
+
 function connectImageSaver(params, jobId, images) {
   const channelId = crypto.randomUUID();
   params.set('images', channelId);
   const channel = new BroadcastChannel('reaction-images:' + channelId);
   channel.onmessage = async ({data}) => {
     if (data?.close) { channel.close(); return; }
-    const {target, image, id} = data ?? {};
+    const {target, image, id, name} = data ?? {};
+    if (typeof name === 'string' && name.trim()) {
+      try { channel.postMessage({id,name:await renameRecord(jobId,Mol.safeName(name))}); }
+      catch (error) { channel.postMessage({id,error:error.message}); }
+      return;
+    }
     if (!['START','FINAL'].includes(target) || !(image instanceof Blob) || image.type !== 'image/png') return;
     try {
       await request('https://www.googleapis.com/upload/drive/v3/files/' +
@@ -438,7 +464,8 @@ async function openReaction(jobId, name, originals, images) {
       params.set(key,url);
     }
     if (tab.closed) throw Error('反応経路ビューアを閉じました。');
-    if (images.has('START.png') && images.has('FINAL.png')) connectImageSaver(params,jobId,images);
+    if (images.has('START.png') && images.has('FINAL.png')) params.set('imageSaving','1');
+    connectImageSaver(params,jobId,images);
     tab.location.replace('reaction-viewer.html#' + params);
   } catch (error) {
     for (const url of urls) URL.revokeObjectURL(url);
@@ -453,6 +480,7 @@ const classificationName = get('classificationName');
 const classificationCreate = get('classificationCreate');
 let classificationJob;
 let classificationSaving = false;
+let classificationRenaming = false, classificationFrom = null;
 
 function openClassification(jobId) {
   classificationJob = cards.get(jobId);
@@ -463,6 +491,14 @@ function openClassification(jobId) {
   classificationName.value = '';
   classificationForm.hidden = classificationCreate.disabled = true;
   get('classificationRemove').disabled = !current;
+  classificationRenaming = false;
+  classificationFrom = null;
+  classificationCreate.textContent = '作成して設定';
+  renderClassifications();
+  classificationDialog.showModal();
+}
+
+function renderClassifications() {
   const choices = get('classificationChoices');
   choices.replaceChildren();
   const names = new Set([...cards.values()].map(job => job.appProperties?.classification).filter(Boolean));
@@ -470,10 +506,17 @@ function openClassification(jobId) {
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = name;
-    button.onclick = () => void saveClassification(name);
+    button.onclick = () => {
+      if (classificationSaving) return;
+      if (!classificationRenaming) { void saveClassification(name); return; }
+      classificationFrom = name;
+      classificationName.value = name;
+      classificationForm.hidden = classificationCreate.disabled = false;
+      classificationName.focus();
+      classificationName.select();
+    };
     choices.append(button);
   }
-  classificationDialog.showModal();
 }
 
 async function saveClassification(name) {
@@ -512,14 +555,70 @@ classificationDialog.addEventListener('cancel',event => {
 get('classificationCancel').onclick = () => { if (!classificationSaving) classificationDialog.close(); };
 get('classificationRemove').onclick = () => void saveClassification('');
 get('classificationNew').onclick = () => {
+  if (classificationSaving) return;
+  classificationRenaming = false;
+  classificationFrom = null;
+  classificationName.value = '';
+  classificationCreate.textContent = '作成して設定';
+  classificationCreate.disabled = true;
   classificationForm.hidden = false;
   classificationName.focus();
 };
+get('classificationRename').onclick = () => {
+  if (classificationSaving) return;
+  classificationRenaming = true;
+  classificationFrom = null;
+  classificationForm.hidden = true;
+  classificationCreate.textContent = '更新';
+  get('classificationStatus').textContent = '名前を変更する分類を選んでください。';
+};
+
+async function renameClassification(name) {
+  if (classificationSaving) return;
+  const feedback = get('classificationStatus');
+  if (new TextEncoder().encode(name).length > 100) {
+    feedback.textContent = '分類名が長すぎます。短くしてください。';
+    return;
+  }
+  const from = classificationFrom;
+  classificationFrom = null;
+  classificationForm.hidden = true;
+  classificationSaving = true;
+  feedback.textContent = '更新中…';
+  let count = 0;
+  try {
+    if (name === from) throw Error('同じ名前の分類があります。');
+    const folders = await list("'" + root + "' in parents and mimeType = '" + folderType + "'");
+    if (folders.some(job=>job.appProperties?.classification===name)) throw Error('同じ名前の分類があります。');
+    for (const job of folders.filter(job=>job.appProperties?.classification===from)) {
+      const response = await request(drive + '/files/' + encodeURIComponent(job.id) + '?fields=appProperties',{
+        method:'PATCH',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({appProperties:{classification:name}}),
+      });
+      const {appProperties} = await response.json();
+      const entry = cards.get(job.id);
+      if (entry) {
+        entry.appProperties = appProperties;
+        entry.classificationButton.textContent = '分類：' + name;
+      }
+      count++;
+    }
+    feedback.textContent = count + ' 件の分類名を更新しました。';
+  } catch (error) {
+    feedback.textContent = (count ? count + ' 件更新したところで中断しました。' : '') + error.message;
+  } finally {
+    get('classificationCurrent').textContent = '現在の分類：' + (classificationJob.appProperties?.classification || 'なし');
+    renderClassifications();
+    sortCards();
+    classificationSaving = false;
+  }
+}
+
 classificationName.oninput = () => { classificationCreate.disabled = !classificationName.value.trim(); };
 classificationForm.onsubmit = event => {
   event.preventDefault();
   const name = classificationName.value.trim();
-  if (name) void saveClassification(name);
+  if (name) void (classificationFrom ? renameClassification(name) : saveClassification(name));
 };
 
 const imageObserver = new IntersectionObserver(entries => {
@@ -602,7 +701,11 @@ async function renderRecord(job) {
   open.type = 'button';
   open.textContent = '反応経路を開く';
   open.onclick = () => void openReaction(job.id,job.name,files.get('計算結果'),files);
-  card.onclick = event => { if (!event.target.closest('button')) open.click(); };
+  const title = document.createElement('h3');
+  title.textContent = job.name;
+  title.className = 'colab-record-name';
+  Mol.editName(title,name=>renameRecord(job.id,Mol.safeName(name)),status);
+  card.onclick = event => { if (!event.target.closest('button,input,.colab-record-name')) open.click(); };
   const classificationButton = document.createElement('button');
   classificationButton.type = 'button';
   classificationButton.textContent = job.appProperties?.classification
@@ -613,9 +716,9 @@ async function renderRecord(job) {
   archive.textContent = '結果ZIPをダウンロード';
   archive.disabled = !files.has('計算結果');
   archive.onclick = () => void downloadArchive(job,files.get('計算結果'),archive);
-  card.append(images, info, open, classificationButton, archive);
+  card.append(title, images, info, open, classificationButton, archive);
   const resultDate = config.match(/^結果出力日時: (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/m)?.[1];
-  cards.set(job.id,{...job,card,classificationButton,resultDate});
+  cards.set(job.id,Object.assign(job,{card,title,classificationButton,resultDate}));
   jobs.append(card);
   if (savedCount === undefined && files.has('計算結果')) {
     try { count.textContent = (await countOriginalFiles(files.get('計算結果'))) + 'ファイル'; }

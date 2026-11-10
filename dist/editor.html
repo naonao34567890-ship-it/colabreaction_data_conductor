@@ -58,7 +58,15 @@ const mini=new Mol.VirtualGrid($('mini'),{mini:true,isSelected:id=>id===miniSele
 $('miniOrder').value='tag-name';
 $('miniOrder').onchange=()=>{$('mini').scrollTop=0;miniRefresh();};
 function miniRefresh(){const order=$('miniOrder').value;mini.setData(miniData.sort((a,b)=>Mol.compareDisplayOrder(a,b,order)));$('miniCount').textContent=miniData.length.toLocaleString()+' 分子';}
-function miniChange(m){if(m.type==='added'){for(const a of m.items)if(!miniMap.has(a.id)){miniMap.set(a.id,a);miniData.push(a);}}else if(m.type==='overwritten'){const existing=miniMap.get(m.item.id);if(existing)Object.assign(existing,m.item);}else if(m.type==='deleted'){const ids=new Set(m.ids??[m.id]);for(const id of ids)miniMap.delete(id);miniData=miniData.filter(a=>!ids.has(a.id));if(ids.has(miniSelected)){miniSelected=null;$('add').disabled=true;}}miniRefresh();}
+function miniChange(m){if(m.type==='renamed'){
+ const item=miniMap.get(m.id);
+ if(item)item.name=m.name;
+ if(molecule?.id===m.id){
+  molecule.name=m.name;
+  $('title').textContent=m.name;
+  document.title=m.name+' — 分子エディタ';
+ }
+}else if(m.type==='added'){for(const a of m.items)if(!miniMap.has(a.id)){miniMap.set(a.id,a);miniData.push(a);}}else if(m.type==='overwritten'){const existing=miniMap.get(m.item.id);if(existing)Object.assign(existing,m.item);}else if(m.type==='deleted'){const ids=new Set(m.ids??[m.id]);for(const id of ids)miniMap.delete(id);miniData=miniData.filter(a=>!ids.has(a.id));if(ids.has(miniSelected)){miniSelected=null;$('add').disabled=true;}}miniRefresh();}
 const channel=new BroadcastChannel('molecular-xyz');channel.onmessage=e=>miniChange(e.data);Mol.metadata().then(items=>miniChange({type:'added',items})).catch(e=>notice(e.message));
 $('add').onclick=async()=>{if(!miniSelected||!molecule)return;try{const m=await Mol.get('body',miniSelected);if(!m)throw Error('分子が削除されています');finishKeys();const before=snapshot(),center=Mol.centroid(atoms),incoming=Mol.centroid(m.atoms);let r1=0,r2=0;for(const a of atoms)r1=Math.max(r1,Math.hypot(a.x-center.x,a.y-center.y,a.z-center.z));for(const a of m.atoms)r2=Math.max(r2,Math.hypot(a.x-incoming.x,a.y-incoming.y,a.z-incoming.z));const offset=r1+r2+3,start=atoms.length;
  for(const a of m.atoms)atoms.push({el:a.el,x:a.x-incoming.x+center.x+offset,y:a.y-incoming.y+center.y,z:a.z-incoming.z+center.z});selected=new Set(atoms.slice(start).map((_,i)=>start+i));point=null;push(before);graphics.fit(camera,atoms,controls.target);controls.update();notice(`${m.name} を追加しました。原子 #${start+1}〜#${atoms.length} を選択しています。`);}catch(e){notice(e.message);}};
@@ -111,7 +119,12 @@ function local(e){const r=renderer.domElement.getBoundingClientRect();return{x:e
 function finishRotation(){if(drag?.mode==='rotate'&&drag.changed){push(drag.before);drag.changed=false;}if(drag?.mode==='rotate')drag.mode='finished';}
 function inside(p,poly){let yes=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const a=poly[i],b=poly[j];if((a.y>p.y)!==(b.y>p.y)&&p.x<(b.x-a.x)*(p.y-a.y)/(b.y-a.y)+a.x)yes=!yes;}return yes;}
 function drawLasso(){const c=$('lassoCanvas'),ctx=c.getContext('2d');ctx.clearRect(0,0,c.width,c.height);if(!drag?.path)return;ctx.beginPath();drag.path.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();ctx.fillStyle='#62d6bf33';ctx.fill();ctx.strokeStyle='#62d6bf';ctx.setLineDash([5,4]);ctx.stroke();}
-async function init(){try{const id=new URLSearchParams(location.search).get('id');if(!id)throw Error('ライブラリで分子を選び、「エディタで開く」を押してください');molecule=await Mol.get('body',id);if(!molecule)throw Error('指定した分子は見つかりません');atoms=molecule.atoms.map(a=>({...a}));$('optimizeGfn1').disabled=$('optimize').disabled=atoms.length<2;edited=!!molecule.edited;update();$('title').textContent=molecule.name;document.title=molecule.name+' — 分子エディタ';graphics=await Mol.graphics;const {T,OrbitControls}=graphics;scene=new T.Scene();scene.background=new T.Color(0x101515);graphics.light(scene);camera=new T.PerspectiveCamera(40,1,.01,2000);renderer=new T.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));$('view').prepend(renderer.domElement);controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=false;controls.mouseButtons={LEFT:T.MOUSE.ROTATE,MIDDLE:T.MOUSE.PAN,RIGHT:null};raycaster=new T.Raycaster();pointer=new T.Vector2();
+async function init(){try{const id=new URLSearchParams(location.search).get('id');if(!id)throw Error('ライブラリで分子を選び、「エディタで開く」を押してください');molecule=await Mol.get('body',id);if(!molecule)throw Error('指定した分子は見つかりません');atoms=molecule.atoms.map(a=>({...a}));$('optimizeGfn1').disabled=$('optimize').disabled=atoms.length<2;edited=!!molecule.edited;update();$('title').textContent=molecule.name;document.title=molecule.name+' — 分子エディタ';if(!molecule.builtin&&!id.startsWith('builtin-'))Mol.editName($('title'),async name=>{
+ const change=await Mol.renameMolecule(id,Mol.safeName(name));
+ miniChange(change);
+ Mol.notify(change);
+ return change.name;
+},notice);graphics=await Mol.graphics;const {T,OrbitControls}=graphics;scene=new T.Scene();scene.background=new T.Color(0x101515);graphics.light(scene);camera=new T.PerspectiveCamera(40,1,.01,2000);renderer=new T.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));$('view').prepend(renderer.domElement);controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=false;controls.mouseButtons={LEFT:T.MOUSE.ROTATE,MIDDLE:T.MOUSE.PAN,RIGHT:null};raycaster=new T.Raycaster();pointer=new T.Vector2();
  const numberCanvas=$('atomNumberCanvas'),numberButton=$('atomNumbers');
  const numberContext=numberCanvas.getContext('2d'),projected=new T.Vector3();
  let showNumbers=false,numbersDirty=true;

@@ -10,6 +10,8 @@
 .colab-group-heading { padding: 6px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
 #colabJobs { display: grid; gap: 12px; }
 .colab-job { padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
+.colab-record-name { margin: 0 0 8px; overflow-wrap: anywhere; }
+#classificationCreate:enabled { background:#a82b40; color:white; border-color:#e27082; }
 .colab-images { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .colab-meta { display: flex; gap: 16px; overflow-x: auto; white-space: nowrap; padding: 8px 0; }
 .colab-images figure { min-width: 0; margin: 0; }
@@ -65,6 +67,7 @@
 <div id="classificationChoices"></div>
 <div class="dialog-actions">
 <button type="button" id="classificationNew">新規に作る</button>
+<button type="button" id="classificationRename">名前を変更する</button>
 <button type="button" id="classificationRemove" class="danger">分類を外す</button>
 <button type="button" id="classificationCancel">キャンセル</button>
 </div>
@@ -93,6 +96,7 @@
 <div id="tagList"></div>
 <div id="tagActions" class="dialog-actions">
 <button type="button" id="tagNew">新規に作る</button>
+<button type="button" id="tagRename">名前を変更する</button>
 <button type="button" id="tagDelete" aria-pressed="false">タグの削除</button>
 <button type="button" id="tagCancel">キャンセル</button>
 </div>
@@ -121,14 +125,19 @@ const grid=new Mol.VirtualGrid($('grid'),{scrollport:$('libraryScroll'),onSelect
  if(selected.has(m.id))selected.delete(m.id);
  else selected.add(m.id);
  selectionUI();
-},isSelected:id=>selected.has(id),onOpen:openEditor,onDelete:m=>deleteFiles([m.id])});
+},isSelected:id=>selected.has(id),onOpen:openEditor,onRename:async(m,name)=>{
+ const change=await Mol.renameMolecule(m.id,Mol.safeName(name));
+ applyChange(change);
+ Mol.notify(change);
+ return change.name;
+},onRenameError:notice,onDelete:m=>deleteFiles([m.id])});
 function notice(s){$('notice').textContent=s;}
 function openEditor(m){window.open('editor.html?id='+encodeURIComponent(m.id),'_blank','noopener');}
 function selectionUI(){ $('selected').textContent=selected.size.toLocaleString()+' 選択中';$('download').disabled=!selected.size||exporting||!!active;$('open').disabled=selected.size!==1;$('tagSelected').disabled=![...selected].some(id=>metaMap.has(id)&&!metaMap.get(id).builtin);$('deleteSelected').disabled=deleting||!!active||exporting||![...selected].some(id=>!metaMap.get(id)?.builtin);}
 $('libraryOrder').value='tag-name';
 $('libraryOrder').onchange=()=>{$('libraryScroll').scrollTop=0;refresh();};
 function refresh(){const order=$('libraryOrder').value;grid.setData(meta.sort((a,b)=>Mol.compareDisplayOrder(a,b,order)));$('count').textContent=meta.length.toLocaleString()+' 分子';$('empty').hidden=!!meta.length;$('empty').style.display=meta.length?'none':'flex';selectionUI();}
-let metaMap=new Map();function applyChange(m){if(m.type==='added'){for(const item of m.items){if(!metaMap.has(item.id)){meta.push(item);metaMap.set(item.id,item);}}}else if(m.type==='overwritten'){const existing=metaMap.get(m.item.id);if(existing)Object.assign(existing,{revision:m.item.revision,count:m.item.count,bytes:m.item.bytes,thumb:false});}else if(m.type==='tags-updated'){for(const item of m.items){const existing=metaMap.get(item.id);if(existing)existing.tags=item.tags;}}else if(m.type==='deleted'){const ids=new Set(m.ids??[m.id]);for(const id of ids){metaMap.delete(id);selected.delete(id);}meta=meta.filter(x=>!ids.has(x.id));}refresh();}
+let metaMap=new Map();function applyChange(m){if(m.type==='added'){for(const item of m.items){if(!metaMap.has(item.id)){meta.push(item);metaMap.set(item.id,item);}}}else if(m.type==='overwritten'){const existing=metaMap.get(m.item.id);if(existing)Object.assign(existing,{revision:m.item.revision,count:m.item.count,bytes:m.item.bytes,thumb:false});}else if(m.type==='renamed'){const existing=metaMap.get(m.id);if(existing)existing.name=m.name;}else if(m.type==='tags-updated'){for(const item of m.items){const existing=metaMap.get(item.id);if(existing)existing.tags=item.tags;}}else if(m.type==='deleted'){const ids=new Set(m.ids??[m.id]);for(const id of ids){metaMap.delete(id);selected.delete(id);}meta=meta.filter(x=>!ids.has(x.id));}refresh();}
 channel.onmessage=e=>applyChange(e.data);Mol.metadata().then(v=>{for(const m of v)if(!metaMap.has(m.id)){meta.push(m);metaMap.set(m.id,m);}refresh();}).catch(e=>notice('保存領域を開けません: '+e.message));
 $('all').onclick=()=>{selected=new Set(meta.map(m=>m.id));selectionUI();grid.render();};$('none').onclick=()=>{selected.clear();selectionUI();grid.render();};$('open').onclick=()=>{const m=metaMap.get(selected.values().next().value);if(m)openEditor(m);};
 async function deleteFiles(ids) {
