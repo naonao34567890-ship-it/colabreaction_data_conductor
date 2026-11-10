@@ -35,11 +35,11 @@ const ReactionStore = (() => {
    };
   });
  }
- function create(slot, structure, reactionName) {
+ function createReaction(structures, reactionName) {
   const date = new Date();
   const name = [date.getHours(),date.getMinutes()].map(n=>String(n).padStart(2,'0')).join('');
-  const value = {id:crypto.randomUUID(), createdAt:date.getTime(), name:reactionName || name, [slot]:structure};
+  const value = {id:crypto.randomUUID(), createdAt:date.getTime(), name:reactionName || name, ...structures};
   return transaction('readwrite',(store,done)=>{ store.add(value); done(value); });
  }
- return {read,update,create};
+ return {read,update,create:(slot,structure,name)=>createReaction({[slot]:structure},name),createReaction};
 })();

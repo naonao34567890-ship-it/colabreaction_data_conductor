@@ -278,6 +278,14 @@ $('downloadFrame').onclick = async () => {
 };
 $('importFrame').onclick = () => registerFrames([[current+1,current+1]]);
 let lastReactionId;
+function endpointRecord(block,name,slot) {
+  return {
+    name:name+'_'+slot, atoms:block.atoms,
+    raw:Mol.calculationOutput(block), comment:'', edited:true,
+    revision:crypto.randomUUID(),
+  };
+}
+
 async function saveEndpoint(finish, openEditor = false) {
   if (busy || !currentBlock) return;
   const tab = openEditor ? window.open('about:blank','_blank') : null;
@@ -288,11 +296,7 @@ async function saveEndpoint(finish, openEditor = false) {
   try {
     const name = Mol.safeName(baseName.replace(/[_＿](?:START|FINISH)$/i,''));
     const slot = finish ? 'FINISH' : 'START';
-    const structure = {
-      name:name+'_'+slot, atoms:currentBlock.atoms,
-      raw:Mol.calculationOutput(currentBlock), comment:'', edited:true,
-      revision:crypto.randomUUID(),
-    };
+    const structure = endpointRecord(currentBlock,name,slot);
     let saved;
     if (finish) {
       let target = lastReactionId && await ReactionStore.read(lastReactionId);
@@ -324,13 +328,51 @@ $('importFinish').onclick = () => void saveEndpoint(true);
 $('importFrameEdit').onclick = () => void saveEndpoint(false,true);
 $('importAll').onclick = () => registerFrames();
 $('importMany').onclick = () => {
-  $('ranges').value = '';
+  if (reaction) {
+    $('startFrame').max = $('finishFrame').max = frames.length;
+    $('startFrame').value = 1;
+    $('finishFrame').value = frames.length;
+  } else $('ranges').value = '';
   $('rangeError').textContent = '';
   $('rangesDialog').showModal();
 };
 $('rangeClose').onclick = () => $('rangesDialog').close();
-$('rangesForm').onsubmit = event => {
+$('rangesForm').onsubmit = async event => {
   event.preventDefault();
+  if (reaction) {
+    if (busy) return;
+    const first = $('startFrame').valueAsNumber, last = $('finishFrame').valueAsNumber;
+    if (![first,last].every(n=>Number.isInteger(n)&&n>=1&&n<=frames.length) || first===last) {
+      $('rangeError').textContent = '範囲内の異なるフレーム番号を指定してください。';
+      return;
+    }
+    busy = true;
+    syncButtons();
+    const submit = event.currentTarget.querySelector('[type=submit]');
+    submit.disabled = true;
+    $('rangeError').textContent = '';
+    try {
+      const start = await readBlock(first-1), finish = await readBlock(last-1);
+      if (start.atoms.length!==finish.atoms.length || start.atoms.some((atom,i)=>atom.el!==finish.atoms[i].el)) {
+        throw Error('出発物と生成物の原子数または元素の並びが一致しません。');
+      }
+      const name = Mol.safeName(baseName.replace(/[_＿](?:START|FINISH)$/i,''));
+      const saved = await ReactionStore.createReaction({
+        START:endpointRecord(start,name,'START'),
+        FINISH:endpointRecord(finish,name,'FINISH'),
+      },name);
+      lastReactionId = saved.id;
+      $('rangesDialog').close();
+      status(saved.name+' を反応ライブラリに保存しました（#'+first+' → #'+last+'）。');
+    } catch (error) {
+      $('rangeError').textContent = error.message;
+    } finally {
+      submit.disabled = false;
+      busy = false;
+      syncButtons();
+    }
+    return;
+  }
   try {
     const ranges = Mol.parseFrameRanges($('ranges').value,frames.length);
     $('rangesDialog').close();

@@ -38,7 +38,7 @@
 </div>
 <button id="downloadFrame" disabled>この構造をダウンロード</button>
 <button id="importAll" disabled>すべての構造を取り込み</button>
-<button id="importMany" disabled>構造を複数選んで取り込み</button>
+<button id="importMany" disabled>反応の始点・終点を選ぶ</button>
 </div>
 <p id="slideStatus" class="status" role="status">XYZを読み込み中…</p>
 </header>
@@ -57,10 +57,11 @@
 </div>
 <dialog id="rangesDialog">
 <form id="rangesForm">
-<h2>構造を複数選んで取り込み</h2>
-<label>フレーム番号<input id="ranges" placeholder="例 1-4,5-15" required></label>
+<h2>反応の始点・終点を選ぶ</h2>
+<label>出発物（START）の番号<input id="startFrame" type="number" min="1" step="1" required></label>
+<label>生成物（FINISH）の番号<input id="finishFrame" type="number" min="1" step="1" required></label>
 <p id="rangeError" role="alert"></p>
-<div class="dialog-actions"><button type="button" id="rangeClose">戻る</button><button class="primary" type="submit">取り込み</button></div>
+<div class="dialog-actions"><button type="button" id="rangeClose">戻る</button><button class="primary" type="submit">反応として保存</button></div>
 </form>
 </dialog>
 <script src="worker.js"></script>
