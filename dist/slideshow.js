@@ -63,6 +63,7 @@ function syncButtons() {
   if (reaction) {
     $('saveStartImage').disabled = $('saveFinalImage').disabled = unavailable || !imageChannel || !captureImage || imageSaving;
   }
+  if (reaction) $('importFrameEdit').disabled = unavailable;
   for (const id of ['numbers','importFrame','downloadFrame','importAll','importMany']) {
     $(id).disabled = unavailable;
   }
@@ -235,7 +236,11 @@ async function registerFrames(ranges) {
   if (busy) return;
   busy = true;
   syncButtons();
-  const job = new MolJobs.ImportJob(() => status('取り込み中 · '+job.stats.registered+' 件登録済み'));
+  let firstSaved;
+  const job = new MolJobs.ImportJob(event => {
+    if (event.type === 'saved') firstSaved ??= event.items[0];
+    status('取り込み中 · '+job.stats.registered+' 件登録済み');
+  });
   try {
     for (let i=0;i<frames.length;i++) {
       if (ranges && !ranges.some(([first,last]) => i+1>=first && i+1<=last)) continue;
@@ -244,6 +249,7 @@ async function registerFrames(ranges) {
     }
     await job.flush();
     status(job.stats.registered+' 件をライブラリに取り込みました。');
+    return firstSaved;
   } catch (error) {
     status('取り込みを中断しました。登録済み '+job.stats.registered+' 件。'+(job.stats.fatal || error.message));
   } finally {
@@ -270,6 +276,20 @@ $('downloadFrame').onclick = async () => {
   } catch (error) {status(error.message);}
 };
 $('importFrame').onclick = () => registerFrames([[current+1,current+1]]);
+if (reaction) $('importFrameEdit').onclick = async () => {
+  if (busy || !currentBlock) return;
+  const tab = window.open('about:blank','_blank');
+  if (!tab) {
+    status('エディタのタブを開けませんでした。ポップアップの設定を確認してください。');
+    return;
+  }
+  tab.opener = null;
+  tab.document.body.textContent = '構造をライブラリに取り込み中…';
+  const frame = current+1;
+  const saved = await registerFrames([[frame,frame]]);
+  if (!saved) { tab.close(); return; }
+  if (!tab.closed) tab.location.replace(new URL('editor.html?id='+encodeURIComponent(saved.id),location.href));
+};
 $('importAll').onclick = () => registerFrames();
 $('importMany').onclick = () => {
   $('ranges').value = '';
