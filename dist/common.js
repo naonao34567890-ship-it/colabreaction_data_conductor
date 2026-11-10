@@ -302,7 +302,7 @@ Mol.confirmFileAction = function(title, description, label) {
 Mol.downloadBlob=function(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);};
 function readThumbnailSettings(storageKey){
  const {mode,generation}=JSON.parse(localStorage.getItem(storageKey)||'{"mode":"polyhedra","generation":"initial"}');
- return {mode,generation:mode==='polyhedra'?'outlined-phosphate:'+generation:generation};
+ return {mode,generation:mode==='polyhedra'?'outlined-on:'+generation:generation};
 }
 Mol.thumbnailMode = (select,key,reset,redraw) => {
  const storageKey='xyz-thumbnail-'+key;
@@ -338,23 +338,19 @@ Mol.displayMode = select => {
 Mol.graphics=(async()=>{const T=await import('three');const {OrbitControls}=await import('three/addons/controls/OrbitControls.js');
  function dispose(group){group.traverse(o=>{o.geometry?.dispose();if(o.material){for(const m of Array.isArray(o.material)?o.material:[o.material]){m.map?.dispose();m.dispose();}}});}
  const {ConvexGeometry}=await import('three/addons/geometries/ConvexGeometry.js');
- const metals=new Set('Sc Ti V Cr Mn Fe Co Ni Cu Zn Y Zr Nb Mo Tc Ru Rh Pd Ag Cd La Hf Ta W Re Os Ir Pt Au Hg Ce Pr Nd Sm Eu Gd Tb Dy Ho Er Tm Yb Lu U'.split(' '));
  const spaceRadii={H:1.20,C:1.70,N:1.55,O:1.52,F:1.47,P:1.80,S:1.80,Cl:1.75,Br:1.85,I:1.98,Mo:2.17,W:2.10,V:2.07};
  function polyhedra(group,atoms,pairs){
   const neighbors=new Map();
   for(const [i,j] of pairs){
    for(const [metal,ligand] of [[i,j],[j,i]]){
-    if((!metals.has(atoms[metal].el)&&atoms[metal].el!=='P')||atoms[ligand].el!=='O')continue;
+    if(atoms[ligand].el!=='O'&&atoms[ligand].el!=='N')continue;
     if(!neighbors.has(metal))neighbors.set(metal,[]);
     neighbors.get(metal).push(ligand);
    }
   }
   const replaced=new Map();
   for(const [metal,ligands] of neighbors){
-   const phosphate=atoms[metal].el==='P';
-   if(phosphate ? ligands.length!==4 || pairs.some(([i,j])=>
-    (i===metal&&atoms[j].el!=='O')||(j===metal&&atoms[i].el!=='O'))
-    : ligands.length<4||ligands.length>9)continue;
+   if(ligands.length<4)continue;
    const points=ligands.map(i=>new T.Vector3(atoms[i].x,atoms[i].y,atoms[i].z));
    const vectors=points.slice(1).map(p=>p.clone().sub(points[0]));
    const axis=vectors.find(v=>v.lengthSq()>1e-6);
