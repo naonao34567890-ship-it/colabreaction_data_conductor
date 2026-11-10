@@ -1,15 +1,26 @@
 'use strict';
 
 const editorParams = new URLSearchParams(location.search);
-let reactionId = editorParams.get('reaction');
+const openedReactionId = editorParams.get('reaction');
+const openedReactionSlot = editorParams.get('slot');
+let reactionId = openedReactionId;
 
 async function loadReactionStructure() {
- const reaction = await ReactionStore.read(reactionId);
- const slot = editorParams.get('slot');
+ const reaction = await ReactionStore.read(openedReactionId);
+ const slot = openedReactionSlot;
  if (!reaction || !['START','FINISH'].includes(slot) || !reaction[slot]) {
   throw Error('指定した反応構造は見つかりません。');
  }
  return {...reaction[slot],name:reaction.name+'_'+slot};
+}
+
+async function overwriteReactionStructure(record, revision) {
+ const slot = openedReactionSlot;
+ const structure = {...record,revision:crypto.randomUUID()};
+ delete structure.id;
+ const saved = await ReactionStore.update(openedReactionId,{[slot]:structure},current=>
+  !!current[slot] && current[slot].revision===revision);
+ return {name:saved.name+'_'+slot,revision:structure.revision};
 }
 
 let savedStartName;

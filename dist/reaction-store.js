@@ -28,7 +28,7 @@ const ReactionStore = (() => {
    const request = store.get(id);
    request.onsuccess = () => {
     if (!request.result) { abort('反応が見つかりません。'); return; }
-    if (check && !check(request.result)) { abort("別のタブで生成物が更新されました。もう一度操作してください。"); return; }
+    if (check && !check(request.result)) { abort("別のタブで構造が更新されました。開き直してからもう一度操作してください。"); return; }
     const value = {...request.result,...fields};
     store.put(value);
     done(value);

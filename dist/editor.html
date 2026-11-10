@@ -33,7 +33,7 @@ function push(before){history.push(before);if(history.length>60)history.shift();
 function restore(s){atoms=s.atoms;selected=new Set(s.selected);point=s.point;moieties=s.moieties;edited=s.edited;dirty=true;update();}
 function undo(){if(drag?.mode==='rotate'){finishRotation();drag=null;controls.enabled=true;}finishKeys();if(!history.length)return;future.push(snapshot());restore(history.pop());}function redo(){if(drag?.mode==='rotate'){finishRotation();drag=null;controls.enabled=true;}finishKeys();if(!future.length)return;history.push(snapshot());restore(future.pop());}
 function update(){if(point!==null&&!selected.has(point))point=null;$('selectionInfo').textContent=selected.size+' 原子を選択';$('pointInfo').textContent=point===null?'特別な点：未指定':`特別な点：#${point+1} ${atoms[point].el}`;$('lineInfo').textContent=`原子数 ${atoms.length} / 行数 ${atoms.length+2} · 選択 ${selected.size}`+(molecule&&molecule.originalLines>molecule.baseLines?` / 元ブロック全体 ${molecule.originalLines}行`:'')+(edited?' · 編集中':'');
- for(let k=0;k<2;k++){const m=moieties[k];$('m'+(k+1)).textContent=`${k+1} · ${m.ids.length?m.ids.length+'原子（'+m.ids.slice(0,10).map(i=>'#'+(i+1)).join(', ')+(m.ids.length>10?'…':'')+'）':'未登録'} / 特別な点 ${m.point===null?'なし':'#'+(m.point+1)}`;}$('swap').disabled=!moieties[0].ids.length||!moieties[1].ids.length;$('undo').disabled=!history.length;$('redo').disabled=!future.length;$('register1').disabled=$('register2').disabled=$('deleteSelection').disabled=!selected.size;$('optimizeGfn1').disabled=$('optimize').disabled=atoms.length<2;$('save').disabled=$('direct').disabled=!atoms.length;$('overwrite').disabled=overwriting||!molecule?.id||molecule.id.startsWith('builtin-')||!atoms.length||!edited;dirty=true;}
+ for(let k=0;k<2;k++){const m=moieties[k];$('m'+(k+1)).textContent=`${k+1} · ${m.ids.length?m.ids.length+'原子（'+m.ids.slice(0,10).map(i=>'#'+(i+1)).join(', ')+(m.ids.length>10?'…':'')+'）':'未登録'} / 特別な点 ${m.point===null?'なし':'#'+(m.point+1)}`;}$('swap').disabled=!moieties[0].ids.length||!moieties[1].ids.length;$('undo').disabled=!history.length;$('redo').disabled=!future.length;$('register1').disabled=$('register2').disabled=$('deleteSelection').disabled=!selected.size;$('optimizeGfn1').disabled=$('optimize').disabled=atoms.length<2;$('save').disabled=$('direct').disabled=!atoms.length;$('overwrite').disabled=overwriting||!canOverwriteStructure()||!atoms.length||!edited;dirty=true;}
 function finishKeys(){keys.clear();if(keySnapshot){push(keySnapshot);keySnapshot=null;}}
 function deleteSelection() {
   if (!selected.size || drag) return;
@@ -83,8 +83,11 @@ function editedRecord(name) {
  record.raw=new Blob([Mol.standard(record)],{type:'chemical/x-xyz'});
  return record;
 }
+function canOverwriteStructure(){
+ return !!molecule && (!!openedReactionId || (!!molecule.id && !molecule.id.startsWith('builtin-')));
+}
 $('overwrite').onclick=async()=>{
- if(overwriting||!molecule||!atoms.length||!edited)return;
+ if(overwriting||!canOverwriteStructure()||!atoms.length||!edited)return;
  finishKeys();
  finishRotation();
  const revision=molecule.revision;
@@ -94,16 +97,22 @@ $('overwrite').onclick=async()=>{
  overwriting=true;
  update();
  try{
-  const item=await Mol.overwrite(record,revision);
-  molecule={...record,revision:item.revision};
+  const item=openedReactionId?await overwriteReactionStructure(record,revision):await Mol.overwrite(record,revision);
+  molecule={...record,name:item.name,revision:item.revision};
+  if(openedReactionId&&!savedStartName){
+   $('title').textContent=item.name;
+   document.title=item.name+' — 分子エディタ';
+  }
   for(const state of [...history,...future])state.edited=true;
   edited=atoms.length!==record.atoms.length||atoms.some(({el,x,y,z},i)=>{
    const saved=record.atoms[i];
    return el!==saved.el||x!==saved.x||y!==saved.y||z!==saved.z;
   });
-  const change={type:'overwritten',item};
-  miniChange(change);
-  Mol.notify(change);
+  if(!openedReactionId){
+   const change={type:'overwritten',item};
+   miniChange(change);
+   Mol.notify(change);
+  }
   notice('「'+item.name+'」を上書き保存しました。');
  }catch(error){notice(error.message);}
  finally{overwriting=false;update();}
@@ -131,7 +140,7 @@ else{
  if(!id)throw Error('ライブラリで分子を選び、「エディタで開く」を押してください');
  molecule=await Mol.get('body',id);
 }
-if(!molecule)throw Error('指定した分子は見つかりません');syncReactionSave();atoms=molecule.atoms.map(a=>({...a}));$('optimizeGfn1').disabled=$('optimize').disabled=atoms.length<2;edited=!!molecule.edited;update();$('title').textContent=molecule.name;document.title=molecule.name+' — 分子エディタ';if(id&&!molecule.builtin&&!id.startsWith('builtin-'))Mol.editName($('title'),async name=>{
+if(!molecule)throw Error('指定した分子は見つかりません');syncReactionSave();atoms=molecule.atoms.map(a=>({...a}));$('optimizeGfn1').disabled=$('optimize').disabled=atoms.length<2;edited=!openedReactionId&&!!molecule.edited;update();$('title').textContent=molecule.name;document.title=molecule.name+' — 分子エディタ';if(id&&!molecule.builtin&&!id.startsWith('builtin-'))Mol.editName($('title'),async name=>{
  const change=await Mol.renameMolecule(id,Mol.safeName(name));
  miniChange(change);
  Mol.notify(change);
