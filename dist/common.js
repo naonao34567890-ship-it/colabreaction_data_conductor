@@ -300,14 +300,54 @@ Mol.confirmFileAction = function(title, description, label) {
  });
 };
 Mol.downloadBlob=function(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);};
+Mol.displayMode = select => {
+ for (const [value,label] of [
+  ['polyhedra','ボール＆スティック（金属：多面体）'],
+  ['ball','ボール＆スティック'],
+  ['space','空間充填'],
+ ]) select.add(new Option(label,value));
+};
 Mol.graphics=(async()=>{const T=await import('three');const {OrbitControls}=await import('three/addons/controls/OrbitControls.js');
  function dispose(group){group.traverse(o=>{o.geometry?.dispose();if(o.material){for(const m of Array.isArray(o.material)?o.material:[o.material]){m.map?.dispose();m.dispose();}}});}
- function model(atoms,selected=new Set(),point=null,moieties=[]){const group=new T.Group(),low=atoms.length>500,moietySets=moieties.map(m=>new Set(m.ids));
+ const {ConvexGeometry}=await import('three/addons/geometries/ConvexGeometry.js');
+ const metals=new Set('Sc Ti V Cr Mn Fe Co Ni Cu Zn Y Zr Nb Mo Tc Ru Rh Pd Ag Cd La Hf Ta W Re Os Ir Pt Au Hg Ce Pr Nd Sm Eu Gd Tb Dy Ho Er Tm Yb Lu U'.split(' '));
+ const spaceRadii={H:1.20,C:1.70,N:1.55,O:1.52,F:1.47,P:1.80,S:1.80,Cl:1.75,Br:1.85,I:1.98,Mo:2.17,W:2.10,V:2.07};
+ function polyhedra(group,atoms,pairs){
+  const neighbors=new Map();
+  for(const [i,j] of pairs){
+   for(const [metal,ligand] of [[i,j],[j,i]]){
+    if(!metals.has(atoms[metal].el)||atoms[ligand].el!=='O')continue;
+    if(!neighbors.has(metal))neighbors.set(metal,[]);
+    neighbors.get(metal).push(ligand);
+   }
+  }
+  const replaced=new Map();
+  for(const [metal,ligands] of neighbors){
+   if(ligands.length<4||ligands.length>9)continue;
+   const points=ligands.map(i=>new T.Vector3(atoms[i].x,atoms[i].y,atoms[i].z));
+   const vectors=points.slice(1).map(p=>p.clone().sub(points[0]));
+   const axis=vectors.find(v=>v.lengthSq()>1e-6);
+   if(!axis)continue;
+   const normals=vectors.map(v=>new T.Vector3().crossVectors(axis,v));
+   if(!normals.some(n=>vectors.some(v=>Math.abs(n.dot(v))>1e-3)))continue;
+   const geometry=new ConvexGeometry(points);
+   const color=Mol.elements[atoms[metal].el].color;
+   const faces=new T.Mesh(geometry,new T.MeshStandardMaterial({color,transparent:true,opacity:.38,depthWrite:false,side:T.DoubleSide}));
+   group.add(faces);
+   replaced.set(metal,new Set(ligands));
+  }
+  return pairs.filter(([i,j])=>!replaced.get(i)?.has(j)&&!replaced.get(j)?.has(i));
+ }
+ function model(atoms,selected=new Set(),point=null,moieties=[],mode='ball'){const group=new T.Group(),low=atoms.length>500,moietySets=moieties.map(m=>new Set(m.ids));
   const spheres=new T.InstancedMesh(new T.SphereGeometry(1,low?8:20,low?6:14),new T.MeshStandardMaterial({roughness:.55}),atoms.length),dummy=new T.Object3D();
-  const halos=[];atoms.forEach((a,i)=>{const e=Mol.elements[a.el];dummy.position.set(a.x,a.y,a.z);dummy.scale.setScalar(Math.max(.19,Math.min(.48,e.r*.4))*(selected.has(i)?1.22:1));dummy.updateMatrix();spheres.setMatrixAt(i,dummy.matrix);spheres.setColorAt(i,new T.Color(e.color));let color=null;if(moietySets[0]?.has(i))color=0x3895ee;if(moietySets[1]?.has(i))color=0xf09c35;if(selected.has(i)&&color===null)color=0x10bfa3;if(point===i)color=0xe027b6;if(color!==null)halos.push({a,color,scale:dummy.scale.x*1.35});});group.add(spheres);group.userData.spheres=spheres;
+  const halos=[];atoms.forEach((a,i)=>{const e=Mol.elements[a.el];dummy.position.set(a.x,a.y,a.z);dummy.scale.setScalar((mode==='space'?(spaceRadii[a.el]??Math.max(1.5,e.r*1.35)):Math.max(.19,Math.min(.48,e.r*.4)))*(selected.has(i)?1.22:1));dummy.updateMatrix();spheres.setMatrixAt(i,dummy.matrix);spheres.setColorAt(i,new T.Color(e.color));let color=null;if(moietySets[0]?.has(i))color=0x3895ee;if(moietySets[1]?.has(i))color=0xf09c35;if(selected.has(i)&&color===null)color=0x10bfa3;if(point===i)color=0xe027b6;if(color!==null)halos.push({a,color,scale:dummy.scale.x*1.35});});group.add(spheres);group.userData.spheres=spheres;
   if(halos.length){const halo=new T.InstancedMesh(new T.SphereGeometry(1,12,8),new T.MeshBasicMaterial({wireframe:true,transparent:true,opacity:.6}),halos.length);halos.forEach((h,i)=>{dummy.position.set(h.a.x,h.a.y,h.a.z);dummy.scale.setScalar(h.scale);dummy.updateMatrix();halo.setMatrixAt(i,dummy.matrix);halo.setColorAt(i,new T.Color(h.color));});group.add(halo);}
-  const pairs=Mol.bonds(atoms),sticks=new T.InstancedMesh(new T.CylinderGeometry(.075,.075,1,low?5:9),new T.MeshStandardMaterial({roughness:.65}),pairs.length*2),up=new T.Vector3(0,1,0),v1=new T.Vector3(),v2=new T.Vector3(),direction=new T.Vector3();
+  if(mode!=='space'){
+  const bonds=Mol.bonds(atoms);
+  const pairs=mode==='polyhedra'?polyhedra(group,atoms,bonds):bonds;
+  const sticks=new T.InstancedMesh(new T.CylinderGeometry(.075,.075,1,low?5:9),new T.MeshStandardMaterial({roughness:.65}),pairs.length*2),up=new T.Vector3(0,1,0),v1=new T.Vector3(),v2=new T.Vector3(),direction=new T.Vector3();
   pairs.forEach(([i,j],k)=>{v1.set(atoms[i].x,atoms[i].y,atoms[i].z);v2.set(atoms[j].x,atoms[j].y,atoms[j].z);direction.subVectors(v2,v1);const len=direction.length();dummy.quaternion.setFromUnitVectors(up,direction.normalize());dummy.scale.set(1,len/2,1);for(let half=0;half<2;half++){dummy.position.copy(v1).lerp(v2,half?.75:.25);dummy.updateMatrix();sticks.setMatrixAt(k*2+half,dummy.matrix);sticks.setColorAt(k*2+half,new T.Color(Mol.elements[atoms[half?j:i].el].color));}});group.add(sticks);
+  }
   if(point!==null&&atoms[point]){const c=document.createElement('canvas');c.width=128;c.height=64;const ctx=c.getContext('2d');ctx.fillStyle='#be168f';ctx.font='bold 32px sans-serif';ctx.fillText('★ '+(point+1),4,42);const s=new T.Sprite(new T.SpriteMaterial({map:new T.CanvasTexture(c),depthTest:false}));s.position.set(atoms[point].x,atoms[point].y+.8,atoms[point].z);s.scale.set(1.3,.65,1);group.add(s);}
   return group;
  }

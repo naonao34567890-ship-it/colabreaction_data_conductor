@@ -10,6 +10,8 @@ let currentBlock = null;
 let busy = true;
 let showNumbers = false;
 let drawStructure = () => {};
+Mol.displayMode($('displayMode'));
+$('displayMode').onchange = () => { if (currentBlock) drawStructure(true); };
 let baseName = 'trajectory';
 let reference = -1;
 let plottedPoints = [];
@@ -182,7 +184,7 @@ async function setupView() {
   drawStructure = rebuild => {
     if (rebuild && currentBlock) {
       if (model) {scene.remove(model);graphics.dispose(model);}
-      model = graphics.model(currentBlock.atoms);
+      model = graphics.model(currentBlock.atoms,undefined,undefined,undefined,$('displayMode').value);
       scene.add(model);
     }
     renderer.render(scene,camera);
