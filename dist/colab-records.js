@@ -869,7 +869,7 @@ async function restoreDrive() {
 }
 connect.onclick = () => {
   if (connectionState === 'signin') {
-    window.top.location.href = '/signin-with-chatgpt?return_to=' + encodeURIComponent('/?drive=1');
+    window.top.location.href = '/signin-with-chatgpt?return_to=' + encodeURIComponent('/colab.html?drive=1');
   } else if (connectionState === 'connect') {
     window.top.location.href = '/api/drive/connect';
   } else {
@@ -894,8 +894,12 @@ setup.onsubmit = async event => {
     submit.disabled = false;
   }
 };
-get('colabMode').addEventListener('click', () => { if (!token) void restoreDrive(); });
-if (new URLSearchParams(location.search).has('drive')) get('colabMode').click();
+void restoreDrive();
+window.addEventListener('beforeunload',event => {
+  if (!active && !pending.length) return;
+  event.preventDefault();
+  event.returnValue = '';
+});
 
 function zipJob(file) {
   return {name: file.name, sourceLabel: 'ZIP', readFiles: () => readZip(file)};

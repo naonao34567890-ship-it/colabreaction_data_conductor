@@ -1,29 +1,4 @@
-<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>分子ライブラリ</title><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script><script src="common.js"></script><script src="worker.js"></script><link rel="stylesheet" href="library-nav.css"><style>
-.page.colab-mode > header, .page.colab-mode > #libraryScroll { display: none; }
-#colabPanel { display: none; }
-#libraryPage.colab-mode { height: 100dvh; overflow: hidden; }
-.colab-mode > .mode-switch { flex-shrink: 0; }
-.colab-mode #colabPanel { display: flex; flex: 1; flex-direction: column; min-height: 0; }
-#colabControls { flex-shrink: 0; max-height: 65%; overflow-y: auto; }
-#colabResults { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-#colabDrop { padding: 24px; border: 1px dashed var(--border); margin: 12px 0; }
-#classificationChoices { display: grid; gap: 6px; max-height: min(240px, 32dvh); overflow-y: auto; overscroll-behavior: contain; }
-#classificationChoices button { min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: left; }
-#classificationDialog .dialog-actions { flex-wrap: wrap; }
-.colab-group-heading { padding: 6px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
-#colabJobs { display: grid; gap: 12px; }
-.colab-job { padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
-.colab-notes { margin: 4px 0 10px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; }
-.colab-note-text { white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }
-.colab-note-text:empty::before { content: "ダブルクリックで備考を入力"; color: var(--muted); }
-.colab-note-error { color: #ff929f; }
-.colab-record-name { margin: 0 0 8px; overflow-wrap: anywhere; }
-#classificationCreate:enabled { background:#a82b40; color:white; border-color:#e27082; }
-.colab-images { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.colab-meta { display: flex; gap: 16px; overflow-x: auto; white-space: nowrap; padding: 8px 0; }
-.colab-images figure { min-width: 0; margin: 0; }
-.colab-images img { display: block; width: 100%; height: 150px; object-fit: contain; }
-#libraryPage:not(.colab-mode) { overflow: hidden; }
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>分子ライブラリ</title><script>if (new URLSearchParams(location.search).has('drive')) location.replace('colab.html'+location.search+location.hash);</script><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script><script src="common.js"></script><script src="worker.js"></script><link rel="stylesheet" href="library-nav.css"><style>#libraryPage { overflow: hidden; }
 #libraryScroll { display: block; flex: 1 1 0; min-height: 0; overflow-y: auto; padding-block: 8px 16px; }
 #libraryScroll .heading { margin-bottom: 4px; }
 #libraryScroll .progress-area { padding-top: 0; min-height: 0; }
@@ -35,62 +10,13 @@
 .selection-box { position: absolute; z-index: 10; pointer-events: none; box-sizing: border-box; border: 1px solid #62d6bf; background: #62d6bf33; }
 </style></head>
 <body><div class="page" id="libraryPage">
-<nav class="mode-switch" aria-label="表示モード">
-<button type="button" id="libraryMode" class="primary" aria-pressed="true">分子ライブラリ</button>
-<a class="mode-link" href="reactions.html" target="_blank" rel="noopener">反応ライブラリ ↗</a>
-<button type="button" id="colabMode" aria-pressed="false">Colab計算記録</button>
+<nav class="mode-switch" aria-label="ナビゲーション">
+<a class="mode-link" href="index.html" aria-current="page">分子ライブラリ</a>
+<a class="mode-link" href="reactions.html">反応ライブラリ</a>
+<a class="mode-link" href="colab.html">Colab計算記録</a>
 </nav>
 <header><div class="toolbar"><button class="primary" id="fileButton">＋ ファイルを選択</button><button id="folderButton">フォルダを選択</button><input hidden type="file" id="files" multiple accept=".xyz,.pyxyz"><input hidden type="file" id="folder" multiple webkitdirectory><span class="spacer"></span><button id="all">全選択</button><button id="none">全解除</button><button id="tagSelected" disabled>タグ付け</button><button id="deleteSelected" title="Ctrl＋Shift＋Backspace" disabled>削除</button><button id="open" disabled>エディタで開く ↗</button><button id="download" disabled>ダウンロード ↓</button></div><div class="row library-list-row"><h2>すべての分子</h2><span id="count" class="muted">0 分子</span><span class="spacer"></span><label>並び順 <select id="libraryOrder" autocomplete="off"><option value="name-asc">名前順</option><option value="added-asc">追加時間昇順</option><option value="added-desc">追加時間降順</option><option value="name-desc">名前逆順</option><option value="id">内部ID順</option><option value="tag-added">タグ順＋アイテム追加順</option><option value="tag-name" selected>タグ順＋名前順</option></select></label><small id="selected">0 選択中</small></div></header><main class="workspace" id="libraryScroll"><div class="heading"><div><div class="eyebrow">MOLECULAR WORKSPACE / 01</div><h1>分子ライブラリ</h1></div><div class="badge">ローカル保存 · XYZ / QM9</div></div><div class="progress-area"><div class="row"><span id="progressText">ファイル・フォルダを登録できます</span><span class="spacer"></span><span id="queued">待機中 0件</span><button id="cancel" disabled>キャンセル</button></div><progress id="progress" value="0" max="1"></progress></div><div class="grid-view" id="grid"><div id="empty" class="empty"><div><b>分子を、ひとつの場所に。</b>xyz ファイルやフォルダをドロップして登録<br><small>複数分子ファイル・QM9形式に対応</small></div></div></div><div class="drop-hint">このページに xyz ファイル・フォルダをドロップ　／　左ドラッグで範囲選択（Shiftで範囲内の選択を反転）　／　ダブルクリックで分子エディタを開く</div><details id="results"><summary id="summary">読み込み結果</summary><pre id="resultText"></pre></details><div class="status" id="notice" role="status" aria-live="polite"></div></main>
-<section id="colabPanel" aria-labelledby="colabTitle">
-<h1 id="colabTitle">Colab計算記録</h1>
-<div id="colabControls">
-<button id="driveConnect" type="button" class="primary">Google Driveに接続</button>
-<button id="driveTemporary" type="button">一時接続</button>
-<form id="driveSetup" hidden>
-<label>Googleクライアントシークレット
-<input id="driveSecret" type="password" autocomplete="new-password" required>
-</label>
-<button type="submit">設定を保存</button>
-</form>
-<div id="colabDrop">
-<label>計算結果のZIPまたはフォルダーをドロップ
-<input id="colabZip" type="file" multiple accept=".zip,application/zip" disabled>
-</label>
-<label>フォルダーを選択 <input id="colabFolder" type="file" webkitdirectory multiple disabled></label>
 </div>
-<p id="colabStatus" role="status">Google Driveに接続すると計算記録を表示します。</p>
-<p id="colabQueue" role="status">待機中 0件</p>
-<div id="colabErrors" role="status"></div>
-<label>並び順 <select id="colabOrder" autocomplete="off">
-<option value="name-asc">名前順</option>
-<option value="added-asc">追加時間昇順</option>
-<option value="added-desc">追加時間降順</option>
-<option value="name-desc">名前逆順</option>
-<option value="id">内部ID順</option>
-<option value="classification" selected>分類の名前順</option>
-</select></label>
-</div>
-<div id="colabResults" role="region" aria-label="計算記録一覧" tabindex="0">
-<div id="colabJobs"></div>
-<p id="colabLoading" class="muted" role="status" hidden>ロード中…</p>
-</div>
-<dialog id="classificationDialog" aria-labelledby="classificationTitle">
-<h2 id="classificationTitle">分類を選ぶ</h2>
-<p id="classificationCurrent"></p>
-<div id="classificationChoices"></div>
-<div class="dialog-actions">
-<button type="button" id="classificationNew">新規に作る</button>
-<button type="button" id="classificationRename">名前を変更する</button>
-<button type="button" id="classificationRemove" class="danger">分類を外す</button>
-<button type="button" id="classificationCancel">キャンセル</button>
-</div>
-<form id="classificationForm" hidden>
-<label>分類名<input id="classificationName" required></label>
-<button id="classificationCreate" class="danger" disabled>作成して設定</button>
-</form>
-<p id="classificationStatus" role="status"></p>
-</dialog>
-</section></div>
 <style>
 #tagList{display:flex;gap:8px;flex-wrap:wrap;max-height:45vh;overflow:auto;padding:4px}
 .tag-entry{display:inline-flex;gap:4px;align-items:center;max-width:100%}
@@ -180,7 +106,7 @@ async function deleteFiles(ids) {
 }
 $('deleteSelected').onclick=()=>deleteFiles([...selected]);
 window.addEventListener('keydown',e=>{
- if($('colabMode').getAttribute('aria-pressed')==='true'||e.key!=='Backspace'||!e.ctrlKey||!e.shiftKey||e.altKey||e.metaKey||
+ if(e.key!=='Backspace'||!e.ctrlKey||!e.shiftKey||e.altKey||e.metaKey||
     $('exportDialog').open||e.target.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))return;
  e.preventDefault();
  if(!e.repeat)deleteFiles([...selected]);
@@ -189,7 +115,7 @@ window.addEventListener('keydown',e=>{
 const gridView=$('grid'), libraryScroll=$('libraryScroll');
 // Wheel over the fixed toolbar also moves the library content.
 $('libraryPage').addEventListener('wheel',event=>{
- if(event.ctrlKey||$('colabMode').getAttribute('aria-pressed')==='true'||libraryScroll.contains(event.target))return;
+ if(event.ctrlKey||libraryScroll.contains(event.target))return;
  if(!event.deltaY||libraryScroll.scrollHeight<=libraryScroll.clientHeight)return;
  event.preventDefault();
  const scale=event.deltaMode===1?16:event.deltaMode===2?libraryScroll.clientHeight:1;
@@ -294,19 +220,7 @@ window.addEventListener('pointercancel',cancelSelection);
 window.addEventListener('blur',cancelSelection);
 $('fileButton').onclick=()=>$('files').click();$('folderButton').onclick=()=>$('folder').click();for(const id of ['files','folder'])$(id).onchange=e=>{enqueue({files:Array.from(e.target.files)});e.target.value='';};
 let dragDepth=0;
-function setColabMode(enabled){
- $('libraryPage').classList.toggle('colab-mode',enabled);
- $('libraryMode').classList.toggle('primary',!enabled);
- $('colabMode').classList.toggle('primary',enabled);
- $('libraryMode').setAttribute('aria-pressed',String(!enabled));
- $('colabMode').setAttribute('aria-pressed',String(enabled));
- dragDepth=0;
- document.body.classList.remove('dragging');
-}
-$('libraryMode').onclick=()=>setColabMode(false);
-$('colabMode').onclick=()=>setColabMode(true);
-
-document.addEventListener('dragenter',e=>{if($('colabMode').getAttribute('aria-pressed')!=='true'&&e.dataTransfer.types.includes('Files')){e.preventDefault();dragDepth++;document.body.classList.add('dragging');}});document.addEventListener('dragover',e=>e.preventDefault());document.addEventListener('dragleave',()=>{if(--dragDepth<=0)document.body.classList.remove('dragging');});document.addEventListener('drop',e=>{e.preventDefault();dragDepth=0;document.body.classList.remove('dragging');if($('colabMode').getAttribute('aria-pressed')==='true')return;const items=Array.from(e.dataTransfer.items||[]);const entries=items.map(i=>i.webkitGetAsEntry?.()).filter(Boolean);enqueue(entries.length?{entries}:{files:Array.from(e.dataTransfer.files)});});
+document.addEventListener('dragenter',e=>{if(e.dataTransfer.types.includes('Files')){e.preventDefault();dragDepth++;document.body.classList.add('dragging');}});document.addEventListener('dragover',e=>e.preventDefault());document.addEventListener('dragleave',()=>{if(--dragDepth<=0)document.body.classList.remove('dragging');});document.addEventListener('drop',e=>{e.preventDefault();dragDepth=0;document.body.classList.remove('dragging');const items=Array.from(e.dataTransfer.items||[]);const entries=items.map(i=>i.webkitGetAsEntry?.()).filter(Boolean);enqueue(entries.length?{entries}:{files:Array.from(e.dataTransfer.files)});});
 function enqueue(job){jobs.push(job);queueUI();runQueue();}function queueUI(){$('queued').textContent=`待機中 ${jobs.length}件`;}
 async function scan(job,state){if(job.files)return job.files.filter(f=>/\.(?:py)?xyz$/i.test(f.name));return Mol.scanEntries(job.entries,{cancelled:()=>state.cancelled,progress:n=>{$('progressText').textContent=`フォルダ走査中 · ${n.toLocaleString()} 個のxyzを発見`;},error:message=>state.scanErrors.push(message)});}
 function chooseMulti(name,total,file){
@@ -369,4 +283,4 @@ $('exportStart').onclick=async()=>{
 };
 document.addEventListener('webgl-error',()=>notice('WebGLを利用できません。3D表示にはWebGL対応ブラウザとハードウェアアクセラレーションが必要です。'));
 document.addEventListener('graphics-error',()=>notice('3Dライブラリを読み込めません。インターネット接続・CDNへの接続を確認してください。'));
-</script><script src="library-tags.js"></script><script type="module" src="colab-records.js"></script></body></html>
+</script><script src="library-tags.js"></script></body></html>

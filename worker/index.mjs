@@ -3,7 +3,7 @@ const origin = 'https://molecular-xyz-studio.naonao3456789077392.chatgpt.site';
 const clientId = '816593665225-jlsi7t1qdl5icihukahrb3t567qu9qnj.apps.googleusercontent.com';
 const scope = 'https://www.googleapis.com/auth/drive.file';
 const callbackPath = '/api/drive/callback';
-const returnPath = '/?drive=1';
+const returnPath = '/colab.html?drive=1';
 const encoder = new TextEncoder();
 
 function json(body, status = 200) {
