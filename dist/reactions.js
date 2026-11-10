@@ -76,11 +76,13 @@ function cardFor(reaction) {
  rename.textContent = '✎';
  rename.setAttribute('aria-label','反応名を変更');
  rename.onclick = () => title.dispatchEvent(new MouseEvent('dblclick'));
- Mol.editName(title,async name=>{
+ async function renameReaction(name){
   const saved = await ReactionStore.update(reaction.id,{name:Mol.safeName(name)});
   await renderReactions();
   return saved.name;
- },message=>{status.textContent=message;});
+ }
+ const showRenameError=message=>{status.textContent=message;};
+ Mol.editName(title,renameReaction,showRenameError);
  header.append(title,rename);
  const preview = document.createElement('div');
  preview.className = 'reaction-preview muted';
@@ -101,22 +103,31 @@ function cardFor(reaction) {
   row.className = 'row reaction-slot';
   const name = document.createElement('span');
   const structure = reaction[slot];
-  name.textContent = reaction.name+'_'+slot+(structure?'':' · 未作成');
+  name.className = 'structure-name';
+  name.textContent = reaction.name+'_'+slot;
+  Mol.editName(name,async value=>{
+   const base = value.replace(new RegExp('[_＿]'+slot+'$','i'),'').trim();
+   if (!base) throw Error('反応名を入力してください。');
+   return (await renameReaction(base))+'_'+slot;
+  },showRenameError);
+  const action = document.createElement('button');
+  action.textContent = structure ? '開く' : '未作成';
+  action.disabled = !structure;
   const download = document.createElement('button');
   download.textContent = '↓';
   download.setAttribute('aria-label',slot+'をダウンロード');
   download.disabled = !structure;
   if (structure) {
    const open = () => window.open('editor.html?'+new URLSearchParams({reaction:reaction.id,slot}),'_blank','noopener');
-   name.className = 'structure-name';
-   name.tabIndex = 0;
-   name.setAttribute('role','button');
-   name.title = 'ダブルクリックでエディタを開く';
-   name.ondblclick = open;
-   name.onkeydown = event => { if (event.key==='Enter') open(); };
+   row.classList.add('openable');
+   row.title = '行の余白をダブルクリックでエディタを開く';
+   row.ondblclick = event => {
+    if (!event.target.closest('button,input,.structure-name')) open();
+   };
+   action.onclick = open;
    download.onclick = () => Mol.downloadBlob(Mol.calculationOutput(structure),Mol.safeName(reaction.name+'_'+slot)+'.xyz');
   }
-  row.append(name,download);
+  row.append(name,action,download);
   card.append(row);
  }
  return card;
