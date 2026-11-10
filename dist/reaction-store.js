@@ -1,0 +1,44 @@
+'use strict';
+
+const ReactionStore = (() => {
+ const connection = new Promise((resolve,reject)=>{
+  const request = indexedDB.open('molecular-xyz-reactions',1);
+  request.onupgradeneeded = () => request.result.createObjectStore('reactions',{keyPath:'id'});
+  request.onsuccess = () => resolve(request.result);
+  request.onerror = () => reject(request.error);
+ });
+ async function transaction(mode, run) {
+  const db = await connection;
+  return new Promise((resolve,reject)=>{
+   const tx = db.transaction('reactions',mode);
+   let result, failure;
+   tx.oncomplete = () => resolve(result);
+   tx.onabort = () => reject(failure || tx.error);
+   run(tx.objectStore('reactions'), value=>{ result=value; }, message=>{failure=Error(message);tx.abort();});
+  });
+ }
+ function read(id) {
+  return transaction('readonly',(store,done)=>{
+   const request = id ? store.get(id) : store.getAll();
+   request.onsuccess = () => done(request.result);
+  });
+ }
+ function update(id, fields) {
+  return transaction('readwrite',(store,done,abort)=>{
+   const request = store.get(id);
+   request.onsuccess = () => {
+    if (!request.result) { abort('反応が見つかりません。'); return; }
+    const value = {...request.result,...fields};
+    store.put(value);
+    done(value);
+   };
+  });
+ }
+ function create(slot, structure) {
+  const date = new Date();
+  const name = [date.getHours(),date.getMinutes()].map(n=>String(n).padStart(2,'0')).join('');
+  const value = {id:crypto.randomUUID(), createdAt:date.getTime(), name, [slot]:structure};
+  return transaction('readwrite',(store,done)=>{ store.add(value); done(value); });
+ }
+ return {read,update,create};
+})();

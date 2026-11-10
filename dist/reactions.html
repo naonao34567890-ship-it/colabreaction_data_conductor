@@ -5,7 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>反応ライブラリ</title>
 <link rel="stylesheet" href="library-nav.css">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
 <script src="common.js"></script>
+<script src="reaction-store.js"></script>
+<script defer src="reactions.js"></script>
+<style>
+.reaction-workspace { overflow-y: auto; }
+.reaction-day { border-top: 1px solid var(--border); padding-top: 10px; margin-bottom: 16px; }
+.reaction-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(min(100%,220px),1fr)); gap: 12px; margin-top: 8px; }
+.reaction-card { background: #191e1e; border: 1px solid var(--border); border-radius: 10px; padding: 10px; min-width: 0; }
+.reaction-card .row { justify-content: space-between; }
+.reaction-card h3 { margin: 0; overflow-wrap: anywhere; min-width: 0; }
+.reaction-card button { padding: 4px 8px; }
+.reaction-preview { display: grid; place-items: center; height: 135px; background: #101515; margin: 8px 0; }
+.reaction-preview img { width: 100%; height: 135px; object-fit: contain; }
+.reaction-slot { padding: 5px 0; border-top: 1px solid var(--border); }
+.reaction-slot span { min-width: 0; overflow-wrap: anywhere; }
+.reaction-slot .structure-name { cursor: pointer; }
+</style>
 </head>
 <body>
 <div class="page">
@@ -14,10 +31,11 @@
 <a class="mode-link" href="reactions.html" aria-current="page">反応ライブラリ</a>
 <a class="mode-link" href="colab.html">Colab計算記録</a>
 </nav>
-  <main class="workspace">
+  <main class="workspace reaction-workspace">
     <h1>反応ライブラリ</h1>
     <p class="muted">ColabReaction用のSTARTとFINISHの構造を、反応ごとにまとめる場所です。</p>
-    <p class="muted">反応の登録機能は準備中です。</p>
+    <p id="reactionStatus" class="muted" role="status">読み込み中…</p>
+    <div id="reactionDays"></div>
   </main>
 </div>
 </body>
