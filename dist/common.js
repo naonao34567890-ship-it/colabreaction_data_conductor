@@ -300,9 +300,13 @@ Mol.confirmFileAction = function(title, description, label) {
  });
 };
 Mol.downloadBlob=function(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);};
+function readThumbnailSettings(storageKey){
+ const {mode,generation}=JSON.parse(localStorage.getItem(storageKey)||'{"mode":"polyhedra","generation":"initial"}');
+ return {mode,generation:mode==='polyhedra'?'outlined-phosphate:'+generation:generation};
+}
 Mol.thumbnailMode = (select,key,reset,redraw) => {
  const storageKey='xyz-thumbnail-'+key;
- const read=()=>JSON.parse(localStorage.getItem(storageKey)||'{"mode":"polyhedra","generation":"initial"}');
+ const read=()=>readThumbnailSettings(storageKey);
  Mol.displayMode(select);
  select.value=read().mode;
  select.onchange=()=>{
@@ -340,14 +344,17 @@ Mol.graphics=(async()=>{const T=await import('three');const {OrbitControls}=awai
   const neighbors=new Map();
   for(const [i,j] of pairs){
    for(const [metal,ligand] of [[i,j],[j,i]]){
-    if(!metals.has(atoms[metal].el)||atoms[ligand].el!=='O')continue;
+    if((!metals.has(atoms[metal].el)&&atoms[metal].el!=='P')||atoms[ligand].el!=='O')continue;
     if(!neighbors.has(metal))neighbors.set(metal,[]);
     neighbors.get(metal).push(ligand);
    }
   }
   const replaced=new Map();
   for(const [metal,ligands] of neighbors){
-   if(ligands.length<4||ligands.length>9)continue;
+   const phosphate=atoms[metal].el==='P';
+   if(phosphate ? ligands.length!==4 || pairs.some(([i,j])=>
+    (i===metal&&atoms[j].el!=='O')||(j===metal&&atoms[i].el!=='O'))
+    : ligands.length<4||ligands.length>9)continue;
    const points=ligands.map(i=>new T.Vector3(atoms[i].x,atoms[i].y,atoms[i].z));
    const vectors=points.slice(1).map(p=>p.clone().sub(points[0]));
    const axis=vectors.find(v=>v.lengthSq()>1e-6);
@@ -357,7 +364,12 @@ Mol.graphics=(async()=>{const T=await import('three');const {OrbitControls}=awai
    const geometry=new ConvexGeometry(points);
    const color=Mol.elements[atoms[metal].el].color;
    const faces=new T.Mesh(geometry,new T.MeshStandardMaterial({color,transparent:true,opacity:.38,depthWrite:false,side:T.DoubleSide}));
-   group.add(faces);
+   const outline=new T.LineSegments(
+    new T.EdgesGeometry(geometry,1),
+    new T.LineBasicMaterial({color:new T.Color(color).lerp(new T.Color(0xffffff),.55),transparent:true,opacity:.9,depthWrite:false}),
+   );
+   outline.renderOrder=1;
+   group.add(faces,outline);
    replaced.set(metal,new Set(ligands));
   }
   return pairs.filter(([i,j])=>!replaced.get(i)?.has(j)&&!replaced.get(j)?.has(i));
@@ -382,7 +394,7 @@ Mol.graphics.catch(e=>{document.dispatchEvent(new CustomEvent('graphics-error',{
 class Thumbnails{
  constructor(){this.queue=[];this.running=false;this.renderer=null;this.unavailable=false;}
  request(id,alive,settings){return new Promise((resolve)=>{this.queue.push({id,alive,resolve,settings});this.run();});}
- async run(){if(this.running)return;this.running=true;try{while(this.queue.length){this.queue.sort((a,b)=>Number(b.alive(true))-Number(a.alive(true)));const task=this.queue.shift();if(!task.alive()){task.resolve(null);continue;}try{const read=task.settings??(()=>JSON.parse(localStorage.getItem('xyz-thumbnail-molecules')||'{"mode":"polyhedra","generation":"initial"}'));const settings=read();let cached=await Mol.get('thumb',task.id);if(cached?.generation!==settings.generation)cached=null;if(!cached&&task.alive(true)&&!this.unavailable){const m=await Mol.get('body',task.id);if(!m){task.resolve(null);continue;}const g=await Mol.graphics;if(!task.alive(true)){task.resolve(null);continue;}if(!this.renderer){try{this.renderer=new g.T.WebGLRenderer({alpha:true,antialias:true,preserveDrawingBuffer:true});}catch(e){this.unavailable=true;document.dispatchEvent(new CustomEvent('webgl-error'));throw e;}this.renderer.setSize(160,160);this.renderer.setPixelRatio(1);}const scene=new g.T.Scene(),camera=new g.T.PerspectiveCamera(38,1,.01,2000);g.light(scene);const model=g.model(m.atoms,undefined,undefined,undefined,settings.mode);scene.add(model);g.fit(camera,m.atoms);this.renderer.render(scene,camera);const blob=await new Promise(r=>this.renderer.domElement.toBlob(r,'image/png'));g.dispose(model);if(blob){if(read().generation===settings.generation)await Mol.cacheThumb(task.id,blob,m.revision,settings.generation).catch(()=>{});cached={blob};}}
+ async run(){if(this.running)return;this.running=true;try{while(this.queue.length){this.queue.sort((a,b)=>Number(b.alive(true))-Number(a.alive(true)));const task=this.queue.shift();if(!task.alive()){task.resolve(null);continue;}try{const read=task.settings??(()=>readThumbnailSettings('xyz-thumbnail-molecules'));const settings=read();let cached=await Mol.get('thumb',task.id);if(cached?.generation!==settings.generation)cached=null;if(!cached&&task.alive(true)&&!this.unavailable){const m=await Mol.get('body',task.id);if(!m){task.resolve(null);continue;}const g=await Mol.graphics;if(!task.alive(true)){task.resolve(null);continue;}if(!this.renderer){try{this.renderer=new g.T.WebGLRenderer({alpha:true,antialias:true,preserveDrawingBuffer:true});}catch(e){this.unavailable=true;document.dispatchEvent(new CustomEvent('webgl-error'));throw e;}this.renderer.setSize(160,160);this.renderer.setPixelRatio(1);}const scene=new g.T.Scene(),camera=new g.T.PerspectiveCamera(38,1,.01,2000);g.light(scene);const model=g.model(m.atoms,undefined,undefined,undefined,settings.mode);scene.add(model);g.fit(camera,m.atoms);this.renderer.render(scene,camera);const blob=await new Promise(r=>this.renderer.domElement.toBlob(r,'image/png'));g.dispose(model);if(blob){if(read().generation===settings.generation)await Mol.cacheThumb(task.id,blob,m.revision,settings.generation).catch(()=>{});cached={blob};}}
  task.resolve(cached?.blob||null);}catch(e){task.resolve(null);}await new Promise(requestAnimationFrame);}}finally{this.running=false;}}
 }
 Mol.thumbnails=new Thumbnails();
