@@ -10,6 +10,10 @@
 .colab-group-heading { padding: 6px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
 #colabJobs { display: grid; gap: 12px; }
 .colab-job { padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
+.colab-notes { margin: 4px 0 10px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; }
+.colab-note-text { white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }
+.colab-note-text:empty::before { content: "ダブルクリックで備考を入力"; color: var(--muted); }
+.colab-note-error { color: #ff929f; }
 .colab-record-name { margin: 0 0 8px; overflow-wrap: anywhere; }
 #classificationCreate:enabled { background:#a82b40; color:white; border-color:#e27082; }
 .colab-images { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }

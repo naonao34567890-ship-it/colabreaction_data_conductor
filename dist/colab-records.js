@@ -71,7 +71,7 @@ async function list(query) {
   let pageToken;
   do {
     const params = new URLSearchParams({q: query + ' and trashed = false',
-      fields: 'nextPageToken,files(id,name,appProperties,createdTime,mimeType)', pageSize: '100'});
+      fields: 'nextPageToken,files(id,name,description,appProperties,createdTime,mimeType)', pageSize: '100'});
     if (pageToken) params.set('pageToken', pageToken);
     const page = await (await request(drive + '/files?' + params)).json();
     files.push(...page.files);
@@ -722,7 +722,28 @@ async function renderRecord(job) {
   title.textContent = job.name;
   title.className = 'colab-record-name';
   Mol.editName(title,name=>renameRecord(job.id,Mol.safeName(name)),status);
-  card.onclick = event => { if (!event.target.closest('button,input,.colab-record-name')) open.click(); };
+  const notes = document.createElement('div');
+  notes.className = 'colab-notes';
+  const notesLabel = document.createElement('strong');
+  notesLabel.textContent = '備考';
+  const note = document.createElement('div');
+  note.className = 'colab-note-text';
+  note.textContent = job.description || '';
+  const noteError = document.createElement('p');
+  noteError.className = 'colab-note-error';
+  noteError.setAttribute('role','status');
+  Mol.editName(note,async value=>{
+    noteError.textContent = '';
+    await request(drive + '/files/' + encodeURIComponent(job.id) + '?fields=id',{
+      method:'PATCH', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({description:value}),
+    });
+    job.description = value;
+    return value;
+  },message=>{ noteError.textContent = '備考を保存できませんでした。' + message; },
+  {label:'備考',multiline:true,allowEmpty:true});
+  notes.append(notesLabel,note,noteError);
+  card.onclick = event => { if (!event.target.closest('button,input,.colab-record-name,.colab-notes')) open.click(); };
   const classificationButton = document.createElement('button');
   classificationButton.type = 'button';
   classificationButton.textContent = job.appProperties?.classification
@@ -733,7 +754,7 @@ async function renderRecord(job) {
   archive.textContent = '結果ZIPをダウンロード';
   archive.disabled = !files.has('計算結果');
   archive.onclick = () => void downloadArchive(job,files.get('計算結果'),archive);
-  card.append(title, images, info, open, classificationButton, archive);
+  card.append(title, images, info, notes, open, classificationButton, archive);
   const resultDate = config.match(/^結果出力日時: (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/m)?.[1];
   cards.set(job.id,Object.assign(job,{card,title,classificationButton,resultDate}));
   jobs.append(card);

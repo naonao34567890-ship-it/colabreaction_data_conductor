@@ -347,14 +347,15 @@ Mol.renameMolecule = async (id, name) => {
   };
  });
 };
-Mol.editName = (title, save, report) => {
- title.title = 'ダブルクリックで名前を変更';
+Mol.editName = (title, save, report, {label='名前', multiline=false, allowEmpty=false}={}) => {
+ title.title = 'ダブルクリックで'+label+'を編集';
  title.addEventListener('dblclick', event => {
   event.stopPropagation();
   if (title.hidden) return;
-  const input = document.createElement('input');
+  const input = document.createElement(multiline?'textarea':'input');
   input.value = title.textContent;
-  input.setAttribute('aria-label','名前');
+  input.setAttribute('aria-label',label);
+  if (multiline) input.rows = 3;
   input.style.cssText = 'width:100%;min-width:0;padding:0 4px;font-size:inherit';
   input.addEventListener('click', event => event.stopPropagation());
   input.addEventListener('dblclick', event => event.stopPropagation());
@@ -367,13 +368,13 @@ Mol.editName = (title, save, report) => {
    event.stopPropagation();
    if (event.isComposing || saving) return;
    if (event.key === 'Escape') { event.preventDefault(); close(); }
-   if (event.key !== 'Enter') return;
+   if (event.key !== 'Enter' || (multiline && event.shiftKey)) return;
    event.preventDefault();
    const name = input.value.trim();
-   if (!name || name === title.textContent) { close(); return; }
+   if ((!name && !allowEmpty) || name === title.textContent) { close(); return; }
    saving = true;
    input.disabled = true;
-   try { title.textContent = (await save(name)) || name; }
+   try { title.textContent = (await save(name)) ?? name; }
    catch (error) { report(error.message); }
    finally { close(); }
   };
