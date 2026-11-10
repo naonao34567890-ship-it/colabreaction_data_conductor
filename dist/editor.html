@@ -63,6 +63,9 @@ $('deleteSelection').onclick = deleteSelection;
 $('undo').onclick=undo;$('redo').onclick=redo;$('speed').oninput=()=>$('speedValue').textContent=Number($('speed').value).toFixed(1)+' Å/s';$('lasso').onclick=()=>{lasso=!lasso;$('lasso').classList.toggle('active',lasso);$('lasso').textContent='投げ縄 '+(lasso?'ON':'OFF');};
 for(let k=0;k<2;k++)$('register'+(k+1)).onclick=()=>{finishKeys();moieties[k]={ids:[...selected],point};update();};$('swap').onclick=()=>{finishKeys();try{const before=snapshot();Mol.swap(atoms,moieties[0],moieties[1]);push(before);}catch(e){notice(e.message);}};
 const mini=new Mol.VirtualGrid($('mini'),{mini:true,isSelected:id=>id===miniSelected,onSelect:m=>{miniSelected=m.id;$('add').disabled=!sceneReady;}});
+window.addEventListener('storage',event=>{
+ if(event.key==='xyz-thumbnail-molecules'){mini.clear();miniRefresh();}
+});
 $('miniOrder').value='tag-name';
 $('miniOrder').onchange=()=>{$('mini').scrollTop=0;miniRefresh();};
 function miniRefresh(){const order=$('miniOrder').value;mini.setData(miniData.sort((a,b)=>Mol.compareDisplayOrder(a,b,order)));$('miniCount').textContent=miniData.length.toLocaleString()+' 分子';}
