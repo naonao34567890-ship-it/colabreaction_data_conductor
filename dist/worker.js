@@ -49,9 +49,9 @@ class ImportJob{
  async finish(){try{await this.flush();}catch(_){}this.emit({type:'done',stats:this.stats,cancelled:this.cancelled});}
 }
 function header(size){const a=new Uint8Array(size);return{a,v:new DataView(a.buffer)};}
-async function exportData(ids,format,send,cancelled,progress,withMemo=false){
+async function exportData(ids,format,send,cancelled,progress,withMemo=false,bodies=null){
  const central=[],encoder=new TextEncoder(),names=new Set();let offset=0,done=0;
- for(const id of ids){if(cancelled())return;const body=await Mol.get('body',id);if(!body)throw Error('出力対象が削除されました。選択し直してください');const meta=withMemo?await Mol.get('meta',id):null;const blob=withMemo?await Mol.output(body,Mol.formatMemo(body.comment,meta?.tags||[])):Mol.calculationOutput(body);
+ for(const id of ids){if(cancelled())return;const body=bodies?bodies[id]:await Mol.get('body',id);if(!body)throw Error('出力対象が削除されました。選択し直してください');const meta=withMemo?await Mol.get('meta',id):null;const blob=withMemo?await Mol.output(body,Mol.formatMemo(body.comment,meta?.tags||[])):Mol.calculationOutput(body);
   if(format==='zip'){
    const extension=withMemo?'.pyxyz':'.xyz';
    const base=Mol.safeName(body.name);

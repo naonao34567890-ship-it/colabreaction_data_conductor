@@ -41,5 +41,22 @@ const ReactionStore = (() => {
   const value = {id:crypto.randomUUID(), createdAt:date.getTime(), name:reactionName || name, ...structures};
   return transaction('readwrite',(store,done)=>{ store.add(value); done(value); });
  }
- return {read,update,create:(slot,structure,name)=>createReaction({[slot]:structure},name),createReaction};
+ function remove(ids) {
+  return transaction('readwrite',store=>{ for(const id of ids) store.delete(id); });
+ }
+ function tag(ids,name,attach) {
+  return transaction('readwrite',store=>{
+   for(const id of ids) {
+    const request=store.get(id);
+    request.onsuccess=()=>{
+     const item=request.result;
+     if(!item)return;
+     const tags=new Set(item.tags||[]);
+     if(attach)tags.add(name);else tags.delete(name);
+     store.put({...item,tags:[...tags].sort(Mol.compareTagNames)});
+    };
+   }
+  });
+ }
+ return {read,update,remove,tag,create:(slot,structure,name)=>createReaction({[slot]:structure},name),createReaction};
 })();

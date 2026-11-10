@@ -8,9 +8,12 @@
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
 <script src="common.js"></script>
 <script src="reaction-store.js"></script>
+<script src="worker.js"></script>
 <script defer src="reactions.js"></script>
 <style>
 .reaction-workspace { overflow-y: auto; }
+.reaction-card.selected { outline: 2px solid var(--accent); outline-offset: -2px; }
+.reaction-selection-box { position: fixed; pointer-events: none; border: 1px solid var(--accent); background: #62d6bf22; z-index: 20; }
 .reaction-day { border-top: 1px solid var(--border); padding-top: 10px; margin-bottom: 16px; }
 .reaction-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(min(100%,220px),1fr)); gap: 12px; margin-top: 8px; }
 .reaction-card { background: #191e1e; border: 1px solid var(--border); border-radius: 10px; padding: 10px; min-width: 0; }
@@ -34,9 +37,27 @@
   <main class="workspace reaction-workspace">
     <h1>反応ライブラリ</h1>
     <p class="muted">ColabReaction用のSTARTとFINISHの構造を、反応ごとにまとめる場所です。</p>
+    <div class="toolbar">
+      <button id="reactionAll">全選択</button><button id="reactionNone">全解除</button>
+      <button id="reactionTag" disabled>タグ付け</button><button id="reactionDelete" disabled>削除</button>
+      <button id="reactionZip" disabled>選択分をZIPで保存</button><span id="reactionSelection" class="muted"></span>
+    </div>
     <p id="reactionStatus" class="muted" role="status">読み込み中…</p>
     <div id="reactionDays"></div>
   </main>
 </div>
+<dialog id="reactionTagDialog">
+<form id="reactionTagForm">
+<h2>選択した反応のタグ</h2>
+<label>タグ名 <input id="reactionTagName" list="reactionTagNames" required></label>
+<datalist id="reactionTagNames"></datalist>
+<div class="dialog-actions">
+<button type="button" id="reactionTagClose">戻る</button>
+<button value="remove">タグを外す</button>
+<button value="add" class="primary">タグを付ける</button>
+</div>
+<p id="reactionTagError" role="status"></p>
+</form>
+</dialog>
 </body>
 </html>
