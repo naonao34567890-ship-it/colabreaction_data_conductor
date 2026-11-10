@@ -365,6 +365,53 @@ function connectImageSaver(params, jobId, images) {
   };
 }
 
+async function downloadArchive(job, originals, button) {
+  button.disabled = true;
+  try {
+    button.textContent = 'ファイルを確認中…';
+    const pending = [{id:originals,path:''}];
+    const files = [];
+    while (pending.length) {
+      const {id,path} = pending.pop();
+      for (const file of await list("'" + id + "' in parents")) {
+        const name = Mol.safeName(file.name);
+        if (file.mimeType === folderType) pending.push({id:file.id,path:path+name+'/'});
+        else files.push({id:file.id,path:path+name});
+      }
+    }
+    if (!files.length) throw Error('ダウンロードできる計算結果がありません。');
+    const {zipSync} = await import('https://cdn.jsdelivr.net/npm/fflate@0.8.2/esm/browser.js');
+    const contents = Object.create(null);
+    let completed = 0, bytes = 0;
+    for (let offset=0; offset<files.length; offset+=4) {
+      const group = files.slice(offset,offset+4);
+      const fetched = await Promise.allSettled(group.map(async file => {
+        const data = new Uint8Array(await (await download(file.id)).arrayBuffer());
+        button.textContent = '取得中 ' + (++completed) + '/' + files.length;
+        return data;
+      }));
+      for (const [index,result] of fetched.entries()) {
+        if (result.status === 'rejected') throw result.reason;
+        const path = group[index].path;
+        if (Object.hasOwn(contents,path)) throw Error('ZIP内のファイル名が重複しています。');
+        bytes += result.value.byteLength;
+        if (bytes > 100 * 1024 ** 2) throw Error('計算結果が100 MiBを超えています。');
+        contents[path] = result.value;
+      }
+    }
+    button.textContent = 'ZIPを作成中…';
+    await new Promise(resolve => setTimeout(resolve,0));
+    const archive = zipSync(contents,{level:0});
+    const name = Mol.safeName(job.name).replace(/\.zip$/i,'')+'.zip';
+    Mol.downloadBlob(new Blob([archive],{type:'application/zip'}),name);
+  } catch (error) {
+    status('ZIPのダウンロードに失敗しました。' + error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = '結果ZIPをダウンロード';
+  }
+}
+
 async function openReaction(jobId, name, originals, images) {
   const tab = window.open('about:blank', '_blank');
   if (!tab) { status('反応経路ビューアのタブを開けませんでした。'); return; }
@@ -561,7 +608,12 @@ async function renderRecord(job) {
   classificationButton.textContent = job.appProperties?.classification
     ? '分類：' + job.appProperties.classification : '分類を設定';
   classificationButton.onclick = () => openClassification(job.id);
-  card.append(images, info, open, classificationButton);
+  const archive = document.createElement('button');
+  archive.type = 'button';
+  archive.textContent = '結果ZIPをダウンロード';
+  archive.disabled = !files.has('計算結果');
+  archive.onclick = () => void downloadArchive(job,files.get('計算結果'),archive);
+  card.append(images, info, open, classificationButton, archive);
   const resultDate = config.match(/^結果出力日時: (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/m)?.[1];
   cards.set(job.id,{...job,card,classificationButton,resultDate});
   jobs.append(card);
