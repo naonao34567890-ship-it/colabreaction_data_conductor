@@ -8,6 +8,7 @@ const days = document.getElementById('reactionDays');
 const status = document.getElementById('reactionStatus');
 const dayKey = new Intl.DateTimeFormat('ja-JP',{dateStyle:'long'});
 let renderer;
+const thumbnailSettings=Mol.thumbnailMode(control('thumbnailMode'),'reactions',ReactionStore.clearStartPreviews,()=>void renderReactions());
 const previews = new WeakMap();
 function showPreview(target,source) {
  const image = new Image();
@@ -21,13 +22,14 @@ const observer = new IntersectionObserver(async entries=>{
   observer.unobserve(target);
   try {
    const reaction = previews.get(target);
+   const {mode,generation}=thumbnailSettings();
    const cached = reaction.startPreview;
-   if (cached && cached.revision === reaction.START.revision) {
+   if (cached && cached.revision === reaction.START.revision && cached.generation===generation) {
     showPreview(target,cached.image);
     continue;
    }
    const graphics = await Mol.graphics;
-   if (!target.isConnected) continue;
+   if (!target.isConnected || thumbnailSettings().generation!==generation) continue;
    const atoms = reaction.START.atoms;
    const {T} = graphics;
    if (!renderer) {
@@ -36,7 +38,7 @@ const observer = new IntersectionObserver(async entries=>{
    }
    const scene = new T.Scene();
    const camera = new T.PerspectiveCamera(38,256/150,.01,2000);
-   const model = graphics.model(atoms);
+   const model = graphics.model(atoms,undefined,undefined,undefined,mode);
    try {
     scene.add(model);
     graphics.light(scene);
@@ -44,8 +46,8 @@ const observer = new IntersectionObserver(async entries=>{
     renderer.render(scene,camera);
     const image = renderer.domElement.toDataURL('image/png');
     showPreview(target,image);
-    reaction.startPreview = {revision:reaction.START.revision,image};
-    void ReactionStore.cacheStartPreview(reaction.id,reaction.START.revision,image).catch(()=>{});
+    reaction.startPreview = {revision:reaction.START.revision,image,generation};
+    void ReactionStore.cacheStartPreview(reaction.id,reaction.START.revision,image,generation).catch(()=>{});
    } finally { graphics.dispose(model); }
   } catch { target.textContent = 'サムネイルを表示できません'; }
  }

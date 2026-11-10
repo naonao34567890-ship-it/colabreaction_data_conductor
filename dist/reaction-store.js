@@ -59,15 +59,27 @@ const ReactionStore = (() => {
    }
   });
  }
- function cacheStartPreview(id,revision,image) {
+ function cacheStartPreview(id,revision,image,generation) {
   return transaction('readwrite',store=>{
    const request=store.get(id);
    request.onsuccess=()=>{
     const item=request.result;
     if(!item?.START || item.START.revision!==revision)return;
-    store.put({...item,startPreview:{revision,image}});
+    store.put({...item,startPreview:{revision,image,generation}});
    };
   });
  }
- return {read,update,remove,tag,cacheStartPreview,create:(slot,structure,name)=>createReaction({[slot]:structure},name),createReaction};
+ function clearStartPreviews() {
+  return transaction('readwrite',store=>{
+   const request=store.openCursor();
+   request.onsuccess=()=>{
+    const cursor=request.result;
+    if(!cursor)return;
+    const item=cursor.value;
+    if(item.startPreview){delete item.startPreview;cursor.update(item);}
+    cursor.continue();
+   };
+  });
+ }
+ return {read,update,remove,tag,cacheStartPreview,clearStartPreviews,create:(slot,structure,name)=>createReaction({[slot]:structure},name),createReaction};
 })();

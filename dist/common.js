@@ -242,7 +242,7 @@ async function removeMany(ids) {
   }
  });
 }
-async function cacheThumb(id,blob,revision){const d=await db();return new Promise((res,rej)=>{const t=d.transaction(['meta','thumb'],'readwrite'),s=t.objectStore('meta'),r=s.get(id);r.onsuccess=()=>{if(r.result&&r.result.revision!==revision)return;if(r.result)s.put({...r.result,thumb:true});if(r.result||builtins.has(id))t.objectStore('thumb').put({id,blob});};t.oncomplete=res;t.onabort=()=>rej(t.error);});}
+async function cacheThumb(id,blob,revision,generation){const d=await db();return new Promise((res,rej)=>{const t=d.transaction(['meta','thumb'],'readwrite'),s=t.objectStore('meta'),r=s.get(id);r.onsuccess=()=>{if(r.result&&r.result.revision!==revision)return;if(r.result)s.put({...r.result,thumb:true});if(r.result||builtins.has(id))t.objectStore('thumb').put({id,blob,generation});};t.oncomplete=res;t.onabort=()=>rej(t.error);});}
 function notify(change){if(typeof BroadcastChannel!=='undefined'){const c=new BroadcastChannel('molecular-xyz');c.postMessage(change);c.close();}}
 const crcTable=Array.from({length:256},(_,n)=>{for(let k=0;k<8;k++)n=n&1?0xedb88320^(n>>>1):n>>>1;return n>>>0;});
 function crc32(bytes){let c=0xffffffff;for(const b of bytes)c=crcTable[(c^b)&255]^(c>>>8);return(c^0xffffffff)>>>0;}
@@ -300,6 +300,30 @@ Mol.confirmFileAction = function(title, description, label) {
  });
 };
 Mol.downloadBlob=function(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);};
+Mol.thumbnailMode = (select,key,reset,redraw) => {
+ const storageKey='xyz-thumbnail-'+key;
+ const read=()=>JSON.parse(localStorage.getItem(storageKey)||'{"mode":"polyhedra","generation":"initial"}');
+ Mol.displayMode(select);
+ select.value=read().mode;
+ select.onchange=()=>{
+  localStorage.setItem(storageKey,JSON.stringify({mode:select.value,generation:crypto.randomUUID()}));
+  void reset().catch(console.error);
+  redraw();
+ };
+ window.addEventListener('storage',event=>{
+  if(event.key===storageKey){select.value=read().mode;redraw();}
+ });
+ return read;
+};
+Mol.clearMoleculePreviews=async()=>{
+ const connection=await db();
+ return new Promise((resolve,reject)=>{
+  const tx=connection.transaction('thumb','readwrite');
+  tx.objectStore('thumb').clear();
+  tx.oncomplete=resolve;
+  tx.onabort=()=>reject(tx.error);
+ });
+};
 Mol.displayMode = select => {
  for (const [value,label] of [
   ['polyhedra','ボール＆スティック（金属：多面体）'],
@@ -357,8 +381,8 @@ Mol.graphics=(async()=>{const T=await import('three');const {OrbitControls}=awai
 Mol.graphics.catch(e=>{document.dispatchEvent(new CustomEvent('graphics-error',{detail:e}));});
 class Thumbnails{
  constructor(){this.queue=[];this.running=false;this.renderer=null;this.unavailable=false;}
- request(id,alive){return new Promise((resolve)=>{this.queue.push({id,alive,resolve});this.run();});}
- async run(){if(this.running)return;this.running=true;try{while(this.queue.length){this.queue.sort((a,b)=>Number(b.alive(true))-Number(a.alive(true)));const task=this.queue.shift();if(!task.alive()){task.resolve(null);continue;}try{let cached=await Mol.get('thumb',task.id);if(!cached&&task.alive(true)&&!this.unavailable){const m=await Mol.get('body',task.id);if(!m){task.resolve(null);continue;}const g=await Mol.graphics;if(!task.alive(true)){task.resolve(null);continue;}if(!this.renderer){try{this.renderer=new g.T.WebGLRenderer({alpha:true,antialias:true,preserveDrawingBuffer:true});}catch(e){this.unavailable=true;document.dispatchEvent(new CustomEvent('webgl-error'));throw e;}this.renderer.setSize(160,160);this.renderer.setPixelRatio(1);}const scene=new g.T.Scene(),camera=new g.T.PerspectiveCamera(38,1,.01,2000);g.light(scene);const model=g.model(m.atoms);scene.add(model);g.fit(camera,m.atoms);this.renderer.render(scene,camera);const blob=await new Promise(r=>this.renderer.domElement.toBlob(r,'image/png'));g.dispose(model);if(blob){await Mol.cacheThumb(task.id,blob,m.revision);cached={blob};}}
+ request(id,alive,settings){return new Promise((resolve)=>{this.queue.push({id,alive,resolve,settings});this.run();});}
+ async run(){if(this.running)return;this.running=true;try{while(this.queue.length){this.queue.sort((a,b)=>Number(b.alive(true))-Number(a.alive(true)));const task=this.queue.shift();if(!task.alive()){task.resolve(null);continue;}try{const settings=task.settings?.()??{mode:'ball',generation:undefined};let cached=await Mol.get('thumb',task.id);if(cached?.generation!==settings.generation)cached=null;if(!cached&&task.alive(true)&&!this.unavailable){const m=await Mol.get('body',task.id);if(!m){task.resolve(null);continue;}const g=await Mol.graphics;if(!task.alive(true)){task.resolve(null);continue;}if(!this.renderer){try{this.renderer=new g.T.WebGLRenderer({alpha:true,antialias:true,preserveDrawingBuffer:true});}catch(e){this.unavailable=true;document.dispatchEvent(new CustomEvent('webgl-error'));throw e;}this.renderer.setSize(160,160);this.renderer.setPixelRatio(1);}const scene=new g.T.Scene(),camera=new g.T.PerspectiveCamera(38,1,.01,2000);g.light(scene);const model=g.model(m.atoms,undefined,undefined,undefined,settings.mode);scene.add(model);g.fit(camera,m.atoms);this.renderer.render(scene,camera);const blob=await new Promise(r=>this.renderer.domElement.toBlob(r,'image/png'));g.dispose(model);if(blob){if(!task.settings||task.settings().generation===settings.generation)await Mol.cacheThumb(task.id,blob,m.revision,settings.generation).catch(()=>{});cached={blob};}}
  task.resolve(cached?.blob||null);}catch(e){task.resolve(null);}await new Promise(requestAnimationFrame);}}finally{this.running=false;}}
 }
 Mol.thumbnails=new Thumbnails();
@@ -452,7 +476,7 @@ Mol.VirtualGrid=class{
   const selected=this.isSelected(m.id);n.el.classList.toggle('selected',selected);n.el.setAttribute('aria-checked',String(selected));n.el.querySelector('.check').textContent=selected?'✓':'';
   const visible=()=>{const {top,bottom}=this.viewport();const y=Math.floor(n.index/cols)*this.row;return n.alive&&y<bottom&&y+this.row>top;};
   if(n.url&&!visible()){URL.revokeObjectURL(n.url);n.url=null;n.el.querySelector('.thumb').textContent='◌';}
-  if(!n.url&&!n.loading&&visible()){n.loading=true;Mol.thumbnails.request(m.id,strict=>strict?visible():n.alive).then(blob=>{n.loading=false;if(blob&&visible()){n.url=URL.createObjectURL(blob);const img=new Image();img.alt=m.name+' の分子モデル';img.src=n.url;n.el.querySelector('.thumb').replaceChildren(img);}else if(n.alive&&Mol.thumbnails.unavailable){n.el.querySelector('.thumb').textContent='WebGL 利用不可';}});}
+  if(!n.url&&!n.loading&&visible()){n.loading=true;Mol.thumbnails.request(m.id,strict=>strict?visible():n.alive,this.thumbnailSettings).then(blob=>{n.loading=false;if(blob&&visible()){n.url=URL.createObjectURL(blob);const img=new Image();img.alt=m.name+' の分子モデル';img.src=n.url;n.el.querySelector('.thumb').replaceChildren(img);}else if(n.alive&&Mol.thumbnails.unavailable){n.el.querySelector('.thumb').textContent='WebGL 利用不可';}});}
  }
  }
 };
