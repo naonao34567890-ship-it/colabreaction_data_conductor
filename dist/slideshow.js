@@ -266,7 +266,7 @@ $('numbers').onclick = () => {
 $('downloadFrame').onclick = async () => {
   const index = current;
   try {
-    Mol.downloadBlob(await Mol.output({raw:frames[index].raw}),Mol.safeName(baseName+'('+(index+1)+')')+'.xyz');
+    Mol.downloadBlob(Mol.calculationOutput(currentBlock),Mol.safeName(baseName+'('+(index+1)+')')+'.xyz');
   } catch (error) {status(error.message);}
 };
 $('importFrame').onclick = () => registerFrames([[current+1,current+1]]);
@@ -292,7 +292,7 @@ async function init() {
     throw Error('ライブラリで複数構造入りのXYZを開き、スライドショーを選んでください。');
   }
   const name = params.get('name') || 'trajectory.xyz';
-  baseName = name.replace(/\.xyz$/i,'');
+  baseName = name.replace(/\.(?:py)?xyz$/i,'');
   $('title').textContent = name;
   document.title = name+' — '+(reaction?'反応経路ビューア':'構造のスライドショー');
   const response = await fetch(source);

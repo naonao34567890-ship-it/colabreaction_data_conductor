@@ -20,7 +20,7 @@ class ImportJob{
    if(this.cancelled)break;
    if(total<2){
     for(const error of errors)this.reason(error,file.name);
-    if(single)await this.add(single,file.name.replace(/\.xyz$/i,''));
+    if(single)await this.add(single,file.name.replace(/\.(?:py)?xyz$/i,''));
     else if(!errors.length)this.reason('登録可能な分子なし',file.name);
     continue;
    }
@@ -29,7 +29,7 @@ class ImportJob{
    if(this.cancelled)break;
    const choice=await this.choose(file.name,total,file);
    if(this.cancelled||choice.action==='skip')continue;
-   const base=file.name.replace(/\.xyz$/i,'');
+   const base=file.name.replace(/\.(?:py)?xyz$/i,'');
    let index=0,selected=0;
    for await(const block of Mol.parseFile(file,()=>this.cancelled)){
     if(block.error){this.reason(block.error,file.name);continue;}
@@ -41,7 +41,7 @@ class ImportJob{
    this.stats.extra+=Math.max(0,selected-1);
    continue;
   }
-  let first=null,count=0,errors=0;const base=file.name.replace(/\.xyz$/i,'');
+  let first=null,count=0,errors=0;const base=file.name.replace(/\.(?:py)?xyz$/i,'');
   for await(const b of Mol.parseFile(file,()=>this.cancelled)){if(b.error){errors++;this.reason(b.error,file.name);continue;}count++;if(count===1)first=b;else{if(first){await this.add(first,base+'(1)');first=null;}await this.add(b,`${base}(${count})`);}}
   if(first&&!this.cancelled)await this.add(first,base);if(!count&&!errors&&!this.cancelled)this.reason('登録可能な分子なし',file.name);this.stats.extra+=Math.max(0,count-1);
  }catch(e){if(this.stats.fatal)break;this.reason(e.message,file.name,true);}finally{this.stats.processed++;if(Date.now()-this.last>80){this.emit({type:'progress',stats:this.stats});this.last=Date.now();}await Mol.tick();}}
@@ -51,9 +51,13 @@ class ImportJob{
 function header(size){const a=new Uint8Array(size);return{a,v:new DataView(a.buffer)};}
 async function exportData(ids,format,send,cancelled,progress,withMemo=false){
  const central=[],encoder=new TextEncoder(),names=new Set();let offset=0,done=0;
- for(const id of ids){if(cancelled())return;const body=await Mol.get('body',id);if(!body)throw Error('出力対象が削除されました。選択し直してください');const meta=withMemo?await Mol.get('meta',id):null;const blob=await Mol.output(body,withMemo?Mol.formatMemo(body.comment,meta?.tags||[]):'');
+ for(const id of ids){if(cancelled())return;const body=await Mol.get('body',id);if(!body)throw Error('出力対象が削除されました。選択し直してください');const meta=withMemo?await Mol.get('meta',id):null;const blob=withMemo?await Mol.output(body,Mol.formatMemo(body.comment,meta?.tags||[])):Mol.calculationOutput(body);
   if(format==='zip'){
-   let name=Mol.safeName(body.name)+'.xyz',n=1;while(names.has(name))name=Mol.safeName(body.name)+` (${++n}).xyz`;names.add(name);
+   const extension=withMemo?'.pyxyz':'.xyz';
+   const base=Mol.safeName(body.name);
+   let name=base+extension,n=1;
+   while(names.has(name))name=base+' ('+(++n)+')'+extension;
+   names.add(name);
    const filename=encoder.encode(name),bytes=new Uint8Array(await blob.arrayBuffer()),crc=Mol.crc32(bytes);if(filename.length>65535)throw Error('ZIP内のファイル名が長すぎます');
    const h=header(30+filename.length);h.v.setUint32(0,0x04034b50,true);h.v.setUint16(4,20,true);h.v.setUint16(6,0x800,true);h.v.setUint16(12,33,true);h.v.setUint32(14,crc,true);h.v.setUint32(18,bytes.length,true);h.v.setUint32(22,bytes.length,true);h.v.setUint16(26,filename.length,true);h.a.set(filename,30);
    const largeOffset=offset>=0xffffffff,c=header(46+filename.length+(largeOffset?12:0));c.v.setUint32(0,0x02014b50,true);c.v.setUint16(4,20,true);c.v.setUint16(6,largeOffset?45:20,true);c.v.setUint16(8,0x800,true);c.v.setUint16(14,33,true);c.v.setUint32(16,crc,true);c.v.setUint32(20,bytes.length,true);c.v.setUint32(24,bytes.length,true);c.v.setUint16(28,filename.length,true);c.v.setUint32(42,largeOffset?0xffffffff:offset,true);c.a.set(filename,46);if(largeOffset){c.v.setUint16(30,12,true);const x=46+filename.length;c.v.setUint16(x,1,true);c.v.setUint16(x+2,8,true);c.v.setBigUint64(x+4,BigInt(offset),true);}central.push(c.a);
