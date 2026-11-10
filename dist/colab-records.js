@@ -641,7 +641,24 @@ async function loadCardImage(img) {
   }
 }
 
-async function refresh() {
+let recordLoads = 0;
+async function withRecordLoading(load) {
+  const indicator = get('colabLoading');
+  recordLoads++;
+  indicator.hidden = false;
+  try {
+    return await load();
+  } finally {
+    recordLoads--;
+    indicator.hidden = recordLoads === 0;
+  }
+}
+
+function refresh() {
+  return withRecordLoading(loadRecords);
+}
+
+async function loadRecords() {
   imageObserver.disconnect();
   for (const url of imageUrls) URL.revokeObjectURL(url);
   imageUrls.clear();
@@ -737,9 +754,11 @@ async function authorize(response) {
   connect.disabled = input.disabled = folderInput.disabled = true;
   try {
     status('Google Driveの計算記録を読み込んでいます…');
-    const folders = await list("mimeType = '" + folderType + "' and appProperties has { key='xyzStudio' and value='colabRecords' }");
-    root = folders[0]?.id ?? await folder('分子 XYZ スタジオ Colab計算記録', null, 'colabRecords');
-    await refresh();
+    await withRecordLoading(async () => {
+      const folders = await list("mimeType = '" + folderType + "' and appProperties has { key='xyzStudio' and value='colabRecords' }");
+      root = folders[0]?.id ?? await folder('分子 XYZ スタジオ Colab計算記録', null, 'colabRecords');
+      await loadRecords();
+    });
     status(cards.size + ' 件の計算記録。ZIPまたはフォルダーを追加できます。');
     input.disabled = folderInput.disabled = false;
     connect.textContent = 'Google Driveに再接続';
