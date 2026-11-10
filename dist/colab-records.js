@@ -475,7 +475,28 @@ classificationForm.onsubmit = event => {
   if (name) void saveClassification(name);
 };
 
+const imageObserver = new IntersectionObserver(entries => {
+  for (const {target, isIntersecting} of entries) {
+    if (!isIntersecting) continue;
+    imageObserver.unobserve(target);
+    void loadCardImage(target);
+  }
+}, {rootMargin:'100px'});
+
+async function loadCardImage(img) {
+  try {
+    const blob = await (await download(img.dataset.driveFile)).blob();
+    if (!img.isConnected || img.hasAttribute('src')) return;
+    const url = URL.createObjectURL(blob);
+    imageUrls.add(url);
+    img.src = url;
+  } catch {
+    if (img.isConnected) img.alt += '（読み込み失敗）';
+  }
+}
+
 async function refresh() {
+  imageObserver.disconnect();
   for (const url of imageUrls) URL.revokeObjectURL(url);
   imageUrls.clear();
   jobs.replaceChildren();
@@ -483,60 +504,71 @@ async function refresh() {
   const folders = await list("'" + root + "' in parents and mimeType = '" + folderType + "'");
   folders.forEach(job => { job.addedAt = Date.parse(job.createdTime); });
   folders.sort((a,b) => Mol.compareDisplayOrder(a,b,order.value));
-  for (const job of folders) {
-    const files = new Map((await list("'" + job.id + "' in parents")).map(file => [file.name, file.id]));
-    if (!files.has('config.txt')) continue;
-    const card = document.createElement('article');
-    card.className = 'colab-job';
-    const images = document.createElement('div');
-    images.className = 'colab-images';
-    for (const [name, label] of [['START.png','START'], ['FINAL.png','FINAL'], ['Energy.png','エネルギープロファイル']]) {
-      const figure = document.createElement('figure'), caption = document.createElement('figcaption');
-      caption.textContent = label;
-      figure.append(caption);
-      if (files.has(name)) {
-        const img = document.createElement('img');
-        img.alt = label;
-        const url = URL.createObjectURL(await (await download(files.get(name))).blob());
-        imageUrls.add(url);
-        img.src = url;
-        figure.append(img);
-      }
-      images.append(figure);
+  for (let offset=0; offset<folders.length; offset+=4) {
+    const group = folders.slice(offset,offset+4);
+    const results = await Promise.allSettled(group.map(renderRecord));
+    sortCards();
+    if (results.some(result => result.status === 'rejected')) {
+      get('colabErrors').textContent = '一部の計算記録を読み込めませんでした。';
     }
-    const info = document.createElement('div');
-    info.className = 'colab-meta';
-    const config = await (await download(files.get('config.txt'))).text();
-    const savedCount = config.match(/^ファイル数: (\d+)$/m)?.[1];
-    const count = document.createElement('span');
-    count.textContent = savedCount !== undefined ? savedCount + 'ファイル'
-      : files.has('計算結果') ? (await countOriginalFiles(files.get('計算結果'))) + 'ファイル'
-      : 'ファイル数不明';
-    info.append(count);
-    for (const line of config.split(/\r?\n/)) {
-      if (!/^(プロット点数|電荷|spin(?:（出力値）)?|結果出力日時):/.test(line)) continue;
-      const field = document.createElement('span');
-      field.textContent = line.replace(/^電荷:\s*/, '⚡ ')
-        .replace(/^spin(?:（出力値）)?:\s*/, '🌀 ')
-        .replace(/^(結果出力日時:.*?)（[^）]*）$/, '$1');
-      info.append(field);
-    }
-    const open = document.createElement('button');
-    open.type = 'button';
-    open.textContent = '反応経路を開く';
-    open.onclick = () => void openReaction(job.id,job.name,files.get('計算結果'),files);
-    card.onclick = event => { if (!event.target.closest('button')) open.click(); };
-    const classificationButton = document.createElement('button');
-    classificationButton.type = 'button';
-    classificationButton.textContent = job.appProperties?.classification
-      ? '分類：' + job.appProperties.classification : '分類を設定';
-    classificationButton.onclick = () => openClassification(job.id);
-    card.append(images, info, open, classificationButton);
-    const resultDate = config.match(/^結果出力日時: (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/m)?.[1];
-    cards.set(job.id,{...job,card,classificationButton,resultDate});
-    jobs.append(card);
   }
-  sortCards();
+}
+
+async function renderRecord(job) {
+  const files = new Map((await list("'" + job.id + "' in parents")).map(file => [file.name, file.id]));
+  if (!files.has('config.txt')) return;
+  const card = document.createElement('article');
+  card.className = 'colab-job';
+  const images = document.createElement('div');
+  images.className = 'colab-images';
+  for (const [name, label] of [['START.png','START'], ['FINAL.png','FINAL'], ['Energy.png','エネルギープロファイル']]) {
+    const figure = document.createElement('figure'), caption = document.createElement('figcaption');
+    caption.textContent = label;
+    figure.append(caption);
+    if (files.has(name)) {
+      const img = document.createElement('img');
+      img.alt = label;
+      img.dataset.driveFile = files.get(name);
+      imageObserver.observe(img);
+      figure.append(img);
+    }
+    images.append(figure);
+  }
+  const info = document.createElement('div');
+  info.className = 'colab-meta';
+  const config = await (await download(files.get('config.txt'))).text();
+  const savedCount = config.match(/^ファイル数: (\d+)$/m)?.[1];
+  const count = document.createElement('span');
+  count.textContent = savedCount !== undefined ? savedCount + 'ファイル'
+    : files.has('計算結果') ? 'ファイル数を確認中…'
+    : 'ファイル数不明';
+  info.append(count);
+  for (const line of config.split(/\r?\n/)) {
+    if (!/^(プロット点数|電荷|spin(?:（出力値）)?|結果出力日時):/.test(line)) continue;
+    const field = document.createElement('span');
+    field.textContent = line.replace(/^電荷:\s*/, '⚡ ')
+      .replace(/^spin(?:（出力値）)?:\s*/, '🌀 ')
+      .replace(/^(結果出力日時:.*?)（[^）]*）$/, '$1');
+    info.append(field);
+  }
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.textContent = '反応経路を開く';
+  open.onclick = () => void openReaction(job.id,job.name,files.get('計算結果'),files);
+  card.onclick = event => { if (!event.target.closest('button')) open.click(); };
+  const classificationButton = document.createElement('button');
+  classificationButton.type = 'button';
+  classificationButton.textContent = job.appProperties?.classification
+    ? '分類：' + job.appProperties.classification : '分類を設定';
+  classificationButton.onclick = () => openClassification(job.id);
+  card.append(images, info, open, classificationButton);
+  const resultDate = config.match(/^結果出力日時: (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/m)?.[1];
+  cards.set(job.id,{...job,card,classificationButton,resultDate});
+  jobs.append(card);
+  if (savedCount === undefined && files.has('計算結果')) {
+    try { count.textContent = (await countOriginalFiles(files.get('計算結果'))) + 'ファイル'; }
+    catch { count.textContent = 'ファイル数不明'; }
+  }
 }
 
 async function authorize(response) {
