@@ -6,6 +6,8 @@
 <title>構造のスライドショー</title>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
 <script src="common.js"></script>
+<script src="reaction-store.js"></script>
+<link rel="stylesheet" href="frame-save.css">
 <style>
 #frameNumbers{position:absolute;inset:0;pointer-events:none}
 #energyPlot{display:block;width:100%;height:auto}
@@ -23,7 +25,15 @@
 <button id="prev" aria-label="1枚前" title="1枚前" disabled>◀</button>
 <button id="next" aria-label="1枚先" title="1枚先" disabled>▶</button>
 <button id="nextTen" aria-label="10枚先" title="10枚先" disabled>▶▶</button>
-<button id="importFrame" disabled>この構造をライブラリに取り込み</button>
+<div class="frame-import-actions">
+<button id="importStart" class="primary" disabled>反応ライブラリに出発物として保存</button>
+<div class="frame-import-options">
+<button id="importFrame" disabled>分子ライブラリに保存</button>
+<button id="importFinish" disabled>反応ライブラリに生成物として保存</button>
+<button disabled>出発物を選んで生成物として保存（準備中）</button>
+<button id="importFrameEdit" disabled>反応ライブラリに出発物として保存してエディタを開く</button>
+</div>
+</div>
 <button id="downloadFrame" disabled>この構造をダウンロード</button>
 <button id="importAll" disabled>すべての構造を取り込み</button>
 <button id="importMany" disabled>構造を複数選んで取り込み</button>

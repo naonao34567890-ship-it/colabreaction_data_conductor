@@ -6,15 +6,13 @@
 <title>反応経路ビューア</title>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
 <script src="common.js"></script>
+<script src="reaction-store.js"></script>
+<link rel="stylesheet" href="frame-save.css">
 <style>
 #frameNumbers{position:absolute;inset:0;pointer-events:none}
 #energyPlot{display:block;width:100%;height:auto}
 #slideStatus{min-height:1.5em;margin-top:8px}
 #frameCount{font-variant-numeric:tabular-nums;font-size:24px}
-.frame-import-actions { position: relative; }
-#importFrameEdit { display: none; position: absolute; top: 100%; left: 0; z-index: 5; }
-.frame-import-actions:hover #importFrameEdit,
-.frame-import-actions:focus-within #importFrameEdit { display: block; }
 </style>
 </head>
 <body data-viewer="reaction">
@@ -30,8 +28,13 @@
 <button id="next" aria-label="1枚先" title="1枚先" disabled>▶</button>
 <button id="nextTen" aria-label="10枚先" title="10枚先" disabled>▶▶</button>
 <div class="frame-import-actions">
-<button id="importFrame" disabled>この構造をライブラリに取り込み</button>
-<button id="importFrameEdit" disabled>ライブラリに取り込んでエディタを開く</button>
+<button id="importStart" class="primary" disabled>反応ライブラリに出発物として保存</button>
+<div class="frame-import-options">
+<button id="importFrame" disabled>分子ライブラリに保存</button>
+<button id="importFinish" disabled>反応ライブラリに生成物として保存</button>
+<button disabled>出発物を選んで生成物として保存（準備中）</button>
+<button id="importFrameEdit" disabled>反応ライブラリに出発物として保存してエディタを開く</button>
+</div>
 </div>
 <button id="downloadFrame" disabled>この構造をダウンロード</button>
 <button id="importAll" disabled>すべての構造を取り込み</button>

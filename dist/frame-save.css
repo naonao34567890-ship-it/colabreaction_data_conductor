@@ -1,0 +1,5 @@
+.frame-import-actions { position: relative; }
+.frame-import-options { display: none; position: absolute; top: 100%; left: 0; z-index: 10; background: #191e1e; border: 1px solid var(--border); border-radius: 7px; padding: 4px; }
+.frame-import-actions:hover .frame-import-options,
+.frame-import-actions:focus-within .frame-import-options { display: grid; gap: 4px; }
+.frame-import-options button { text-align: left; white-space: normal; min-width: min(275px, 75vw); }

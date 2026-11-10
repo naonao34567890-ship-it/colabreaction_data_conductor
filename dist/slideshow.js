@@ -64,7 +64,7 @@ function syncButtons() {
   if (reaction) {
     $('saveStartImage').disabled = $('saveFinalImage').disabled = unavailable || !imageSavingEnabled || !imageChannel || !captureImage || imageSaving;
   }
-  if (reaction) $('importFrameEdit').disabled = unavailable;
+  for (const id of ['importStart','importFinish','importFrameEdit']) $(id).disabled = unavailable;
   for (const id of ['numbers','importFrame','downloadFrame','importAll','importMany']) {
     $(id).disabled = unavailable;
   }
@@ -277,20 +277,51 @@ $('downloadFrame').onclick = async () => {
   } catch (error) {status(error.message);}
 };
 $('importFrame').onclick = () => registerFrames([[current+1,current+1]]);
-if (reaction) $('importFrameEdit').onclick = async () => {
+let lastReactionId;
+async function saveEndpoint(finish, openEditor = false) {
   if (busy || !currentBlock) return;
-  const tab = window.open('about:blank','_blank');
-  if (!tab) {
-    status('エディタのタブを開けませんでした。ポップアップの設定を確認してください。');
-    return;
+  const tab = openEditor ? window.open('about:blank','_blank') : null;
+  if (openEditor && !tab) { status('エディタのタブを開けませんでした。'); return; }
+  if (tab) tab.opener = null;
+  busy = true;
+  syncButtons();
+  try {
+    const name = Mol.safeName(baseName.replace(/[_＿](?:START|FINISH)$/i,''));
+    const slot = finish ? 'FINISH' : 'START';
+    const structure = {
+      name:name+'_'+slot, atoms:currentBlock.atoms,
+      raw:Mol.calculationOutput(currentBlock), comment:'', edited:true,
+      revision:crypto.randomUUID(),
+    };
+    let saved;
+    if (finish) {
+      let target = lastReactionId && await ReactionStore.read(lastReactionId);
+      if (!target) {
+        const candidates = (await ReactionStore.read()).filter(item=>item.name===name && item.START);
+        if (candidates.length!==1) throw Error(candidates.length ? '同名の反応が複数あります。' : '同名の出発物が見つかりません。');
+        target = candidates[0];
+      }
+      if (target.FINISH && !await Mol.confirmFileAction('生成物の上書き',target.name+'_FINISH を上書きしますか？','生成物を上書きする')) return;
+      structure.name = target.name+'_FINISH';
+      saved = await ReactionStore.update(target.id,{FINISH:structure},current=>
+        !!current.FINISH===!!target.FINISH && current.FINISH?.revision===target.FINISH?.revision);
+    } else {
+      saved = await ReactionStore.create('START',structure,name);
+    }
+    lastReactionId = saved.id;
+    status(saved.name+'_'+slot+' を反応ライブラリに保存しました。');
+    if (tab && !tab.closed) tab.location.replace(new URL('editor.html?'+new URLSearchParams({reaction:saved.id,slot}),location.href));
+  } catch (error) {
+    tab?.close();
+    status(error.message);
+  } finally {
+    busy = false;
+    syncButtons();
   }
-  tab.opener = null;
-  tab.document.body.textContent = '構造をライブラリに取り込み中…';
-  const frame = current+1;
-  const saved = await registerFrames([[frame,frame]]);
-  if (!saved) { tab.close(); return; }
-  if (!tab.closed) tab.location.replace(new URL('editor.html?id='+encodeURIComponent(saved.id),location.href));
-};
+}
+$('importStart').onclick = () => void saveEndpoint(false);
+$('importFinish').onclick = () => void saveEndpoint(true);
+$('importFrameEdit').onclick = () => void saveEndpoint(false,true);
 $('importAll').onclick = () => registerFrames();
 $('importMany').onclick = () => {
   $('ranges').value = '';
