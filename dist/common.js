@@ -395,7 +395,7 @@ class Thumbnails{
 }
 Mol.thumbnails=new Thumbnails();
 Mol.renameMolecule = async (id, name) => {
- const connection = await db();
+ const connection = await Mol.db();
  return new Promise((resolve, reject) => {
   const tx = connection.transaction(['meta','body'],'readwrite');
   const meta = tx.objectStore('meta'), body = tx.objectStore('body');
