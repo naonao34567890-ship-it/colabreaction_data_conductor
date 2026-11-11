@@ -423,34 +423,65 @@ Mol.editName = (title, save, report, {label='名前', multiline=false, allowEmpt
  title.title = 'ダブルクリックで'+label+'を編集';
  title.addEventListener('dblclick', event => {
   event.stopPropagation();
-  if (title.hidden) return;
+  if (document.querySelector('dialog[open]')) return;
+  const dialog = document.createElement('dialog');
+  const form = document.createElement('form');
+  const field = document.createElement('label');
   const input = document.createElement(multiline?'textarea':'input');
-  input.value = title.textContent;
-  input.setAttribute('aria-label',label);
+  const actions = document.createElement('div');
+  const cancel = document.createElement('button');
+  const submit = document.createElement('button');
+  const feedback = document.createElement('p');
+  const original = title.textContent;
+  input.value = original;
+  input.autofocus = true;
   if (multiline) input.rows = 3;
-  input.style.cssText = 'width:100%;min-width:0;padding:0 4px;font-size:inherit';
-  input.addEventListener('click', event => event.stopPropagation());
-  input.addEventListener('dblclick', event => event.stopPropagation());
-  title.after(input);
-  title.hidden = true;
+  field.append(label,input);
+  actions.className = 'dialog-actions';
+  cancel.type = 'button';
+  cancel.textContent = 'キャンセル';
+  submit.type = 'submit';
+  submit.className = 'primary';
+  submit.textContent = '保存';
+  feedback.setAttribute('role','alert');
+  actions.append(cancel,submit);
+  form.append(field,actions,feedback);
+  dialog.append(form);
+  document.body.append(dialog);
   let saving = false;
-  const close = () => { input.remove(); title.hidden = false; };
-  input.onblur = () => { if (!saving) close(); };
-  input.onkeydown = async event => {
+  cancel.onclick = () => dialog.close();
+  dialog.addEventListener('close',()=>dialog.remove(),{once:true});
+  dialog.addEventListener('cancel',event=>{if(saving)event.preventDefault();});
+  dialog.addEventListener('click',event=>{
+   if(event.target!==dialog||saving)return;
+   const rect=dialog.getBoundingClientRect();
+   if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)dialog.close();
+  });
+  input.addEventListener('keydown',event=>{
    event.stopPropagation();
-   if (event.isComposing || saving) return;
-   if (event.key === 'Escape') { event.preventDefault(); close(); }
-   if (event.key !== 'Enter' || (multiline && event.shiftKey)) return;
+   if(event.key!=='Enter'||event.isComposing||event.keyCode===229||(multiline&&event.shiftKey))return;
    event.preventDefault();
-   const name = input.value.trim();
-   if ((!name && !allowEmpty) || name === title.textContent) { close(); return; }
-   saving = true;
-   input.disabled = true;
-   try { title.textContent = (await save(name)) ?? name; }
-   catch (error) { report(error.message); }
-   finally { close(); }
+   form.requestSubmit(submit);
+  });
+  form.onsubmit = async event => {
+   event.preventDefault();
+   if(saving)return;
+   const name=input.value.trim();
+   if(!name&&!allowEmpty){feedback.textContent='入力してください。';return;}
+   if(name===original){dialog.close();return;}
+   saving=true;
+   cancel.disabled=submit.disabled=input.disabled=true;
+   try {
+    title.textContent=(await save(name))??name;
+    dialog.close();
+   } catch(error) {
+    feedback.textContent=error.message;
+    report?.(error.message);
+    cancel.disabled=submit.disabled=input.disabled=false;
+    input.focus();
+   } finally {saving=false;}
   };
-  input.focus();
+  dialog.showModal();
   input.select();
  });
 };

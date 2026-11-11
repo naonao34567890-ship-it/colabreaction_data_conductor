@@ -150,6 +150,14 @@ if(!molecule)throw Error('指定した分子は見つかりません');syncReact
  miniChange(change);
  Mol.notify(change);
  return change.name;
+},notice);else if(openedReactionId)Mol.editName($('title'),async value=>{
+ const name=Mol.safeName(value.replace(new RegExp('[_＿]'+openedReactionSlot+'$','i'),''));
+ const saved=await ReactionStore.update(openedReactionId,{name});
+ molecule.name=saved.name+'_'+openedReactionSlot;
+ if(reactionId===openedReactionId)savedStartName=undefined;
+ syncReactionSave();
+ document.title=molecule.name+' — 分子エディタ';
+ return molecule.name;
 },notice);graphics=await Mol.graphics;const {T,OrbitControls}=graphics;scene=new T.Scene();scene.background=new T.Color(0x101515);graphics.light(scene);camera=new T.PerspectiveCamera(40,1,.01,2000);renderer=new T.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));$('view').prepend(renderer.domElement);controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=false;controls.mouseButtons={LEFT:T.MOUSE.ROTATE,MIDDLE:T.MOUSE.PAN,RIGHT:null};raycaster=new T.Raycaster();pointer=new T.Vector2();
  const numberCanvas=$('atomNumberCanvas'),numberButton=$('atomNumbers');
  const numberContext=numberCanvas.getContext('2d'),projected=new T.Vector3();
