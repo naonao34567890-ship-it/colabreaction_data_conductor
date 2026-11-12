@@ -31,6 +31,8 @@ jobs:
   validate:
     name: Check configuration and code
     runs-on: ubuntu-24.04
+    outputs:
+      cloudflare_account_id: ${{ steps.deployment.outputs.cloudflare_account_id }}
     steps:
       - name: Require the reviewed main branch
         shell: bash
@@ -44,23 +46,17 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - name: Check deployment credentials before changing either service
+        id: deployment
         if: inputs.publish
         env:
           TARGET: ${{ inputs.target }}
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CF_ACCOUNT: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
-          DEPLOY_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER || 'projects/809455733591/locations/global/workloadIdentityPools/mol-bench-github/providers/github' }}
+          DEPLOY_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT || 'mol-bench-deployer@mol-bench.iam.gserviceaccount.com' }}
         shell: bash
         run: |
-          if [[ "$TARGET" = both || "$TARGET" = worker ]]; then
-            : "${CF_TOKEN:?Set repository secret CLOUDFLARE_API_TOKEN}"
-            : "${CF_ACCOUNT:?Set repository variable CLOUDFLARE_ACCOUNT_ID}"
-          fi
-          if [[ "$TARGET" = both || "$TARGET" = hosting ]]; then
-            : "${WIF_PROVIDER:?Set repository variable GCP_WIF_PROVIDER}"
-            : "${DEPLOY_ACCOUNT:?Set repository variable GCP_SERVICE_ACCOUNT}"
-          fi
+          node scripts/resolve-deployment.mjs
       - name: Test code, browser storage and Worker packaging
         run: bash scripts/validate-release.sh
       - name: Record the exact source revision
@@ -85,7 +81,7 @@ jobs:
       - name: Publish Worker and Durable Object migration
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ needs.validate.outputs.cloudflare_account_id }}
         run: npx --yes wrangler@4.161.0 deploy --config standalone-drive/wrangler.jsonc --define "DEPLOYMENT_COMMIT:\"${GITHUB_SHA}\""
       - name: Check the published backend revision
         run: node scripts/check-deployment.mjs worker "$GITHUB_SHA"
@@ -116,8 +112,8 @@ jobs:
       - name: Obtain short-lived Google credentials
         uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
-          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER || 'projects/809455733591/locations/global/workloadIdentityPools/mol-bench-github/providers/github' }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT || 'mol-bench-deployer@mol-bench.iam.gserviceaccount.com' }}
           project_id: mol-bench
       - name: Stamp the exact frontend revision
         run: |

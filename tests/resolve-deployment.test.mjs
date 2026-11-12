@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {resolveAccount} from '../scripts/resolve-deployment.mjs';
+const id='123456789012345678901234567890ab';
+const mock = async url => ({ok:true,status:200,json:async()=>({success:true,...(url.includes('/settings') ? {result:{bindings:[{name:'DRIVE_KV',namespace_id:'368f59c248824ca49faff59bdbe4b92f'}]}} : {result:[{id}],result_info:{total_pages:1}})})});
+assert.equal(await resolveAccount('test',undefined,mock),id);
+assert.equal(await resolveAccount('test',id,mock),id);
+await assert.rejects(resolveAccount('',id,mock),/secret/);
+await assert.rejects(resolveAccount('test','invalid',mock),/Invalid/);
+await assert.rejects(resolveAccount('test',id,async()=>({ok:true,status:200,json:async()=>({success:true,result:{bindings:[]}})})),/exactly one/);
+await assert.rejects(resolveAccount('test',undefined,async()=>({ok:false,status:403,json:async()=>({success:false})})),/403/);
+console.log('Deployment account resolution tests passed');
