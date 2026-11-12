@@ -47,6 +47,36 @@ const ReactionStore = (() => {
   const value = {id:crypto.randomUUID(), createdAt:date.getTime(), name:reactionName || name, ...structures};
   return transaction('readwrite',(store,done)=>{ store.add(value); done(value); });
  }
+ async function importRecords(items) {
+  if(!items.length)return {added:0,skipped:0};
+  const existing=await read(),byId=new Map(existing.map(r=>[r.id,r])),expected=new Map(),incoming=new Map();
+  for(const item of items){
+   if(!item?.id||incoming.has(item.id))throw Error('反応IDが欠けているか重複しています。');
+   incoming.set(item.id,item);
+   const previous=byId.get(item.id);
+   if(previous){
+    if(await ReactionArchive.fingerprint(previous)!==await ReactionArchive.fingerprint(item))throw Error('同じ反応IDの異なる内容があります。上書きせず停止しました：'+item.name+'（'+item.id+'）');
+    expected.set(item.id,JSON.stringify(previous));
+   }
+  }
+  return transaction('readwrite',(store,done,abort)=>{
+   let added=0,skipped=0,left=items.length;
+   for(const item of items){
+    const request=store.get(item.id);
+    request.onsuccess=()=>{
+     const previous=request.result;
+     if(previous){
+      if(!expected.has(item.id)||JSON.stringify(previous)!==expected.get(item.id)){abort('別のタブで反応が更新されました。取り込み直してください。');return;}
+      skipped++;
+     }else{
+      if(expected.has(item.id)){abort('別のタブで反応が削除されました。取り込み直してください。');return;}
+      store.add(item);added++;
+     }
+     if(!--left)done({added,skipped});
+    };
+   }
+  });
+ }
  function remove(ids) {
   return transaction('readwrite',store=>{ for(const id of ids) store.delete(id); });
  }
@@ -85,7 +115,7 @@ const ReactionStore = (() => {
    };
   });
  }
- const api={read,update,remove,tag,cacheStartPreview,clearStartPreviews,create:(slot,structure,name)=>createReaction({[slot]:structure},name),createReaction};
- if(Mol.cloud){for(const [key,method]of Object.entries({read:'reactionRead',update:'reactionUpdate',remove:'reactionRemove',tag:'reactionTag',createReaction:'reactionCreate'}))api[key]=(...args)=>Mol.cloud.call(method,...args);api.create=(slot,structure,name)=>Mol.cloud.call('reactionCreate',{[slot]:structure},name);}
+ const api={read,update,importRecords,remove,tag,cacheStartPreview,clearStartPreviews,create:(slot,structure,name)=>createReaction({[slot]:structure},name),createReaction};
+ if(Mol.cloud){for(const [key,method]of Object.entries({read:'reactionRead',update:'reactionUpdate',remove:'reactionRemove',tag:'reactionTag',createReaction:'reactionCreate',importRecords:'reactionImport'}))api[key]=(...args)=>Mol.cloud.call(method,...args);api.create=(slot,structure,name)=>Mol.cloud.call('reactionCreate',{[slot]:structure},name);}
  return api;
 })();

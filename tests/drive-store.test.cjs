@@ -330,6 +330,42 @@ const { chromium } = require('playwright'),
       return { rejected, finish: record.FINISH.revision, cached: !!cached.startPreview };
     }, reaction.id);
     assert.deepEqual(reactionCheck, { rejected: true, finish: 'f', cached: true });
+    // Actual ZIP selection, confirmation, decode and canonical Drive commit.
+    const archiveBytes=await p.evaluate(async()=>{
+      const structure={name:'renamed structure',atoms:[{el:'H',x:1e-14,y:-0,z:2,extra:['source']}],raw:new Blob(['1\r\nsource memo\r\nH 1e-14 -0 2\r\nfooter\r\n'],{type:'chemical/x-xyz'}),comment:'source memo',revision:'source-start',edited:false};
+      const items=[{id:'zip-pair-1',name:'same display name',createdAt:123,tags:['source-tag'],START:structure,FINISH:{...structure,revision:'source-finish',atoms:[{el:'O',x:8,y:9,z:10}]}},
+        {id:'zip-pair-2',name:'same display name',createdAt:456,tags:[],START:{...structure,revision:'other-start'},extra:new Uint8Array([0,255]),date:new Date('2020-01-01'),optional:undefined}];
+      const {files}=await ReactionArchive.build(items),chunks=[];
+      await MolJobs.exportFiles(files,b=>chunks.push(b));
+      let text='';for(const b of new Uint8Array(await new Blob(chunks).arrayBuffer()))text+=String.fromCharCode(b);
+      return btoa(text);
+    });
+    await p.locator('#reactionImportFile').setInputFiles({name:'original-sites.zip',mimeType:'application/zip',buffer:Buffer.from(archiveBytes,'base64')});
+    await p.getByRole('button',{name:'取り込む',exact:true}).click();
+    await p.waitForFunction(()=>document.querySelector('#reactionStatus').textContent.includes('2 件を取り込みました'));
+    await p.reload();await p.evaluate(()=>Mol.cloud.ready);
+    const archiveResult=await p.evaluate(async()=>{
+      const one=await ReactionStore.read('zip-pair-1'),two=await ReactionStore.read('zip-pair-2');
+      return {one:one.START.atoms[0],finish:one.FINISH.atoms[0].el,raw:await one.START.raw.text(),tags:one.tags,id:one.id,missing:!two.FINISH,binary:Array.from(two.extra),date:two.date.toISOString(),undefined:Object.hasOwn(two,'optional')&&two.optional===undefined};
+    });
+    assert.equal(archiveResult.id,'zip-pair-1');assert.equal(archiveResult.finish,'O');
+    assert.equal(archiveResult.one.x,1e-14);assert.ok(Object.is(archiveResult.one.y,-0));
+    assert.equal(archiveResult.raw,'1\r\nsource memo\r\nH 1e-14 -0 2\r\nfooter\r\n');
+    assert.deepEqual(archiveResult.tags,['source-tag']);assert.equal(archiveResult.missing,true);
+    assert.deepEqual(archiveResult.binary,[0,255]);assert.equal(archiveResult.date,'2020-01-01T00:00:00.000Z');assert.equal(archiveResult.undefined,true);
+    const importAgain=await p.evaluate(async bytes=>{
+      const file=new File([Uint8Array.from(atob(bytes),c=>c.charCodeAt(0))],'same.zip');
+      const {records}=await ReactionArchive.read(file);
+      return ReactionStore.importRecords(records);
+    },archiveBytes);
+    assert.deepEqual(importAgain,{added:0,skipped:2});
+    const filesBeforeConflict=files.size;
+    const importConflict=await p.evaluate(async()=>{
+      const old=await ReactionStore.read('zip-pair-1');
+      try{await ReactionStore.importRecords([{...old,id:'must-not-import'}, {...old,name:'modified'}]);return false;}
+      catch(e){return e.message.includes('上書きせず')&&!await ReactionStore.read('must-not-import');}
+    });
+    assert.equal(importConflict,true);assert.equal(files.size,filesBeforeConflict,'conflict rejects before uploading any data');
     // A second browser has no local dataset. It reads exactly the same canonical IDs.
     const ctx2 = await context(),
       q = await ctx2.newPage();

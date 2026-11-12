@@ -16,6 +16,14 @@ async function hash(text) {
   ).join('');
 }
 async function encode(value) {
+  if(value===undefined)return {$molBenchValue:'undefined'};
+  if(typeof value==='number'&&(!Number.isFinite(value)||Object.is(value,-0)))return {$molBenchValue:'number',value:Object.is(value,-0)?'-0':String(value)};
+  if(value instanceof Date)return {$molBenchValue:'date',value:value.toISOString()};
+  if(value instanceof ArrayBuffer||ArrayBuffer.isView(value)){
+    const bytes=value instanceof ArrayBuffer?new Uint8Array(value):new Uint8Array(value.buffer,value.byteOffset,value.byteLength);
+    const blob=await encode(new Blob([bytes]));
+    return {$molBenchValue:'binary',constructor:value.constructor.name,blob};
+  }
   if (value instanceof Blob) {
     const a = new Uint8Array(await value.arrayBuffer());
     let s = '';
@@ -24,14 +32,48 @@ async function encode(value) {
   }
   if (Array.isArray(value)) return Promise.all(value.map(encode));
   if (value && typeof value === 'object') {
-    const out = {};
+    const out = Object.create(null);
     for (const key of Object.keys(value).sort())
       if (!['_driveFileId', 'startPreview'].includes(key)) out[key] = await encode(value[key]);
+    return (Object.hasOwn(value,'$molBenchValue')||Object.hasOwn(value,'$blob')) ? {$molBenchValue:'object',entries:Object.entries(out)} : out;
+  }
+  return value;
+}
+// Keep migration receipts compatible with versions published before typed-value support.
+async function legacyEncode(value) {
+  if (value instanceof Blob) {
+    const a = new Uint8Array(await value.arrayBuffer());
+    let s = '';
+    for (let i = 0; i < a.length; i += 8192) s += String.fromCharCode(...a.subarray(i, i + 8192));
+    return { $blob: btoa(s), type: value.type };
+  }
+  if (Array.isArray(value)) return Promise.all(value.map(legacyEncode));
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const key of Object.keys(value).sort())
+      if (!['_driveFileId', 'startPreview'].includes(key)) out[key] = await legacyEncode(value[key]);
     return out;
   }
   return value;
 }
 function decode(value) {
+  if(value&&typeof value.$molBenchValue==='string'){
+    switch(value.$molBenchValue){
+      case 'undefined':return undefined;
+      case 'number':return value.value==='-0'?-0:Number(value.value);
+      case 'date':return new Date(value.value);
+      case 'object':return Object.fromEntries(value.entries.map(([k,v])=>[k,decode(v)]));
+      case 'binary':{
+        const blob=value.blob;
+        const bytes=Uint8Array.from(atob(blob.$blob),c=>c.charCodeAt(0));
+        const types={ArrayBuffer,DataView,Uint8Array,Uint8ClampedArray,Int8Array,Uint16Array,Int16Array,Uint32Array,Int32Array,Float32Array,Float64Array,BigInt64Array,BigUint64Array};
+        if(!Object.hasOwn(types,value.constructor))throw Error('未対応のDriveバイナリ型です。');
+        return value.constructor==='ArrayBuffer'?bytes.buffer:new types[value.constructor](bytes.buffer);
+      }
+      default:throw Error('未対応のDriveデータ型です。');
+    }
+  }
+
   if (value && typeof value.$blob === 'string')
     return new Blob([Uint8Array.from(atob(value.$blob), (c) => c.charCodeAt(0))], {
       type: value.type,
@@ -712,7 +754,7 @@ export function createDriveStore(local) {
     }
   }
   async function migrateBatch(items) {
-    for (const item of items) item.legacySource = await hash(JSON.stringify(await encode(item)));
+    for (const item of items) item.legacySource = await hash(JSON.stringify(await legacyEncode(item)));
     await commit([], async () => {
       const puts = [];
       const used = new Set(entries('m').map((r) => r.meta.name));
@@ -931,6 +973,28 @@ export function createDriveStore(local) {
         puts: [{ kind: 'r', meta: reactionMeta(body), body }],
         result: body,
       }));
+    },
+    async reactionImport(items) {
+      await ready;
+      const incoming=clone(items), seen=new Set();
+      for(const item of incoming){
+        if(typeof item?.id!=='string'||!item.id||seen.has(item.id))throw Error('反応IDが欠けているか重複しています。');
+        seen.add(item.id);
+      }
+      const {fingerprint}=globalThis.ReactionArchive || {};
+      if(!fingerprint)throw Error('反応ZIPの取り込み機能を読み込めませんでした。再読み込みしてください。');
+      return commit([],async()=>{
+        const puts=[];let skipped=0;
+        // Inspect every conflict before uploading or selecting a new catalogue.
+        for(const body of incoming){
+          const old=await readRecord('r',body.id);
+          if(old){
+            if(await fingerprint(old)!==await fingerprint(body))throw Error('同じ反応IDの異なる内容があります。上書きせず停止しました：'+body.name+'（'+body.id+'）');
+            skipped++;
+          }else puts.push({kind:'r',meta:reactionMeta(body),body});
+        }
+        return {puts,result:{added:puts.length,skipped}};
+      });
     },
     async reactionUpdate(id, fields, check) {
       await ready;

@@ -171,11 +171,14 @@ window.addEventListener('focus',renderReactions);
 void renderReactions();
 
 function selectionUI() {
+ control('reactionImport').disabled=changing;
+ control('reactionImportFile').disabled=changing;
+ control('reactionArchiveAll').disabled=changing||!records.length;
  for(const card of days.querySelectorAll('.reaction-card')) {
   const active=selected.has(card.dataset.id);
   card.classList.toggle('selected',active);
  }
- for(const id of ['reactionTag','reactionDelete','reactionZip'])control(id).disabled=changing||!selected.size;
+ for(const id of ['reactionTag','reactionDelete','reactionZip','reactionArchive'])control(id).disabled=changing||!selected.size;
  control('reactionSelection').textContent=selected.size+' 件選択中';
 }
 function selectCard(id,additive) {
@@ -225,6 +228,46 @@ control('reactionTagForm').onsubmit=event=>{
   control('reactionTagDialog').close();
   await renderReactions();
  });
+};
+async function importReactionZip(file) {
+ if(changing||!file)return;
+ changing=true;selectionUI();
+ try{
+  const {records:incoming}=await ReactionArchive.read(file,{progress:(done,total)=>{status.textContent=`ZIPの内容を検証中… ${done} / ${total} 件`;}});
+  if(!await Mol.confirmFileAction('反応ZIPを取り込む',incoming.length+' 件の反応を現在の保存先へ取り込みます。同じID・同じ内容はスキップし、異なる内容は上書きせず停止します。','取り込む')){status.textContent='取り込みをキャンセルしました。';return;}
+  status.textContent='反応を保存中… タブを閉じないでください。';
+  const result=await ReactionStore.importRecords(incoming);
+  await renderReactions();
+  status.textContent=result.added+' 件を取り込みました。同じ内容の '+result.skipped+' 件は登録済みのためスキップしました。';
+ }catch(error){status.textContent='取り込みできませんでした：'+error.message;}
+ finally{changing=false;selectionUI();control('reactionImportFile').value='';}
+}
+control('reactionImport').onclick=()=>control('reactionImportFile').click();
+control('reactionImportFile').onchange=event=>void importReactionZip(event.target.files[0]);
+control('reactionDrop').addEventListener('dragover',event=>{event.preventDefault();event.dataTransfer.dropEffect=changing?'none':'copy';});
+control('reactionDrop').addEventListener('drop',event=>{
+ event.preventDefault();
+ if(event.dataTransfer.files.length!==1){status.textContent='対応情報付きZIPを1つずつドロップしてください。';return;}
+ void importReactionZip(event.dataTransfer.files[0]);
+});
+window.addEventListener('dragover',event=>{if(event.dataTransfer.types.includes('Files'))event.preventDefault();});
+window.addEventListener('drop',event=>{if(event.dataTransfer.types.includes('Files'))event.preventDefault();});
+window.addEventListener('beforeunload',event=>{if(changing){event.preventDefault();event.returnValue='';}});
+async function downloadReactionArchive(ids) {
+ const saved=await ReactionStore.read();
+ const chosen=new Set(ids);
+ const items=saved.filter(item=>chosen.has(item.id));
+ if(items.length!==chosen.size)throw Error('反応が別のタブで削除されました。再読み込みしてください。');
+ await ReactionArchive.download(items,(done,total)=>{status.textContent=`対応情報付きZIPを作成中… ${done} / ${total} 件`;});
+ status.textContent=items.length+' 件の反応を対応情報付きZIPで保存しました。';
+}
+control('reactionArchive').onclick=()=>void changeSelection(downloadReactionArchive);
+control('reactionArchiveAll').onclick=async()=>{
+ if(changing)return;
+ changing=true;selectionUI();
+ try{await downloadReactionArchive((await ReactionStore.read()).map(item=>item.id));}
+ catch(error){status.textContent=error.message;}
+ finally{changing=false;selectionUI();}
 };
 control('reactionZip').onclick=()=>void changeSelection(async ids=>{
  const chosen=new Set(ids);
@@ -282,5 +325,3 @@ days.addEventListener('pointerdown',event=>{
  window.addEventListener('pointerup',stop);
  window.addEventListener('pointercancel',stop);
 });
-
-document.addEventListener('drive-store-updated',()=>void renderReactions());
