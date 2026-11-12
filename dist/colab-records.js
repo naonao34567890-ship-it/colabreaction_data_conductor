@@ -1,5 +1,5 @@
 import {readEnergy} from './dmf-energy.js';
-import {standaloneDrive, beginDriveConnection, driveFetch} from './drive-connection.js';
+import {standaloneDrive, beginDriveConnection, driveFetch} from './drive-connection.js?v=2';
 
 const get = id => document.getElementById(id);
 const connect = get('driveConnect');
@@ -861,10 +861,10 @@ async function restoreDrive() {
         'Googleの許可が完了しませんでした。もう一度接続できます。');
       setup.hidden = false;
     }
-  } catch {
+  } catch (error) {
     connect.hidden = false;
     connect.textContent = '接続を再確認';
-    status('接続を確認できませんでした。');
+    status('接続を確認できませんでした。' + (error.message || '不明なエラー'));
   } finally {
     checking = false;
     connect.disabled = false;

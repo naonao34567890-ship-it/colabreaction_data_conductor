@@ -23,7 +23,16 @@ export async function driveFetch(path,options){
  if(!external)return fetch('/api/drive/'+path,options);
  if(callbackError){const reason=callbackError;callbackError='';return Response.json({state:reason==='forbidden'?'forbidden':'authorization_error'});}
  const session=localStorage.getItem(sessionKey);if(!session)return Response.json({state:'connect'});
- const response=await fetch(server+'/'+path,{method:'POST',headers:{Authorization:'Bearer '+session},cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'});
+ let response;
+ try {
+  response=await fetch(server+'/'+path,{method:'POST',headers:{Authorization:'Bearer '+session},cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer',signal:AbortSignal.timeout(20000)});
+ } catch (error) {
+  throw Error(error.name==='TimeoutError'
+   ? 'Drive接続サーバーの応答が20秒以内に届きませんでした。'
+   : 'Drive接続サーバーとの通信に失敗しました。接続先：mol-bench-drive.naonao34567890.workers.dev');
+ }
+ if(!response.headers.get('Content-Type')?.includes('application/json'))
+  throw Error('Drive接続サーバーが想定外の応答を返しました（HTTP '+response.status+'）。');
  if(response.status===401)localStorage.removeItem(sessionKey);
  return response;
 }
