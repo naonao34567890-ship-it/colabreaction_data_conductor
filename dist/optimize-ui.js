@@ -12,6 +12,34 @@
   let preview = null;
   let showingPreview = false;
 
+  const logKey = 'xyz-optimization-logs';
+  let runLog;
+  function savedLogs() {
+    try { return JSON.parse(localStorage.getItem(logKey) || '[]'); }
+    catch { return []; }
+  }
+
+  function recordLog(type, details = {}) {
+    if (!runLog) return;
+    runLog.events.push({time: new Date().toISOString(), type, ...details});
+    try {
+      const others = savedLogs().filter(log => log.id !== runLog.id);
+      localStorage.setItem(logKey, JSON.stringify([runLog, ...others].slice(0, 8)));
+    } catch {
+      // Keep the active log available for download even if storage is unavailable.
+    }
+    $('optDownloadLog').disabled = false;
+  }
+
+  $('optDownloadLog').onclick = () => {
+    const logs = savedLogs();
+    const recent = runLog ? [runLog, ...logs.filter(log => log.id !== runLog.id)].slice(0, 8) : logs;
+    if (recent.length) Mol.downloadBlob(
+      new Blob([JSON.stringify(recent, null, 2)], {type: 'application/json'}),
+      'xyz-optimization-logs.json',
+    );
+  };
+
   function normalizeInteger(value) {
     return value.normalize('NFKC').trim().replace(/^[−ー]/, '-');
   }
@@ -57,16 +85,21 @@
     $('optTarget').textContent = selected.size
       ? `選択した ${selected.size} 原子を独立した系として最適化します。`
       : `全 ${atoms.length} 原子を最適化します。`;
+    $('optDownloadLog').disabled = !runLog && !savedLogs().length;
     dialog.showModal();
   }
   $('optimize').onclick = () => openOptimization('GFN2');
   $('optimizeGfn1').onclick = () => openOptimization('GFN1');
   $('optClose').onclick = () => dialog.close();
-  dialog.addEventListener('close', reset);
+  dialog.addEventListener('close', () => {
+    if (worker) recordLog('cancelled');
+    reset();
+  });
   $('optCompare').onclick = () => showStructure(!showingPreview);
   $('optApply').onclick = () => {
     if (!preview) return;
     const optimized = preview;
+    recordLog('coordinates-applied');
     reset();
     atoms = optimized;
     dirty = true;
@@ -126,13 +159,26 @@
       elements: target.map(atom => atom.el),
       coordinates: Float64Array.from(target.flatMap(({x, y, z}) => [x, y, z])),
     };
+    runLog = {id: crypto.randomUUID(), startedAt: new Date().toISOString(), molecule: molecule.name,
+      method: method+'-xTB', engine: method==='GFN1' ? 'xTBloom' : 'OCC', charge, multiplicity, maxCycles,
+      atomCount: target.length, selection: selected.size ? indices.map(index => index+1) : 'all',
+      elements: geometry.elements, events: []};
+    recordLog('started');
     try {
       worker = new Worker('optimize-worker.js', {type: 'module'});
       worker.onerror = event => {
+        recordLog('worker-error',{message:event.message, file:event.filename, line:event.lineno});
         stopWorker();
         status.textContent = '計算エンジンを実行できませんでした。' + (event.message || '');
       };
       worker.onmessage = ({data}) => {
+        if (data.type === 'result') {
+          const {coordinates, ...summary} = data.result;
+          recordLog('result',summary);
+        } else {
+          const {type, ...details} = data;
+          recordLog(type,details);
+        }
         if (data.type === 'ready') {
           status.textContent = '初期構造を評価中…';
         } else if (data.type === 'electronic') {
@@ -166,6 +212,7 @@
       status.textContent = '計算エンジンを読み込み中…';
       worker.postMessage({method, geometry, anchor: indices.indexOf(before.point), settings: {charge, unpairedElectrons: multiplicity - 1, maxCycles}});
     } catch (error) {
+      recordLog('start-error',{message:error.message});
       stopWorker();
       status.textContent = '計算を開始できませんでした：' + error.message;
     }

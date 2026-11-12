@@ -41,6 +41,6 @@ self.onmessage = async ({data}) => {
     result.coordinates = alignGeometry(data.geometry.coordinates, result.coordinates, data.anchor);
     self.postMessage({type: 'result', result}, [result.coordinates.buffer]);
   } catch (error) {
-    self.postMessage({type: 'error', message: error.message || String(error), sccTotal});
+    self.postMessage({type: 'error', message: error.message || String(error), sccTotal, failedSccIterations: error.sccIterations, diagnostics: error.diagnostics});
   }
 };

@@ -27,7 +27,13 @@ export async function relaxGfn1({geometry, settings}, {onReady, onCycle}) {
     engine.ccall('xtbloom_web_set_optimize_step_cb', 'void', ['pointer'], [0]);
   }
   const result = JSON.parse(raw);
-  if (!result.ok) throw new Error([result.error_code, result.detail || result.error].filter(Boolean).join('：') || 'GFN1の最適化に失敗しました');
+  if (!result.ok) {
+    const error = new Error([result.error_code, result.detail || result.error].filter(Boolean).join('：') || 'GFN1の最適化に失敗しました');
+    error.diagnostics = Object.fromEntries(Object.entries(result).filter(([key, value]) =>
+      key !== 'geometry' && (typeof value === 'number' || typeof value === 'boolean' ||
+        (typeof value === 'string' && value.length <= 4096))));
+    throw error;
+  }
   const rows = result.geometry.trim().split(/\r?\n/).map(line => line.trim().split(/\s+/));
   if (rows.length !== geometry.elements.length ||
       rows.some((row, i) => row.length !== 4 || row[0] !== geometry.elements[i])) {
