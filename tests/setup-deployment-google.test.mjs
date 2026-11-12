@@ -22,7 +22,7 @@ printf '%s\\n' '{"id":1454833331,"owner":{"id":240232459},"full_name":"naonao345
   const log=join(temporary,mode+'.jsonl');writeFileSync(log,'');
   const result=spawnSync('bash',[fileURLToPath(new URL('../scripts/setup-deployment-google.sh',import.meta.url))],{encoding:'utf8',env:{...process.env,PATH:bin+':'+process.env.PATH,TEST_SETUP_LOG:log,TEST_SETUP_MODE:mode}});
   const calls=readFileSync(log,'utf8').trim().split('\n').filter(Boolean).map(s=>JSON.parse(s));
-  if(mode==='wrong'){assert.notEqual(result.status,0);assert.ok(!calls.some(c=>c.includes('update-oidc')));continue;}
+  if(mode==='wrong'){assert.notEqual(result.status,0);assert.ok(!calls.some(c=>c.includes('update-oidc')));assert.ok(!calls.some(c=>c.includes('add-iam-policy-binding')),'unrelated issuer receives no new deployment grants');continue;}
   assert.equal(result.status,0,result.stderr);
   assert.ok(result.stdout.includes('GCP_SERVICE_ACCOUNT=mol-bench-deployer@mol-bench.iam.gserviceaccount.com'));
   const provider=calls.find(c=>c.includes(mode==='new'?'create-oidc':'update-oidc'));

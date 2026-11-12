@@ -18,9 +18,6 @@ gcloud services enable iam.googleapis.com iamcredentials.googleapis.com sts.goog
 if ! gcloud iam service-accounts describe "$ACCOUNT" --project "$PROJECT_ID" >/dev/null 2>&1; then
   gcloud iam service-accounts create "$SERVICE_ACCOUNT_ID" --display-name='Mol Bench Hosting deployment' --project "$PROJECT_ID"
 fi
-for role in roles/firebasehosting.admin roles/serviceusage.serviceUsageConsumer; do
-  gcloud projects add-iam-policy-binding "$PROJECT_ID" --member="serviceAccount:$ACCOUNT" --role="$role" --condition=None --quiet >/dev/null
-done
 if ! gcloud iam workload-identity-pools describe "$POOL_ID" --location=global --project "$PROJECT_ID" >/dev/null 2>&1; then
   gcloud iam workload-identity-pools create "$POOL_ID" --location=global --display-name='Mol Bench GitHub deployment' --project "$PROJECT_ID"
 fi
@@ -33,6 +30,9 @@ if gcloud iam workload-identity-pools providers describe "$PROVIDER_ID" --worklo
 else
   gcloud iam workload-identity-pools providers create-oidc "$PROVIDER_ID" --workload-identity-pool="$POOL_ID" --location=global --issuer-uri=https://token.actions.githubusercontent.com --attribute-mapping="$MAPPING" --attribute-condition="$CONDITION" --project "$PROJECT_ID"
 fi
+for role in roles/firebasehosting.admin roles/serviceusage.serviceUsageConsumer; do
+  gcloud projects add-iam-policy-binding "$PROJECT_ID" --member="serviceAccount:$ACCOUNT" --role="$role" --condition=None --quiet >/dev/null
+done
 gcloud iam service-accounts add-iam-policy-binding "$ACCOUNT" --role=roles/iam.workloadIdentityUser --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$POOL_ID/attribute.repository_id/$REPO_ID" --project "$PROJECT_ID" --quiet >/dev/null
 printf '\nGitHub repository variables (not secrets):\n'
 printf 'GCP_WIF_PROVIDER=projects/%s/locations/global/workloadIdentityPools/%s/providers/%s\n' "$PROJECT_NUMBER" "$POOL_ID" "$PROVIDER_ID"
