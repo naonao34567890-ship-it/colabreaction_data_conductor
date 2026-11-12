@@ -171,11 +171,12 @@ window.addEventListener('focus',renderReactions);
 void renderReactions();
 
 function selectionUI() {
+ control('reactionArchiveAll').disabled=changing||!records.length;
  for(const card of days.querySelectorAll('.reaction-card')) {
   const active=selected.has(card.dataset.id);
   card.classList.toggle('selected',active);
  }
- for(const id of ['reactionTag','reactionDelete','reactionZip'])control(id).disabled=changing||!selected.size;
+ for(const id of ['reactionTag','reactionDelete','reactionZip','reactionArchive'])control(id).disabled=changing||!selected.size;
  control('reactionSelection').textContent=selected.size+' 件選択中';
 }
 function selectCard(id,additive) {
@@ -225,6 +226,22 @@ control('reactionTagForm').onsubmit=event=>{
   control('reactionTagDialog').close();
   await renderReactions();
  });
+};
+async function downloadReactionArchive(ids) {
+ const saved=await ReactionStore.read();
+ const chosen=new Set(ids);
+ const items=saved.filter(item=>chosen.has(item.id));
+ if(items.length!==chosen.size)throw Error('反応が別のタブで削除されました。再読み込みしてください。');
+ await ReactionArchive.download(items,(done,total)=>{status.textContent=`対応情報付きZIPを作成中… ${done} / ${total} 件`;});
+ status.textContent=items.length+' 件の反応を対応情報付きZIPで保存しました。';
+}
+control('reactionArchive').onclick=()=>void changeSelection(downloadReactionArchive);
+control('reactionArchiveAll').onclick=async()=>{
+ if(changing)return;
+ changing=true;selectionUI();
+ try{await downloadReactionArchive((await ReactionStore.read()).map(item=>item.id));}
+ catch(error){status.textContent=error.message;}
+ finally{changing=false;selectionUI();}
 };
 control('reactionZip').onclick=()=>void changeSelection(async ids=>{
  const chosen=new Set(ids);

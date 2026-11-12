@@ -49,13 +49,14 @@ class ImportJob{
  async finish(){try{await this.flush();}catch(_){}this.emit({type:'done',stats:this.stats,cancelled:this.cancelled});}
 }
 function header(size){const a=new Uint8Array(size);return{a,v:new DataView(a.buffer)};}
-async function exportData(ids,format,send,cancelled,progress,withMemo=false,bodies=null){
+async function exportData(ids,format,send,cancelled,progress,withMemo=false,bodies=null,files=null){
  const central=[],encoder=new TextEncoder(),names=new Set();let offset=0,done=0;
- for(const id of ids){if(cancelled())return;const body=bodies?bodies[id]:await Mol.get('body',id);if(!body)throw Error('出力対象が削除されました。選択し直してください');const meta=withMemo?await Mol.get('meta',id):null;const blob=withMemo?await Mol.output(body,Mol.formatMemo(body.comment,meta?.tags||[])):Mol.calculationOutput(body);
+ for(const id of ids){if(cancelled())return;const body=files?{}:bodies?bodies[id]:await Mol.get('body',id);if(!body)throw Error('出力対象が削除されました。選択し直してください');const meta=withMemo?await Mol.get('meta',id):null;const blob=files?files[id].blob:withMemo?await Mol.output(body,Mol.formatMemo(body.comment,meta?.tags||[])):Mol.calculationOutput(body);
   if(format==='zip'){
    const extension=withMemo?'.pyxyz':'.xyz';
-   const base=Mol.safeName(body.name);
-   let name=base+extension,n=1;
+   const base=files?files[id].path:Mol.safeName(body.name);
+   let name=files?base:base+extension,n=1;
+   if(files&&names.has(name))throw Error('ZIP内のパスが重複しています');
    while(names.has(name))name=base+' ('+(++n)+')'+extension;
    names.add(name);
    const filename=encoder.encode(name),bytes=new Uint8Array(await blob.arrayBuffer()),crc=Mol.crc32(bytes);if(filename.length>65535)throw Error('ZIP内のファイル名が長すぎます');
@@ -74,7 +75,7 @@ async function exportData(ids,format,send,cancelled,progress,withMemo=false,bodi
   const end=header(22);end.v.setUint32(0,0x06054b50,true);end.v.setUint16(8,Math.min(done,65535),true);end.v.setUint16(10,Math.min(done,65535),true);end.v.setUint32(12,Math.min(len,0xffffffff),true);end.v.setUint32(16,Math.min(offset,0xffffffff),true);await send(end.a);
  }
 }
-root.MolJobs={ImportJob,exportData};
+root.MolJobs={ImportJob,exportData,exportFiles:(files,send,progress=()=>{})=>exportData(files.map((_,i)=>i),'zip',send,()=>false,progress,false,null,files)};
 if(typeof WorkerGlobalScope!=='undefined'&&root instanceof WorkerGlobalScope){let job=null,cancel=false,ack=null,choose=null;
  root.onmessage=async({data:m})=>{if(m.type==='cancel'){cancel=true;if(job)job.cancelled=true;if(choose){choose({action:'skip'});choose=null;}return;}if(m.type==='multiChoice'){if(choose){choose(m.choice);choose=null;}return;}if(m.type==='ack'){if(ack){ack();ack=null;}return;}
   try{if(m.type==='start'){job=new ImportJob(v=>postMessage(v),(name,total,file)=>new Promise(resolve=>{choose=resolve;postMessage({type:'multiChoice',name,total,file});}));cancel=false;postMessage({type:'ready'});}
