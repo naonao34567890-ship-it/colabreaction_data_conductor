@@ -1,0 +1,34 @@
+Mol Bench：GitHub公開スイッチの設定メモ
+
+以下の2つは秘密情報ではありません。
+
+GCP_WIF_PROVIDER=projects/809455733591/locations/global/workloadIdentityPools/mol-bench-github/providers/github
+GCP_SERVICE_ACCOUNT=mol-bench-deployer@mol-bench.iam.gserviceaccount.com
+
+登録先：GitHub → Settings → Secrets and variables → Actions → Variables
+https://github.com/naonao34567890-ship-it/colabreaction_data_conductor/settings/variables/actions
+
+「New repository variable」で名前と値を分けて登録します。
+
+名前：GCP_WIF_PROVIDER
+値：projects/809455733591/locations/global/workloadIdentityPools/mol-bench-github/providers/github
+
+名前：GCP_SERVICE_ACCOUNT
+値：mol-bench-deployer@mol-bench.iam.gserviceaccount.com
+
+公開スイッチ：
+https://github.com/naonao34567890-ship-it/colabreaction_data_conductor/actions/workflows/deploy.yml
+
+初回設定の残り：
+・上記2つのVariableを登録。
+・CLOUDFLARE_ACCOUNT_IDというVariableにCloudflareのAccount IDを登録。
+・CLOUDFLARE_API_TOKENというSecretにCloudflareの公開トークンを登録。
+
+Cloudflareのトークン、パスワード、秘密鍵はこのメモには書かないでください。
+
+初回設定後の公開：Actions → Publish Mol Bench → Run workflow
+Branch：main / target：both / publish：チェックあり
+publishのチェックを外すと、公開せずテストだけ実行します。
+
+詳しい手順：
+https://github.com/naonao34567890-ship-it/colabreaction_data_conductor/blob/main/PUBLISH.md
