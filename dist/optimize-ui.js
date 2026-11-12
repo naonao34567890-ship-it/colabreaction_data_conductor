@@ -12,6 +12,16 @@
   let preview = null;
   let showingPreview = false;
 
+  function normalizeInteger(value) {
+    return value.normalize('NFKC').trim().replace(/^[−ー]/, '-');
+  }
+
+  for (const input of inputs) {
+    const normalize = () => { input.value = normalizeInteger(input.value); };
+    input.addEventListener('blur', normalize);
+    input.addEventListener('compositionend', normalize);
+  }
+
   function showStructure(usePreview) {
     showingPreview = usePreview;
     atoms = usePreview ? preview : before.atoms;
@@ -82,7 +92,13 @@
   $('optForm').onsubmit = event => {
     event.preventDefault();
     if (worker || preview) return;
-    const [charge, multiplicity, maxCycles] = inputs.map(input => input.valueAsNumber);
+    const values = inputs.map(input => normalizeInteger(input.value));
+    const [charge, multiplicity, maxCycles] = values.map(Number);
+    if (values.some((value, index) => !/^[+-]?\d+$/.test(value) || !Number.isSafeInteger(Number(value)) ||
+      (index > 0 && Number(value) < 1) || (index === 2 && Number(value) > 500))) {
+      status.textContent = '全電荷は整数、スピン多重度は1以上の整数、最大ステップ数は1〜500の整数で入力してください。';
+      return;
+    }
     const indices = selected.size ? [...selected].sort((a, b) => a - b) : atoms.map((_, i) => i);
     const target = indices.map(i => atoms[i]);
     if (target.length < 2) {
