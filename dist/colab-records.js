@@ -843,6 +843,7 @@ async function restoreDrive() {
     connect.textContent = result.state === 'signin' ? 'ChatGPTでログイン' :
       result.state === 'connect' ? 'Google Driveに接続' : '接続を再確認';
     const messages = {
+      migration_required: 'この移転先ではGoogle Driveの継続接続は準備中です。',
       signin: '継続接続を利用するにはChatGPTでログインしてください。',
       forbidden: 'このサイトの継続接続はオーナー専用です。',
       setup: 'Googleで作成したクライアントシークレットを登録してください。',
