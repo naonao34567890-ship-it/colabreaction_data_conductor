@@ -601,3 +601,14 @@ Mol.VirtualGrid=class{
  }
 };
 }
+
+if(typeof document!=='undefined'){
+ const setupCloudNavigation=()=>{
+  const nav=document.querySelector('.mode-switch');
+  if(nav&&!nav.querySelector('a[href="library-cloud.html"]')){
+   const link=document.createElement('a');link.className='mode-link';link.href='library-cloud.html';link.textContent='Drive保存';nav.append(link);
+  }
+  if(location.origin==='https://mol-bench.web.app')import('./library-cloud-auto.js').catch(()=>{});
+ };
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',setupCloudNavigation,{once:true});else setupCloudNavigation();
+}
