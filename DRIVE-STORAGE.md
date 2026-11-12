@@ -52,3 +52,9 @@ SQLite Durable ObjectsのWorkers Free枠を利用する。Firebase FunctionsやB
 - `standalone-drive/` で `npx --yes wrangler@4.161.0 deploy --dry-run`：WorkerとDurable Objectのパッケージ検証。
 
 実Googleアカウント・実Driveへの保存は公開後に確認が必要。3D操作・GFNエンジンの実計算を今回すべて再実行したわけではない。既存の未検証事項はVALIDATION.mdを参照。
+
+## 一覧の読み込み
+
+反応一覧は最新カタログの軽量メタデータを先に表示し、画面に入ったカードの構造だけ取得する。編集・XYZ出力・対応情報付きZIP出力は必要な完全レコードを取得して実行する。選択分の出力では未選択の反応本文を取得しない。
+
+一覧索引は端末の `mol-bench-index-cache` に保存する。再利用には接続サーバーが返す現在のカタログと、Google subject・ファイルID・SHA-256の一致が必要。古い索引や破損キャッシュを正本として使わず、変更分はDriveから取得する。キャッシュ障害はDriveへのフォールバック、古い世代は削除。複数タブのキャッシュ更新前の再確認は維持する。反応キャッシュの削除確認も本文を全件展開せずキーだけで行う。

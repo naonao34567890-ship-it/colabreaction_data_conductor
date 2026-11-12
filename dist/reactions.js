@@ -22,6 +22,15 @@ const observer = new IntersectionObserver(async entries=>{
   observer.unobserve(target);
   try {
    const reaction = previews.get(target);
+   if(reaction._summary){
+    const full=await ReactionStore.read(reaction.id);
+    if(!target.isConnected)return;
+    if(!full){void renderReactions();continue;}
+    const card=cardFor(full);
+    target.closest('.reaction-card').replaceWith(card);
+    selectionUI();
+    continue;
+   }
    const {mode,generation}=thumbnailSettings();
    const cached = reaction.startPreview;
    if (cached && cached.revision === reaction.START.revision && cached.generation===generation) {
@@ -86,6 +95,13 @@ function cardFor(reaction) {
  header.append(title,rename);
  const preview = document.createElement('div');
  preview.className = 'reaction-preview muted';
+ if(reaction._summary){
+  preview.textContent='構造を読み込み中…';
+  previews.set(preview,reaction);observer.observe(preview);
+  card.append(header,preview);
+  if(reaction.tags?.length){const tags=document.createElement('p');tags.className='muted';tags.textContent=reaction.tags.join(' · ');card.append(tags);}
+  return card;
+ }
  preview.textContent = reaction.START ? 'STARTを描画中…' : 'START未作成';
  if (reaction.START) {
   previews.set(preview,reaction);
@@ -137,7 +153,7 @@ let renderRevision = 0;
 async function renderReactions() {
  const revision = ++renderRevision;
  try {
-  const reactions = (await ReactionStore.read()).sort((a,b)=>b.createdAt-a.createdAt);
+  const reactions = (await ReactionStore.list()).sort((a,b)=>b.createdAt-a.createdAt);
   if (revision !== renderRevision) return;
   records = reactions;
   const ids = new Set(records.map(item=>item.id));
@@ -254,9 +270,10 @@ window.addEventListener('dragover',event=>{if(event.dataTransfer.types.includes(
 window.addEventListener('drop',event=>{if(event.dataTransfer.types.includes('Files'))event.preventDefault();});
 window.addEventListener('beforeunload',event=>{if(changing){event.preventDefault();event.returnValue='';}});
 async function downloadReactionArchive(ids) {
- const saved=await ReactionStore.read();
  const chosen=new Set(ids);
- const items=saved.filter(item=>chosen.has(item.id));
+ const items=[];
+ const keys=[...chosen];
+ for(let i=0;i<keys.length;i+=4)items.push(...(await Promise.all(keys.slice(i,i+4).map(id=>ReactionStore.read(id)))).filter(Boolean));
  if(items.length!==chosen.size)throw Error('反応が別のタブで削除されました。再読み込みしてください。');
  await ReactionArchive.download(items,(done,total)=>{status.textContent=`対応情報付きZIPを作成中… ${done} / ${total} 件`;});
  status.textContent=items.length+' 件の反応を対応情報付きZIPで保存しました。';
@@ -265,7 +282,7 @@ control('reactionArchive').onclick=()=>void changeSelection(downloadReactionArch
 control('reactionArchiveAll').onclick=async()=>{
  if(changing)return;
  changing=true;selectionUI();
- try{await downloadReactionArchive((await ReactionStore.read()).map(item=>item.id));}
+ try{await downloadReactionArchive((await ReactionStore.list()).map(item=>item.id));}
  catch(error){status.textContent=error.message;}
  finally{changing=false;selectionUI();}
 };
@@ -273,7 +290,9 @@ control('reactionZip').onclick=()=>void changeSelection(async ids=>{
  const chosen=new Set(ids);
  const usedNames=new Set();
  const bodies=[];
- for(const reaction of records.filter(item=>chosen.has(item.id))) {
+ for(const summary of records.filter(item=>chosen.has(item.id))) {
+  const reaction=await ReactionStore.read(summary.id);
+  if(!reaction)throw Error('反応が削除されました。再読み込みしてください。');
   const base=Mol.safeName(reaction.name);
   let name=base, number=1;
   while(usedNames.has(name))name=base+' ('+(++number)+')';

@@ -229,13 +229,42 @@ export function createDriveStore(local) {
     }
     return r;
   }
-  async function download(id, digest) {
+  let indexDBPromise;
+  function indexDB() {
+    return indexDBPromise ||= new Promise((resolve,reject)=>{
+      const request=indexedDB.open('mol-bench-index-cache',1);
+      request.onupgradeneeded=()=>request.result.createObjectStore('shards',{keyPath:'key'});
+      request.onsuccess=()=>{request.result.onversionchange=()=>request.result.close();resolve(request.result);};
+      request.onerror=()=>reject(request.error);
+    });
+  }
+  async function download(id, digest, cacheIndex=false) {
+    const key=account.sub+':'+id;
+    if(cacheIndex)try{
+      const db=await indexDB();
+      const saved=await new Promise((resolve,reject)=>{const r=db.transaction('shards').objectStore('shards').get(key);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+      if(saved?.hash===digest && await hash(saved.text)===digest)return decode(JSON.parse(saved.text));
+    }catch{} // Cache failure must never prevent fetching the canonical Drive file.
     const text = await (
       await request(API + '/files/' + encodeURIComponent(id) + '?alt=media')
     ).text();
     if (digest && (await hash(text)) !== digest)
       throw Error('Driveの保存内容の整合性を確認できません。');
-    return decode(JSON.parse(text));
+    const value=decode(JSON.parse(text));
+    if(cacheIndex)try{
+      const db=await indexDB(),tx=db.transaction('shards','readwrite'),done=txDone(tx);
+      tx.objectStore('shards').put({key,hash:digest,text});await done;
+    }catch{}
+    return value;
+  }
+  async function pruneIndexCache() {
+    try{
+      const db=await indexDB(),tx=db.transaction('shards','readwrite'),done=txDone(tx);
+      const keep=new Set(Object.values(head.shards).map(ref=>account.sub+':'+ref.fileId));
+      const r=tx.objectStore('shards').openKeyCursor();
+      r.onsuccess=()=>{const cursor=r.result;if(!cursor)return;if(String(cursor.key).startsWith(account.sub+':')&&!keep.has(cursor.key))tx.objectStore('shards').delete(cursor.key);cursor.continue();};
+      await done;
+    }catch{}
   }
   async function upload(parent, name, blob) {
     const metadata = { name, parents: [parent], mimeType: blob.type || 'application/octet-stream' };
@@ -405,11 +434,10 @@ export function createDriveStore(local) {
       throw error;
     }
     const reactions = await openReactions(reactName);
-    const existing = await readAll(reactions, ['reactions']);
     const rt = reactions.transaction('reactions', 'readwrite'),
       rd = txDone(rt);
-    for (const r of existing.reactions)
-      if (!records.has('r:' + r.id)) rt.objectStore('reactions').delete(r.id);
+    const cursor=rt.objectStore('reactions').openKeyCursor();
+    cursor.onsuccess=()=>{const row=cursor.result;if(!row)return;if(!records.has('r:'+row.key))rt.objectStore('reactions').delete(row.key);row.continue();};
     await rd;
     reactions.close();
   }
@@ -441,7 +469,7 @@ export function createDriveStore(local) {
     let indexCount = 0;
     const showIndexProgress = !pendingWrites && !migrating && changed.length > 1;
     const loaded = await parallel(changed, async ([name, ref]) => {
-      const data = await download(ref.fileId, ref.hash);
+      const data = await download(ref.fileId, ref.hash, true);
       if (showIndexProgress)
         status('Driveの一覧を読み込み中 ' + ++indexCount + ' / ' + changed.length);
       return { name, ref, data };
@@ -456,6 +484,7 @@ export function createDriveStore(local) {
     for (const shard of shards.values())
       for (const ref of shard.entries) records.set(ref.kind + ':' + ref.meta.id, ref);
     head = next;
+    await pruneIndexCache();
     lastPull = Date.now();
     if (cacheName) {
       cacheDirty = true;
@@ -939,6 +968,12 @@ export function createDriveStore(local) {
           result: { type: 'renamed', id, name },
         };
       });
+    },
+    async reactionList() {
+      await ready;checkSession();
+      if(offline)return service.reactionRead();
+      await exclusive(()=>pull());
+      return entries('r').map(ref=>({...clone(ref.meta),_summary:true}));
     },
     async reactionRead(id) {
       await ready;

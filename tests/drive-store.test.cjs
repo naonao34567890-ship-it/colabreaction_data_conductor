@@ -11,7 +11,7 @@ const { chromium } = require('playwright'),
   let number = 0,
     failCommit = false,
     resumableCount = 0,
-    loseAck = false;
+    loseAck = false, indexReads=0;
   async function google(url, init = {}) {
     const u = new URL(url),
       headers = new Headers(init.headers),
@@ -61,6 +61,7 @@ const { chromium } = require('playwright'),
     const entry = files.get(id);
     if (!entry || entry.owner !== owner)
       return Response.json({ error: 'missing' }, { status: 404 });
+    if((!init.method||init.method==='GET')&&/^[mr]-[0-9a-f]{2}--/.test(entry.meta.name))indexReads++;
     if (init.method === 'PATCH') {
       if (failCommit && entry.meta.name.startsWith('library-catalogue'))
         return new Response('', { status: 500 });
@@ -366,6 +367,22 @@ const { chromium } = require('playwright'),
       catch(e){return e.message.includes('上書きせず')&&!await ReactionStore.read('must-not-import');}
     });
     assert.equal(importConflict,true);assert.equal(files.size,filesBeforeConflict,'conflict rejects before uploading any data');
+    const readsBeforeWarmReload=indexReads;
+    await p.reload();await p.evaluate(()=>Mol.cloud.ready);
+    assert.equal(indexReads,readsBeforeWarmReload,'unchanged index shards are verified from local cache, without another Drive download');
+    await p.evaluate(async()=>{
+      await ReactionStore.importRecords(Array.from({length:24},(_,i)=>({id:'lazy-'+i,name:'lazy '+i,createdAt:Date.now()+i,tags:[]})));
+      window.lazyReads=0;
+      const read=ReactionStore.read;
+      ReactionStore.read=(...args)=>{window.lazyReads++;return read(...args);};
+      window.restoreReactionRead=()=>{ReactionStore.read=read;};
+      await renderReactions();
+    });
+    await p.waitForFunction(()=>window.lazyReads>0);
+    const lazy=await p.evaluate(()=>({reads:window.lazyReads,cards:document.querySelectorAll('.reaction-card').length}));
+    assert.ok(lazy.cards>=24&&lazy.reads<lazy.cards,'list renders all names while only visible reaction cards fetch bodies');
+    console.log('PASS loading: warm index downloads = 0; visible body requests '+lazy.reads+' / '+lazy.cards+' reactions');
+    await p.evaluate(()=>window.restoreReactionRead());
     // A second browser has no local dataset. It reads exactly the same canonical IDs.
     const ctx2 = await context(),
       q = await ctx2.newPage();

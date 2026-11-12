@@ -115,7 +115,7 @@ const ReactionStore = (() => {
    };
   });
  }
- const api={read,update,importRecords,remove,tag,cacheStartPreview,clearStartPreviews,create:(slot,structure,name)=>createReaction({[slot]:structure},name),createReaction};
- if(Mol.cloud){for(const [key,method]of Object.entries({read:'reactionRead',update:'reactionUpdate',remove:'reactionRemove',tag:'reactionTag',createReaction:'reactionCreate',importRecords:'reactionImport'}))api[key]=(...args)=>Mol.cloud.call(method,...args);api.create=(slot,structure,name)=>Mol.cloud.call('reactionCreate',{[slot]:structure},name);}
+ const api={read,list:()=>read(),update,importRecords,remove,tag,cacheStartPreview,clearStartPreviews,create:(slot,structure,name)=>createReaction({[slot]:structure},name),createReaction};
+ if(Mol.cloud){for(const [key,method]of Object.entries({read:'reactionRead',list:'reactionList',update:'reactionUpdate',remove:'reactionRemove',tag:'reactionTag',createReaction:'reactionCreate',importRecords:'reactionImport'}))api[key]=(...args)=>Mol.cloud.call(method,...args);api.create=(slot,structure,name)=>Mol.cloud.call('reactionCreate',{[slot]:structure},name);}
  return api;
 })();
