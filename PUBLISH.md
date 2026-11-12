@@ -26,9 +26,11 @@ Googleの承認画面が出たら承認する。このスクリプトは `mol-be
 - `GCP_WIF_PROVIDER`
 - `GCP_SERVICE_ACCOUNT`
 
-### 2. GitHubに3つの変数を登録する
+### 2. 公開先の設定を確認する
 
-リポジトリ → **Settings → Secrets and variables → Actions → Variables → New repository variable**。
+このリポジトリには、設定済みのGoogle公開先を既定値として組み込んでいるため、同じ公開先なら追加登録は不要。CloudflareのAccount IDはトークンで参照可能なアカウントから、既存WorkerとDRIVE_KVの一致を確認して取得する。
+
+公開先を変更する場合のみ、リポジトリ → **Settings → Secrets and variables → Actions → Variables → New repository variable** で上書きできる。
 
 | 名前 | 値 |
 | --- | --- |
@@ -58,7 +60,7 @@ GitHubの **Settings → Secrets and variables → Actions → Secrets → New r
 
 Workerだけならtargetを `worker`、画面だけなら `hosting` にできる。通常は `both`。publishのチェックを外すとテストだけ実行し、公開は一切行わない。
 
-公開用の3変数・1Secretがない場合は、どちらのサービスも変更する前に停止する。テストやWorkerの公開に失敗したらFirebaseの公開には進まない。2つのサービスをまたぐ自動ロールバックは行わず、途中失敗はジョブの結果で確認する。
+公開トークンがない場合や既存Workerのアカウントを特定できない場合は、どちらのサービスも変更する前に停止する。テストやWorkerの公開に失敗したらFirebaseの公開には進まない。2つのサービスをまたぐ自動ロールバックは行わず、途中失敗はジョブの結果で確認する。
 
 Workerの健康確認と、今回のソースのコミット番号を確認する。Firebaseには公開時に `deployment.json` を作り、同じコミット番号が見えることを確認する。初回の実Drive移行と操作確認は [DRIVE-STORAGE.md](DRIVE-STORAGE.md) を参照。
 
