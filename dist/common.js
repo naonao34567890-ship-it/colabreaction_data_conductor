@@ -194,10 +194,11 @@ function swap(atoms,a,b){if(!a.ids.length||!b.ids.length)throw Error('両方の�
  const ca=anchored?atoms[a.point]:centroid(atoms,a.ids),cb=anchored?atoms[b.point]:centroid(atoms,b.ids);
  const d={x:cb.x-ca.x,y:cb.y-ca.y,z:cb.z-ca.z};for(const [m,s]of [[a,1],[b,-1]])for(const i of m.ids)for(const k of ['x','y','z'])atoms[i][k]+=s*d[k];}
 function bonds(atoms){const size=6.5,grid=new Map(),out=[];atoms.forEach((a,i)=>{const g=[Math.floor(a.x/size),Math.floor(a.y/size),Math.floor(a.z/size)];for(let x=-1;x<=1;x++)for(let y=-1;y<=1;y++)for(let z=-1;z<=1;z++){for(const j of grid.get([g[0]+x,g[1]+y,g[2]+z].join(','))||[]){const b=atoms[j],d=(a.x-b.x)**2+(a.y-b.y)**2+(a.z-b.z)**2,max=1.22*(elements[a.el].r+elements[b.el].r);if(d>.16&&d<max*max)out.push([j,i]);}}const key=g.join(',');if(!grid.has(key))grid.set(key,[]);grid.get(key).push(i);});return out;}
-let dbPromise;const nameHints=new Map();
+let dbPromise,dbName='molecular-xyz-library';const nameHints=new Map();
+function setDatabaseName(name){if(dbName===name)return;if(dbPromise)dbPromise.then(db=>db.close()).catch(()=>{});dbPromise=null;dbName=name;nameHints.clear();}
 function db(){
  if(!dbPromise)dbPromise=new Promise((resolve,reject)=>{
-  const r=indexedDB.open('molecular-xyz-library',2);
+  const r=indexedDB.open(dbName,2);
   r.onupgradeneeded=event=>{
    const d=r.result;
    if(event.oldVersion<1){
@@ -323,7 +324,7 @@ async function removeMany(ids) {
   }
  });
 }
-async function cacheThumb(id,blob,revision,generation){const d=await db();return new Promise((res,rej)=>{const t=d.transaction(['meta','thumb'],'readwrite'),s=t.objectStore('meta'),r=s.get(id);r.onsuccess=()=>{if(r.result&&r.result.revision!==revision)return;if(r.result)s.put({...r.result,thumb:true});if(r.result||builtins.has(id))t.objectStore('thumb').put({id,blob,generation});};t.oncomplete=res;t.onabort=()=>rej(t.error);});}
+async function cacheThumb(id,blob,revision,generation){const d=await db();return new Promise((res,rej)=>{const t=d.transaction(['meta','thumb'],'readwrite'),s=t.objectStore('meta'),r=s.get(id);r.onsuccess=()=>{try{if(r.result&&r.result.revision!==revision)return;if(r.result)s.put({...r.result,thumb:true});if(r.result||builtins.has(id))t.objectStore('thumb').put({id,blob,generation});}catch(error){try{t.abort();}catch{}rej(error);}};t.oncomplete=res;t.onabort=()=>rej(t.error);});}
 function notify(change){if(typeof BroadcastChannel!=='undefined'){const c=new BroadcastChannel('molecular-xyz');c.postMessage(change);c.close();}}
 const crcTable=Array.from({length:256},(_,n)=>{for(let k=0;k<8;k++)n=n&1?0xedb88320^(n>>>1):n>>>1;return n>>>0;});
 function crc32(bytes){let c=0xffffffff;for(const b of bytes)c=crcTable[(c^b)&255]^(c>>>8);return(c^0xffffffff)>>>0;}
@@ -338,7 +339,7 @@ function parseFrameRanges(value,total){
  });
  return ranges;
 }
-const API={acceptsStructure,structureBaseName,calculationOutput,readMemo,formatMemo,compareTagNames:displayNames.compare,parseFrameRanges,scanEntries,elements,tick,atomLine,lines,parseFile,standard,compareDisplayOrder,output,centroid,swap,bonds,db,get,metadata,saveBatch,overwrite,remove,removeMany,cacheThumb,notify,crc32,safeName};root.Mol=API;if(typeof module!=='undefined')module.exports=API;
+const API={setDatabaseName,acceptsStructure,structureBaseName,calculationOutput,readMemo,formatMemo,compareTagNames:displayNames.compare,parseFrameRanges,scanEntries,elements,tick,atomLine,lines,parseFile,standard,compareDisplayOrder,output,centroid,swap,bonds,db,get,metadata,saveBatch,overwrite,remove,removeMany,cacheThumb,notify,crc32,safeName};root.Mol=API;if(typeof module!=='undefined')module.exports=API;
 })(globalThis);
 
 /* Browser-only presentation helpers; no DOM or Three dependency in Worker. */
@@ -600,4 +601,21 @@ Mol.VirtualGrid=class{
  }
  }
 };
+}
+
+// The existing UI and Worker call the same API. On Firebase only, Drive is the
+// authoritative store; the old IndexedDB is retained solely for one-time migration.
+if(typeof location!=='undefined'&&location.origin==='https://mol-bench.web.app'){
+ const local={};for(const key of ['db','metadata','get','saveBatch','overwrite','remove','removeMany','setDatabaseName','renameMolecule'])local[key]=Mol[key];
+ let service;
+ const load=()=>service||(service=import('./drive-store.js').then(module=>module.createDriveStore(local)));
+ Mol.cloud={get ready(){return load().then(s=>s.ready);},call:(method,...args)=>load().then(s=>s[method](...args)),get reactionDatabaseName(){return Mol.cloudDatabaseNames?.reactions;}};
+ for(const key of ['db','metadata','get','saveBatch','overwrite','removeMany','renameMolecule'])Mol[key]=(...args)=>Mol.cloud.call(key,...args);
+ Mol.remove=id=>Mol.cloud.call('removeMany',[id]);
+ // Drive commits notify account-scoped listeners; the old global local-DB channel is not used.
+ Mol.notify=()=>{};
+ if(typeof document!=='undefined'){
+  const mount=()=>{const nav=document.querySelector('.mode-switch');if(!nav)return;const link=document.createElement('a');link.href='colab.html';link.className='mode-link';link.textContent='Drive接続';link.title='分子・反応ライブラリの保存先';nav.append(link);document.addEventListener('drive-store-status',event=>{link.textContent=event.detail.error?'Drive：要確認':event.detail.text.includes('移行中')?'Drive移行中…':event.detail.text.includes('読み込み中')?'Drive読込中…':event.detail.text.includes('保存中')?'Drive保存中…':event.detail.text==='Driveに保存済み'?'Drive保存済み':'Drive接続済み';link.title=event.detail.text;const pane=document.querySelector('#notice,#reactionStatus,#colabStatus');if(pane&&(event.detail.error||event.detail.text.includes('移行中')||event.detail.text.includes('読み込み中'))){pane.textContent=event.detail.text;pane.dataset.driveMessage=event.detail.text;}else if(pane&&pane.textContent===pane.dataset.driveMessage){pane.textContent='';delete pane.dataset.driveMessage;}});};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
+ }
 }

@@ -7,7 +7,7 @@ const env={DRIVE_STORAGE_KEY:btoa('x'.repeat(32)),GOOGLE_CLIENT_SECRET:'test-sec
 let email='owner@example.com',verified=true,refreshError=false,refreshCalls=0;
 const originalFetch=globalThis.fetch;
 globalThis.fetch=async(url,options)=>{
- if(String(url).includes('/userinfo'))return Response.json({email,email_verified:verified});
+ if(String(url).includes('/userinfo'))return Response.json({sub:'subject-'+email,email,email_verified:verified});
  const body=options.body;
  if(body.get('grant_type')==='authorization_code'){
   assert.equal(body.get('redirect_uri'),HOST+'/callback');assert.ok(body.get('code_verifier'));
@@ -33,6 +33,10 @@ try{
  const init={method:'POST',headers:{Origin:APP,Authorization:'Bearer '+session}};
  for(let i=0;i<2;i++){const r=await call('/token',init);assert.equal(r.headers.get('Access-Control-Allow-Origin'),APP);assert.equal((await r.json()).access_token,'renewed-test');}
  assert.equal(refreshCalls,2,'navigation restores using server refresh');
+ assert.equal((await call('/library',{method:'POST',headers:{Origin:APP}})).status,401);
+ assert.equal((await call('/library',{...init,body:JSON.stringify({action:'head'})})).status,503,'missing coordinator fails closed');
+ let routed;env.LIBRARY_COORDINATOR={idFromName:name=>name,get:id=>({fetch:async request=>{routed={id,input:await request.json()};return Response.json({head:{generation:'test'},ids:{}});}})};
+ const library=await call('/library',{...init,body:JSON.stringify({action:'head',accessToken:'spoofed',account:'spoofed'})});const payload=await library.json();assert.equal(library.status,200);assert.equal(routed.id,'subject-owner@example.com');assert.equal(routed.input.accessToken,'renewed-test');assert.equal(payload.account.sub,'subject-owner@example.com');
  refreshError=true;assert.equal((await call('/token',init)).status,401);assert.equal((await call('/token',init)).status,401);
  refreshError=false;const second=await connect();const s=new URLSearchParams(new URL(second.response.headers.get('Location')).hash.slice(1)).get('drive_session');const logout={method:'POST',headers:{Origin:APP,Authorization:'Bearer '+s}};
  assert.equal((await call('/logout',logout)).status,200);assert.equal((await call('/token',logout)).status,401);

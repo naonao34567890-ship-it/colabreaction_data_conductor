@@ -1,0 +1,11 @@
+{
+  "name": "mol-bench-drive",
+  "main": "worker.mjs",
+  "keep_vars": true,
+  "compatibility_date": "2026-11-12",
+  "kv_namespaces": [{ "binding": "DRIVE_KV", "id": "368f59c248824ca49faff59bdbe4b92f" }],
+  "durable_objects": {
+    "bindings": [{ "name": "LIBRARY_COORDINATOR", "class_name": "LibraryCoordinator" }],
+  },
+  "migrations": [{ "tag": "library-v1", "new_sqlite_classes": ["LibraryCoordinator"] }],
+}

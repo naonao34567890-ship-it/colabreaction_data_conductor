@@ -1,5 +1,7 @@
 # Firebase版のDrive継続接続
 
+**分子・反応のDrive正本方式を追加した版では、先に [DRIVE-STORAGE.md](../DRIVE-STORAGE.md) のWorker公開手順を実行してください。** Workerは複数ファイルとDurable Objectの設定を使うため、単一ファイルの貼り付けでは公開できません。以下はOAuth・シークレット等の設定説明です。
+
 フロント: https://mol-bench.web.app
 Worker: https://mol-bench-drive.naonao34567890.workers.dev
 
@@ -14,7 +16,7 @@ Worker: https://mol-bench-drive.naonao34567890.workers.dev
 
 ## Cloudflare設定
 
-1. Workers & Pages → mol-bench-drive → Edit code で worker.mjs の内容を貼り付けてDeploy。
+1. [DRIVE-STORAGE.md](../DRIVE-STORAGE.md) に従い、GitHub連携で `standalone-drive/wrangler.jsonc` を指定してWorkerを公開する。
 2. Workers KVでnamespace `mol-bench-drive` を作成。
 3. WorkerのBindingsでKV namespace bindingを追加。変数名は `DRIVE_KV`、namespaceは上記。
 4. Settings → Variables and Secrets に以下を設定してDeploy。

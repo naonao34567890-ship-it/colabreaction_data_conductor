@@ -282,3 +282,5 @@ days.addEventListener('pointerdown',event=>{
  window.addEventListener('pointerup',stop);
  window.addEventListener('pointercancel',stop);
 });
+
+document.addEventListener('drive-store-updated',()=>void renderReactions());

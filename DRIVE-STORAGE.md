@@ -1,0 +1,73 @@
+# Driveを正本にする分子・反応ライブラリ
+
+## 何が変わるか
+
+Firebase版 `https://mol-bench.web.app` の分子・反応の保存先をGoogle Driveに統一する。別の「保存」「復元」ライブラリは作らない。既存の作成・編集・タグ・削除・取り込み・出力ボタンをそのまま使う。
+
+- XYZと構造・メモ等の完全な情報はDriveへ保存する。反応のSTART/FINISHも同じ保存層を使う。
+- 分子・反応のIDは維持する。端末ごとにコピーを復元して新IDへ振り直す方式ではない。
+- IndexedDBはアカウント別のキャッシュ。クラウドに成功する前に編集済みの正本として書き込まない。
+- 一覧は分割された軽量索引を読む。原子・原文は必要になったとき取得する。保存時に全分子の原文を読み込まない。
+- キャッシュに取得済みの構造は通信断でもキャッシュから読むことができる。画面やスクリプト自体の読み込みにはネットワークが必要。保存にはネットワークが必要。オフライン保存を別の正本にしない。
+- 既存のColab計算記録は既存Driveフォルダーのまま。移動・削除しない。計算・編集・表示・出力の実装は維持する。
+- 計算ログは従来どおりブラウザに記録する。今回のDrive保存対象は分子・反応のライブラリ。
+
+## 初回移行
+
+最初に旧版を開いているタブを閉じ、更新版を開く。元ブラウザに内容がある場合は、件数と保存先メールアドレスを示して初回移行を案内する。
+
+既存の分子・反応を同じIDでバッチ転送し、成功後はDriveを使う。元のIndexedDBは削除しないが、移行時に旧クライアントの書き込みを停止するためDBの版を更新する。移行後の通常操作は元DBへ書き込まない。元のレコードは残るが、旧ビルドをそのまま再公開してローカル編集へ戻す運用はしない。転送途中の失敗は同じID・移行元ハッシュで再開し、勝手に複製を増やさない。既存クラウドと同じIDで違う内容が見つかった場合は上書きせず停止する。
+
+移行元データはこのURL・このブラウザにあるもの。旧ChatGPT Sitesや別URLのIndexedDBを新しいサイトから直接読むことはできない。アカウント変更後に旧端末データを別のアカウントへ自動コピーしない。
+
+## 同時編集と通信失敗
+
+各GoogleアカウントにCloudflare Durable Objectを1つ割り当て、正本のカタログ選択を直列化する。データ本体・索引・正本カタログはDriveにある。Durable Objectには、採用中のカタログのIDと処理の受領記録を保持する。カタログの内容はDriveにあり、ローカルに編集可能な別の正本は置かない。
+
+1. 分子・反応の新しい内容と、その索引をDriveへ準備する。
+2. 読んだカタログの世代と、対象レコードの版を照合する。
+3. 競合しなければ、新しいカタログのIDと受領記録をDurable Objectの単一トランザクションで切り替える。この時点で保存成功になる。既存のカタログファイルを上書きしないため、古いネットワーク要求が遅れて届いても現行データを巻き戻さない。
+4. 成功した正本からキャッシュを更新する。
+
+別端末で同じ対象が変わっていれば保存を拒否し、編集中の構造を画面に残す。無関係な追加同士は再評価して両方を残す。応答が失われた場合も同じ操作IDで確認し、二重追加を防ぐ。結果が確認できない間はその画面からの追加保存を止め、確認を案内する。
+
+削除も正本の索引から同じIDを外す操作になる。Driveに準備した旧版ファイルや、失敗時の未参照ファイルを自動で完全削除しないため、Driveの使用容量は増える。これらはアプリ上の別ライブラリや編集先ではない。
+
+## 公開手順（Workerを先に更新）
+
+既存のCloudflare Worker `mol-bench-drive` に新しいDurable Objectの設定が必要。**worker.mjs単体のコピー・貼り付けでは公開できない。** GitHub連携によるビルドで設定ファイルごと公開する。
+
+1. Cloudflare → Workers & Pages → mol-bench-drive → Settings → Builds。
+2. Git repositoryのConnectから `naonao34567890-ship-it/colabreaction_data_conductor` を接続する。
+3. 本番ブランチは `main`。ルートディレクトリはリポジトリのルート。
+4. ビルドコマンドは空欄。Deploy commandを次にする。
+
+```text
+npx --yes wrangler@4.161.0 deploy --config standalone-drive/wrangler.jsonc
+```
+
+5. ビルド・公開を実行する。設定済みの `GOOGLE_CLIENT_SECRET`、`DRIVE_STORAGE_KEY` はそのまま保持する。鍵を作り直さない。KVも既存のnamespaceを使用する。
+6. WorkerのルートURLで `configured: true` と `libraryConfigured: true` を確認する。
+
+SQLite Durable ObjectsのWorkers Free枠を利用する設定。Firebase FunctionsやBlazeプランは使わない。各サービスの無料枠・Driveの容量上限は適用される。
+
+Worker更新後、FirebaseのCloud Shellで実行する。
+
+```bash
+cd ~/mol-bench-site
+git fetch origin
+git checkout origin/main -- dist firebase.json standalone-drive
+npx --yes firebase-tools deploy --only hosting --project mol-bench
+```
+
+サイトの古いタブを閉じて更新版を開き、Driveの継続接続と、初回移行の件数・保存先を確認する。移行中はタブを閉じない。
+
+## 検証
+
+- `node tests/test.cjs`：既存の20件（SDF/XYZ、QM9、改行・原文、バッチ、中止、ZIP/ZIP64等）。
+- `node tests/standalone-drive.test.mjs`：OAuth、継続接続、複数アカウント、認証されたsubjectへの保存ルーティング。
+- `node tests/drive-coordinator.test.mjs`：同時更新、古い世代の拒否、応答喪失後の受領確認、失敗時の正本保持、再起動後の管理ID再利用。
+- PlaywrightとChromiumのある環境で `node tests/drive-store.test.cjs`：実ブラウザと実Workerを使い、旧データ・ID・原文の移行・再開、旧版の書き込み停止、複数タブのキャッシュ整合性、二重クリック防止、分子・反応CRUD、タグ、別ブラウザで同じID、構造版の競合、同時追加、失敗、応答喪失、削除、メモ付き出力、分割アップロード、オフラインキャッシュ、キャッシュ更新だけが失敗した場合の保存済み判定、アカウント分離をモックDriveで検証する。
+- `standalone-drive/` で `npx --yes wrangler@4.161.0 deploy --dry-run`：WorkerとDurable Objectのパッケージ検証。
+
+実Googleアカウント・実Driveへの保存は公開後に確認が必要。3D操作・GFNエンジンの実計算を今回すべて再実行したわけではない。既存の未検証事項はVALIDATION.mdを参照。

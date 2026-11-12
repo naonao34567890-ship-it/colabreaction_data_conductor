@@ -1,14 +1,19 @@
 'use strict';
 
 const ReactionStore = (() => {
- const connection = new Promise((resolve,reject)=>{
-  const request = indexedDB.open('molecular-xyz-reactions',1);
+ let connectionPromise;
+ async function connection(){
+  if(Mol.cloud)await Mol.cloud.ready;
+  if(!connectionPromise)connectionPromise=new Promise((resolve,reject)=>{
+  const request = indexedDB.open(Mol.cloud?.reactionDatabaseName||'molecular-xyz-reactions',1);
   request.onupgradeneeded = () => request.result.createObjectStore('reactions',{keyPath:'id'});
   request.onsuccess = () => resolve(request.result);
   request.onerror = () => reject(request.error);
  });
+  return connectionPromise;
+ }
  async function transaction(mode, run) {
-  const db = await connection;
+  const db = await connection();
   return new Promise((resolve,reject)=>{
    const tx = db.transaction('reactions',mode);
    let result, failure;
@@ -65,7 +70,7 @@ const ReactionStore = (() => {
    request.onsuccess=()=>{
     const item=request.result;
     if(!item?.START || item.START.revision!==revision)return;
-    store.put({...item,startPreview:{revision,image,generation}});
+    try{store.put({...item,startPreview:{revision,image,generation}});}catch{store.transaction.abort();}
    };
   });
  }
@@ -76,10 +81,11 @@ const ReactionStore = (() => {
     const cursor=request.result;
     if(!cursor)return;
     const item=cursor.value;
-    if(item.startPreview){delete item.startPreview;cursor.update(item);}
-    cursor.continue();
+    try{if(item.startPreview){delete item.startPreview;cursor.update(item);}cursor.continue();}catch{store.transaction.abort();}
    };
   });
  }
- return {read,update,remove,tag,cacheStartPreview,clearStartPreviews,create:(slot,structure,name)=>createReaction({[slot]:structure},name),createReaction};
+ const api={read,update,remove,tag,cacheStartPreview,clearStartPreviews,create:(slot,structure,name)=>createReaction({[slot]:structure},name),createReaction};
+ if(Mol.cloud){for(const [key,method]of Object.entries({read:'reactionRead',update:'reactionUpdate',remove:'reactionRemove',tag:'reactionTag',createReaction:'reactionCreate'}))api[key]=(...args)=>Mol.cloud.call(method,...args);api.create=(slot,structure,name)=>Mol.cloud.call('reactionCreate',{[slot]:structure},name);}
+ return api;
 })();

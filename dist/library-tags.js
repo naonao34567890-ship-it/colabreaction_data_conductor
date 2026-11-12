@@ -7,6 +7,7 @@
  let targets=[], deletingTags=false, busy=false, tags=[];
 
  async function transact(mode, run) {
+  if(mode==='readwrite'&&Mol.cloud)return Mol.cloud.call('tagsTransaction',run);
   const db=await Mol.db();
   return new Promise((resolve,reject)=>{
    const tx=db.transaction(['tags','meta'],mode);
@@ -232,6 +233,7 @@
    await refreshTags();
   });
  };
+ document.addEventListener('drive-store-updated',()=>{if(dialog.open&&!busy)void mutate(refreshTags);});
  channel.addEventListener('message',({data})=>{
   if(dialog.open&&!busy&&['tags-updated','tag-catalog','deleted'].includes(data.type))void mutate(refreshTags);
  });

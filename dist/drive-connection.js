@@ -4,7 +4,7 @@ const sessionKey='mol-bench-drive-connection-v1',flowKey='mol-bench-drive-flow-v
 export const standaloneDrive=external;
 let callbackError='';
 if(external){
- const params=new URLSearchParams(location.hash.slice(1));
+ const params=new URLSearchParams((location.hash||'').slice(1));
  if(params.has('drive_session')||params.has('drive_error')){
   const flow=sessionStorage.getItem(flowKey);
   if(flow&&flow===params.get('flow')){
@@ -22,17 +22,18 @@ export function beginDriveConnection(){
 export async function driveFetch(path,options){
  if(!external)return fetch('/api/drive/'+path,options);
  if(callbackError){const reason=callbackError;callbackError='';return Response.json({state:reason==='forbidden'?'forbidden':'authorization_error'});}
- const session=localStorage.getItem(sessionKey);if(!session)return Response.json({state:'connect'});
+ const session=typeof localStorage!=='undefined'?localStorage.getItem(sessionKey):globalThis.MOL_DRIVE_SESSION;if(!session)return Response.json({state:'connect'});
  let response;
  try {
-  response=await fetch(server+'/'+path,{method:'POST',headers:{Authorization:'Bearer '+session},cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer',signal:AbortSignal.timeout(20000)});
+  response=await fetch(server+'/'+path,{method:'POST',headers:{Authorization:'Bearer '+session,...(options?.body?{'Content-Type':'application/json'}:{})},...(options?.body?{body:options.body}:{}),cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer',signal:AbortSignal.timeout(path==='library'?90000:20000)});
  } catch (error) {
-  throw Error(error.name==='TimeoutError'
+  const failure=Error(error.name==='TimeoutError'
    ? 'Drive接続サーバーの応答が20秒以内に届きませんでした。'
    : 'Drive接続サーバーとの通信に失敗しました。接続先：mol-bench-drive.naonao34567890.workers.dev');
+  failure.code='DRIVE_NETWORK';throw failure;
  }
  if(!response.headers.get('Content-Type')?.includes('application/json'))
   throw Error('Drive接続サーバーが想定外の応答を返しました（HTTP '+response.status+'）。');
- if(response.status===401)localStorage.removeItem(sessionKey);
+ if(response.status===401&&typeof localStorage!=='undefined')localStorage.removeItem(sessionKey);
  return response;
 }

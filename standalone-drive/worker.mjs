@@ -1,3 +1,4 @@
+export {LibraryCoordinator} from './library-coordinator.mjs';
 const APP='https://mol-bench.web.app', CLIENT='816593665225-jlsi7t1qdl5icihukahrb3t567qu9qnj.apps.googleusercontent.com';
 const CALLBACK='https://mol-bench-drive.naonao34567890.workers.dev/callback', RETURN=APP+'/colab.html', AGE=30*86400;
 const enc=new TextEncoder(), b64=b=>btoa(String.fromCharCode(...b)), bytes=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
@@ -12,7 +13,7 @@ async function unseal(env,name,value){const [iv,data]=JSON.parse(value);return J
 async function exchange(env,fields){const r=await fetch('https://oauth2.googleapis.com/token',{method:'POST',body:new URLSearchParams({client_id:CLIENT,client_secret:env.GOOGLE_CLIENT_SECRET,...fields})});return {ok:r.ok,data:await r.json()};}
 async function route(request,env){
  const url=new URL(request.url);
- if(url.pathname==='/')return json({service:'Mol Bench Drive',configured:!!(env.DRIVE_KV&&env.DRIVE_STORAGE_KEY&&env.GOOGLE_CLIENT_SECRET)});
+ if(url.pathname==='/')return json({service:'Mol Bench Drive',libraryConfigured:!!env.LIBRARY_COORDINATOR,configured:!!(env.DRIVE_KV&&env.DRIVE_STORAGE_KEY&&env.GOOGLE_CLIENT_SECRET)});
  if(!env.DRIVE_KV||!env.DRIVE_STORAGE_KEY||!env.GOOGLE_CLIENT_SECRET)return json({state:'unavailable'},503);
  if(url.pathname==='/connect'&&request.method==='GET'){
   const flow=url.searchParams.get('flow');if(!/^[a-f0-9]{64}$/.test(flow??''))return json({state:'invalid_flow'},400);
@@ -36,7 +37,7 @@ async function route(request,env){
   await env.DRIVE_KV.put(sessionKey,await seal(env,sessionKey,{refresh:data.refresh_token,expiresAt:Date.now()+AGE*1000}),{expirationTtl:AGE});
   return redirect(RETURN+'#drive_session='+session+'&flow='+pending.flow);
  }
- if(!['/token','/logout'].includes(url.pathname))return json({},404);
+ if(!['/token','/logout','/library'].includes(url.pathname))return json({},404);
  if(request.method!=='POST')return json({},405);
  if(request.headers.get('Origin')!==APP)return json({state:'forbidden'},403);
  const session=request.headers.get('Authorization')?.match(/^Bearer ([a-f0-9]{64})$/)?.[1];if(!session)return json({state:'connect'},401);
@@ -46,6 +47,16 @@ async function route(request,env){
  const {ok,data}=await exchange(env,{grant_type:'refresh_token',refresh_token:saved.refresh});
  if(!ok){if(data.error==='invalid_grant'){await env.DRIVE_KV.delete(sessionKey);return json({state:'connect'},401);}return json({state:'google_error'},502);}
  if(data.refresh_token){saved.refresh=data.refresh_token;await env.DRIVE_KV.put(sessionKey,await seal(env,sessionKey,saved),{expirationTtl:Math.max(60,Math.ceil((saved.expiresAt-Date.now())/1000))});}
+ if(url.pathname==='/library'){
+  if(!env.LIBRARY_COORDINATOR)return json({state:'library_setup_required'},503);
+  const identity=await fetch('https://openidconnect.googleapis.com/v1/userinfo',{headers:{Authorization:'Bearer '+data.access_token}});
+  if(!identity.ok)return json({state:'identity_error'},403);
+  const user=await identity.json();if(!user.sub||user.email_verified!==true)return json({state:'identity_error'},403);
+  const input=await request.json();
+  const id=env.LIBRARY_COORDINATOR.idFromName(user.sub);
+  const response=await env.LIBRARY_COORDINATOR.get(id).fetch(new Request('https://internal/library',{method:'POST',body:JSON.stringify({...input,accessToken:data.access_token})}));
+  const result=await response.json();return json({...result,account:{sub:user.sub,email:user.email}},response.status);
+ }
  return json({state:'connected',access_token:data.access_token,expires_in:data.expires_in});
 }
 export default {async fetch(request,env){

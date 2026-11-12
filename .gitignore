@@ -1,2 +1,6 @@
 /dist/client/
 /dist/server/
+
+node_modules/
+.wrangler/
+.dev.vars
