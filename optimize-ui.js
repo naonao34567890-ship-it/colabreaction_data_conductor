@@ -1,0 +1,220 @@
+'use strict';
+
+{
+  const dialog = $('optDialog');
+  const progress = $('optProgress');
+  const status = $('optStatus');
+  const inputs = [$('optCharge'), $('optMultiplicity'), $('optSteps')];
+  const elements = Object.keys(Mol.elements);
+  let worker = null;
+  let method = 'GFN2';
+  let before = null;
+  let preview = null;
+  let showingPreview = false;
+
+  const logKey = 'xyz-optimization-logs';
+  let runLog;
+  function savedLogs() {
+    try { return JSON.parse(localStorage.getItem(logKey) || '[]'); }
+    catch { return []; }
+  }
+
+  function recordLog(type, details = {}) {
+    if (!runLog) return;
+    runLog.events.push({time: new Date().toISOString(), type, ...details});
+    try {
+      const others = savedLogs().filter(log => log.id !== runLog.id);
+      localStorage.setItem(logKey, JSON.stringify([runLog, ...others].slice(0, 8)));
+    } catch {
+      // Keep the active log available for download even if storage is unavailable.
+    }
+    $('optDownloadLog').disabled = false;
+  }
+
+  $('optDownloadLog').onclick = () => {
+    const logs = savedLogs();
+    const recent = runLog ? [runLog, ...logs.filter(log => log.id !== runLog.id)].slice(0, 8) : logs;
+    if (recent.length) Mol.downloadBlob(
+      new Blob([JSON.stringify(recent, null, 2)], {type: 'application/json'}),
+      'xyz-optimization-logs.json',
+    );
+  };
+
+  function normalizeInteger(value) {
+    return value.normalize('NFKC').trim().replace(/^[−ー]/, '-');
+  }
+
+  for (const input of inputs) {
+    const normalize = () => { input.value = normalizeInteger(input.value); };
+    input.addEventListener('blur', normalize);
+    input.addEventListener('compositionend', normalize);
+  }
+
+  function showStructure(usePreview) {
+    showingPreview = usePreview;
+    atoms = usePreview ? preview : before.atoms;
+    $('optCompare').textContent = usePreview ? '元の構造を表示' : '最適化後を表示';
+    dirty = true;
+  }
+
+  function stopWorker() {
+    worker?.terminate();
+    worker = null;
+    progress.hidden = true;
+    $('optClose').textContent = '閉じる';
+    for (const input of inputs) input.disabled = false;
+    $('optRun').hidden = false;
+  }
+
+  function reset() {
+    stopWorker();
+    if (preview && showingPreview) showStructure(false);
+    preview = null;
+    $('optApply').hidden = $('optCompare').hidden = true;
+  }
+
+  function openOptimization(engine) {
+    method = engine;
+    if (atoms.length < 2) return;
+    finishKeys();
+    finishRotation();
+    $('optTitle').textContent = method+'-xTB 構造最適化';
+    status.textContent = method==='GFN1'
+      ? 'ブラウザ内でGFN1-xTBを実行します（xTBloom）。'
+      : '初回の計算開始時に約29 MBの計算エンジンを読み込みます。';
+    $('optTarget').textContent = selected.size
+      ? `選択した ${selected.size} 原子を独立した系として最適化します。`
+      : `全 ${atoms.length} 原子を最適化します。`;
+    $('optDownloadLog').disabled = !runLog && !savedLogs().length;
+    dialog.showModal();
+  }
+  $('optimize').onclick = () => openOptimization('GFN2');
+  $('optimizeGfn1').onclick = () => openOptimization('GFN1');
+  $('optClose').onclick = () => dialog.close();
+  dialog.addEventListener('close', () => {
+    if (worker) recordLog('cancelled');
+    reset();
+  });
+  $('optCompare').onclick = () => showStructure(!showingPreview);
+  $('optApply').onclick = () => {
+    if (!preview) return;
+    const optimized = preview;
+    recordLog('coordinates-applied');
+    reset();
+    atoms = optimized;
+    dirty = true;
+    push(before);
+    dialog.close();
+    notice('最適化した座標を適用しました。Undoで戻せます。');
+  };
+
+  function presentResult(indices, coordinates, summary, label) {
+    preview = before.atoms.slice();
+    indices.forEach((index, i) => {
+      preview[index] = {...before.atoms[index],
+        x: coordinates[3*i], y: coordinates[3*i+1], z: coordinates[3*i+2]};
+    });
+    showStructure(true);
+    status.textContent = summary;
+    $('optRun').hidden = true;
+    $('optCompare').hidden = $('optApply').hidden = false;
+    $('optApply').textContent = label;
+    $('optClose').textContent = '結果を破棄';
+  }
+
+  $('optForm').onsubmit = event => {
+    event.preventDefault();
+    if (worker || preview) return;
+    const values = inputs.map(input => normalizeInteger(input.value));
+    const [charge, multiplicity, maxCycles] = values.map(Number);
+    if (values.some((value, index) => !/^[+-]?\d+$/.test(value) || !Number.isSafeInteger(Number(value)) ||
+      (index > 0 && Number(value) < 1) || (index === 2 && Number(value) > 500))) {
+      status.textContent = '全電荷は整数、スピン多重度は1以上の整数、最大ステップ数は1〜500の整数で入力してください。';
+      return;
+    }
+    const indices = selected.size ? [...selected].sort((a, b) => a - b) : atoms.map((_, i) => i);
+    const target = indices.map(i => atoms[i]);
+    if (target.length < 2) {
+      status.textContent = '最適化する原子を2個以上選択してください。';
+      return;
+    }
+    const unsupported = target.find(atom => elements.indexOf(atom.el) < 0 ||
+      elements.indexOf(atom.el) >= 86);
+    const electrons = target.reduce((total, atom) => total + elements.indexOf(atom.el) + 1, -charge);
+    if (unsupported) {
+      status.textContent = method+'-xTBの対応範囲はH〜Rnです。対象外の元素：' + unsupported.el;
+      return;
+    }
+    if (electrons < multiplicity || (electrons - multiplicity + 1) % 2 !== 0) {
+      status.textContent = '電子数とスピン多重度が合いません。全電荷と多重度を確認してください。';
+      return;
+    }
+    if (target.length > 200) {
+      status.textContent = 'ブラウザでの計算上限は200原子です。';
+      return;
+    }
+
+    before = snapshot();
+    const geometry = {
+      elements: target.map(atom => atom.el),
+      coordinates: Float64Array.from(target.flatMap(({x, y, z}) => [x, y, z])),
+    };
+    runLog = {id: crypto.randomUUID(), startedAt: new Date().toISOString(), molecule: molecule.name,
+      method: method+'-xTB', engine: method==='GFN1' ? 'xTBloom' : 'OCC', charge, multiplicity, maxCycles,
+      atomCount: target.length, selection: selected.size ? indices.map(index => index+1) : 'all',
+      elements: geometry.elements, events: []};
+    recordLog('started');
+    try {
+      worker = new Worker('optimize-worker.js', {type: 'module'});
+      worker.onerror = event => {
+        recordLog('worker-error',{message:event.message, file:event.filename, line:event.lineno});
+        stopWorker();
+        status.textContent = '計算エンジンを実行できませんでした。' + (event.message || '');
+      };
+      worker.onmessage = ({data}) => {
+        if (data.type === 'result') {
+          const {coordinates, ...summary} = data.result;
+          recordLog('result',summary);
+        } else {
+          const {type, ...details} = data;
+          recordLog(type,details);
+        }
+        if (data.type === 'ready') {
+          status.textContent = '初期構造を評価中…';
+        } else if (data.type === 'electronic') {
+          status.textContent = `電子状態評価：SCC ${data.sccIterations} 回 · 累計 ${data.sccTotal} 回`;
+        } else if (data.type === 'cycle') {
+          progress.value = data.cycle;
+          status.textContent = `ステップ ${data.cycle} / ${maxCycles} · ${data.energy.toFixed(6)} Eh`
+            + (method==='GFN2' ? ` · SCC ${data.sccIterations} 回（累計 ${data.sccTotal} 回）` : '');
+        } else if (data.type === 'error') {
+          stopWorker();
+          status.textContent = /(?:SCC|SCF).*?(?:not converge|failed)|err_scc/i.test(data.message)
+            ? `計算失敗：電子状態（SCC）が収束しませんでした。成功した評価のSCC累計 ${data.sccTotal} 回。詳細：${data.message}`
+            : '計算失敗：' + data.message;
+        } else if (data.type === 'result') {
+          stopWorker();
+          const {coordinates, energy, converged, cycles} = data.result;
+          presentResult(indices, coordinates,
+            `${converged ? '収束' : '未収束の最終構造'} · ${cycles} ステップ · ${energy.total.toFixed(6)} Eh`
+            + (Number.isInteger(data.result.sccTotal) ? ` · SCC累計 ${data.result.sccTotal} 回` : '')
+            + (method==='GFN2' && multiplicity > 1 ? '。開殻はOCCのスピン分極モデルです。' : ''),
+            converged ? '座標を適用' : '未収束の座標を適用');
+
+        }
+      };
+      for (const input of inputs) input.disabled = true;
+      $('optRun').hidden = true;
+      $('optClose').textContent = '計算を中止';
+      progress.hidden = false;
+      progress.max = maxCycles;
+      progress.value = 0;
+      status.textContent = '計算エンジンを読み込み中…';
+      worker.postMessage({method, geometry, anchor: indices.indexOf(before.point), settings: {charge, unpairedElectrons: multiplicity - 1, maxCycles}});
+    } catch (error) {
+      recordLog('start-error',{message:error.message});
+      stopWorker();
+      status.textContent = '計算を開始できませんでした：' + error.message;
+    }
+  };
+}

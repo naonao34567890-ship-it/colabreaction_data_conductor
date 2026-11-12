@@ -1,0 +1,213 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>分子エディタ</title><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script><script src="common.js"></script><script src="reaction-store.js"></script><style>
+#reactionSaveDialog label[hidden]{display:none}
+</style></head><body><div class="page"><header><div class="heading"><div><div class="eyebrow">MOLECULAR WORKSPACE / 02</div><h1 id="title">分子エディタ</h1></div><select id="displayMode" aria-label="分子の表示形式"></select></div><div class="toolbar"><button id="atomNumbers" type="button" aria-pressed="false" disabled>原子番号を表示</button><button id="lasso">投げ縄 OFF</button><button id="undo" disabled>↶ Undo</button><button id="redo" disabled>↷ Redo</button><label class="row"><small>移動速度</small><input aria-label="移動速度" id="speed" type="range" min="0.1" max="8" step="0.1" value="1"><small id="speedValue">1.0 Å/s</small></label><span class="spacer"></span><button id="optimize" title="分子間相互作用の最適化に" disabled>GFN2-構造最適化</button><button id="optimizeGfn1" title="構造の最適化に" disabled>GFN1-構造最適化</button><button id="direct">xyz ダウンロード ↓</button><button class="primary" id="saveReactionStart" disabled>STARTとして保存</button><button id="saveReactionFinish" disabled>FINISHとして保存</button><button id="save">新たな分子として保存</button><button id="overwrite" disabled>上書き保存</button></div></header><main class="editor-main"><section id="view" class="viewport" aria-label="分子の3Dビュー"><div class="view-label">3D VIEW / Å</div><div class="view-info" id="lineInfo">読み込み中…</div><canvas id="atomNumberCanvas" aria-hidden="true" hidden style="position:absolute;inset:0;pointer-events:none"></canvas><canvas id="lassoCanvas"></canvas></section><aside class="sidebar"><section class="panel"><div class="eyebrow">SELECTION</div><h2>選択と特別な点</h2><p id="selectionInfo">0 原子を選択</p><button id="deleteSelection" disabled>選択を削除</button><p id="pointInfo" class="muted">特別な点：未指定</p><small>Ctrl＋クリックで選択<br>Ctrl＋Alt＋クリックで特別な点</small></section><section class="panel"><div class="eyebrow">MOIETIES</div><h2>モイエティの交換</h2><div class="row"><button id="register1">1 に登録</button><button id="register2">2 に登録</button></div><div class="moiety" id="m1">1 · 未登録</div><div class="moiety orange" id="m2">2 · 未登録</div><button id="swap" style="width:100%" disabled>⇄ 座標を交換</button><small>両方に特別な点があれば点を基準に、なければ重心を基準に交換します。</small></section><section class="mini-wrap"><div class="eyebrow">LIBRARY</div><div class="row"><h2>分子を追加</h2><span class="spacer"></span><small id="miniCount">0 分子</small></div><label>並び順 <select id="miniOrder" autocomplete="off"><option value="name-asc">名前順</option><option value="added-asc">追加時間昇順</option><option value="added-desc">追加時間降順</option><option value="name-desc">名前逆順</option><option value="id">内部ID順</option><option value="tag-name" selected>タグ順＋名前順</option></select></label><div class="grid-view" id="mini"></div><button id="add" disabled>選択した1分子を追加 ＋</button></section><details class="help" open><summary>キー・マウス操作</summary><div>左ドラッグ：カメラ回転（投げ縄OFF）<br>ホイール：ズーム ／ 中ドラッグ：パン<br>Ctrl＋クリック：選択追加・解除<br>空白クリック：選択解除<br>投げ縄ON＋左ドラッグ：範囲選択<br>Ctrl＋投げ縄：選択に追加<br>Ctrl＋Alt＋クリック：特別な点<br>Alt＋左ドラッグ：モイエティ回転<br>Ctrl＋Alt＋ドラッグ：操作なし<br>W/S：画面の奥／手前、A/D：画面の左／右<br>Space：画面の上 ／ Shift：画面の下<br>Ctrl＋Shift＋Backspace：選択を削除<br>Ctrl＋Z：Undo ／ Ctrl＋Y：Redo<br>MacではOptionがAltに対応</div></details><p class="status" id="notice" role="status" aria-live="polite"></p></aside></main></div><dialog id="reactionSaveDialog" aria-labelledby="reactionSaveTitle">
+<form id="reactionSaveForm">
+<h2 id="reactionSaveTitle"></h2>
+<label>保存先<select id="reactionSaveDestination"></select></label>
+<label id="reactionSaveNameRow">新しい反応名<input id="reactionSaveName"></label>
+<label id="reactionSaveExistingRow" hidden>既存の反応<select id="reactionSaveExisting"></select></label>
+<p id="reactionSavePreview" class="muted"></p>
+<p id="reactionSaveError" role="alert"></p>
+<div class="dialog-actions"><button type="button" id="reactionSaveCancel">キャンセル</button><button class="primary" id="reactionSaveSubmit">保存</button></div>
+</form>
+</dialog>
+<dialog id="nameDialog"><h2 id="dialogTitle">新しい分子として保存</h2><label>分子の名前<input id="name"></label><p class="muted">編集後はコメントを保持し、追加列・フッターを破棄した標準xyzで出力します。</p><div class="dialog-actions"><button id="back">戻る</button><button class="primary" id="confirm">保存</button></div></dialog>
+<dialog id="optDialog" style="margin:auto 1rem 1rem auto;max-width:min(420px, calc(100% - 2rem))">
+<h2 id="optTitle">GFN2-xTB 構造最適化</h2>
+<p class="muted">気相で拘束なしの予備最適化を行います。全電荷とスピン多重度は計算対象に合わせて指定してください。</p>
+<p id="optTarget"></p>
+<form id="optForm">
+<div class="row">
+<label>全電荷<input id="optCharge" type="text" autocomplete="off" spellcheck="false" value="0" required></label>
+<label>スピン多重度<input id="optMultiplicity" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" value="1" required></label>
+<label>最大ステップ数<input id="optSteps" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" value="30" required></label>
+</div>
+<p id="optStatus" role="status" aria-live="polite"></p>
+<progress id="optProgress" hidden style="width:100%"></progress>
+<div class="dialog-actions">
+<button type="button" id="optDownloadLog" disabled>計算ログを保存 ↓</button>
+<button type="button" id="optClose">閉じる</button>
+<button type="button" id="optCompare" hidden>元の構造を表示</button>
+<button type="button" id="optApply" class="primary" hidden>座標を適用</button>
+<button type="submit" id="optRun" class="primary">計算開始</button>
+</div>
+</form>
+</dialog>
+
+<script>
+'use strict';
+const $=id=>document.getElementById(id);let molecule=null,atoms=[],selected=new Set(),point=null,moieties=[{ids:[],point:null},{ids:[],point:null}],history=[],future=[],dirty=true,edited=false,lasso=false,drag=null,keySnapshot=null,keys=new Set(),miniData=[],miniMap=new Map(),miniSelected=null,graphics=null,scene,camera,renderer,controls,model=null,raycaster,pointer,sceneReady=false;
+Mol.displayMode($('displayMode'));
+$('displayMode').onchange=()=>{dirty=true;};
+function notice(s){$('notice').textContent=s;}function snapshot(){return{atoms:atoms.map(a=>({...a})),selected:[...selected],point,moieties:structuredClone(moieties),edited};}
+function push(before){history.push(before);if(history.length>60)history.shift();future=[];edited=true;update();}
+function restore(s){atoms=s.atoms;selected=new Set(s.selected);point=s.point;moieties=s.moieties;edited=s.edited;dirty=true;update();}
+function undo(){if(drag?.mode==='rotate'){finishRotation();drag=null;controls.enabled=true;}finishKeys();if(!history.length)return;future.push(snapshot());restore(history.pop());}function redo(){if(drag?.mode==='rotate'){finishRotation();drag=null;controls.enabled=true;}finishKeys();if(!future.length)return;history.push(snapshot());restore(future.pop());}
+function update(){if(point!==null&&!selected.has(point))point=null;$('selectionInfo').textContent=selected.size+' 原子を選択';$('pointInfo').textContent=point===null?'特別な点：未指定':`特別な点：#${point+1} ${atoms[point].el}`;$('lineInfo').textContent=`原子数 ${atoms.length} / 行数 ${atoms.length+2} · 選択 ${selected.size}`+(molecule&&molecule.originalLines>molecule.baseLines?` / 元ブロック全体 ${molecule.originalLines}行`:'')+(edited?' · 編集中':'');
+ for(let k=0;k<2;k++){const m=moieties[k];$('m'+(k+1)).textContent=`${k+1} · ${m.ids.length?m.ids.length+'原子（'+m.ids.slice(0,10).map(i=>'#'+(i+1)).join(', ')+(m.ids.length>10?'…':'')+'）':'未登録'} / 特別な点 ${m.point===null?'なし':'#'+(m.point+1)}`;}$('swap').disabled=!moieties[0].ids.length||!moieties[1].ids.length;$('undo').disabled=!history.length;$('redo').disabled=!future.length;$('register1').disabled=$('register2').disabled=$('deleteSelection').disabled=!selected.size;$('optimizeGfn1').disabled=$('optimize').disabled=atoms.length<2;$('save').disabled=$('direct').disabled=!atoms.length;$('overwrite').disabled=overwriting||!canOverwriteStructure()||!atoms.length||!edited;dirty=true;}
+function finishKeys(){keys.clear();if(keySnapshot){push(keySnapshot);keySnapshot=null;}}
+function deleteSelection() {
+  if (!selected.size || drag) return;
+  finishKeys();
+  const before = snapshot();
+  const removed = selected.size;
+  const newIndices = new Map();
+  const remaining = [];
+  atoms.forEach((atom, index) => {
+    if (selected.has(index)) return;
+    newIndices.set(index, remaining.length);
+    remaining.push(atom);
+  });
+  atoms = remaining;
+  moieties = moieties.map(m => ({
+    ids: m.ids.filter(index => newIndices.has(index)).map(index => newIndices.get(index)),
+    point: newIndices.get(m.point) ?? null,
+  }));
+  selected.clear();
+  point = null;
+  push(before);
+  notice(`${removed} 原子を削除しました。Undoで戻せます。`);
+}
+$('deleteSelection').onclick = deleteSelection;
+$('undo').onclick=undo;$('redo').onclick=redo;$('speed').oninput=()=>$('speedValue').textContent=Number($('speed').value).toFixed(1)+' Å/s';$('lasso').onclick=()=>{lasso=!lasso;$('lasso').classList.toggle('active',lasso);$('lasso').textContent='投げ縄 '+(lasso?'ON':'OFF');};
+for(let k=0;k<2;k++)$('register'+(k+1)).onclick=()=>{finishKeys();moieties[k]={ids:[...selected],point};update();};$('swap').onclick=()=>{finishKeys();try{const before=snapshot();Mol.swap(atoms,moieties[0],moieties[1]);push(before);}catch(e){notice(e.message);}};
+const mini=new Mol.VirtualGrid($('mini'),{mini:true,isSelected:id=>id===miniSelected,onSelect:m=>{miniSelected=m.id;$('add').disabled=!sceneReady;}});
+window.addEventListener('storage',event=>{
+ if(event.key==='xyz-thumbnail-molecules'){mini.clear();miniRefresh();}
+});
+$('miniOrder').value='tag-name';
+$('miniOrder').onchange=()=>{$('mini').scrollTop=0;miniRefresh();};
+function miniRefresh(){const order=$('miniOrder').value;mini.setData(miniData.sort((a,b)=>Mol.compareDisplayOrder(a,b,order)));$('miniCount').textContent=miniData.length.toLocaleString()+' 分子';}
+function miniChange(m){if(m.type==='renamed'){
+ const item=miniMap.get(m.id);
+ if(item)item.name=m.name;
+ if(molecule?.id===m.id){
+  molecule.name=m.name;
+  $('title').textContent=m.name;
+  document.title=m.name+' — 分子エディタ';
+ }
+}else if(m.type==='added'){for(const a of m.items)if(!miniMap.has(a.id)){miniMap.set(a.id,a);miniData.push(a);}}else if(m.type==='overwritten'){const existing=miniMap.get(m.item.id);if(existing)Object.assign(existing,m.item);}else if(m.type==='deleted'){const ids=new Set(m.ids??[m.id]);for(const id of ids)miniMap.delete(id);miniData=miniData.filter(a=>!ids.has(a.id));if(ids.has(miniSelected)){miniSelected=null;$('add').disabled=true;}}miniRefresh();}
+const channel=new BroadcastChannel('molecular-xyz');channel.onmessage=e=>miniChange(e.data);Mol.metadata().then(items=>miniChange({type:'added',items})).catch(e=>notice(e.message));
+$('add').onclick=async()=>{if(!miniSelected||!molecule)return;try{const m=await Mol.get('body',miniSelected);if(!m)throw Error('分子が削除されています');finishKeys();const before=snapshot(),center=Mol.centroid(atoms),incoming=Mol.centroid(m.atoms);let r1=0,r2=0;for(const a of atoms)r1=Math.max(r1,Math.hypot(a.x-center.x,a.y-center.y,a.z-center.z));for(const a of m.atoms)r2=Math.max(r2,Math.hypot(a.x-incoming.x,a.y-incoming.y,a.z-incoming.z));const offset=r1+r2+3,start=atoms.length;
+ for(const a of m.atoms)atoms.push({el:a.el,x:a.x-incoming.x+center.x+offset,y:a.y-incoming.y+center.y,z:a.z-incoming.z+center.z});selected=new Set(atoms.slice(start).map((_,i)=>start+i));point=null;push(before);graphics.fit(camera,atoms,controls.target);controls.update();notice(`${m.name} を追加しました。原子 #${start+1}〜#${atoms.length} を選択しています。`);}catch(e){notice(e.message);}};
+let overwriting=false;
+function editedRecord(name) {
+ const record={name,atoms:atoms.map(({el,x,y,z})=>({el,x,y,z})),comment:'',edited:true,
+  baseLines:atoms.length+2,originalLines:atoms.length+2};
+ record.raw=new Blob([Mol.standard(record)],{type:'chemical/x-xyz'});
+ return record;
+}
+function canOverwriteStructure(){
+ return !!molecule && (!!openedReactionId || (!!molecule.id && !molecule.id.startsWith('builtin-')));
+}
+$('overwrite').onclick=async()=>{
+ if(overwriting||!canOverwriteStructure()||!atoms.length||!edited)return;
+ finishKeys();
+ finishRotation();
+ const revision=molecule.revision;
+ const record={...editedRecord(molecule.name),id:molecule.id};
+ if(!await Mol.confirmFileAction('上書き保存','「'+molecule.name+'」を現在の構造で上書きします。','このファイルを上書きする'))return;
+ if(overwriting||molecule.id!==record.id||molecule.revision!==revision)return;
+ overwriting=true;
+ update();
+ try{
+  const item=openedReactionId?await overwriteReactionStructure(record,revision):await Mol.overwrite(record,revision);
+  molecule={...record,name:item.name,revision:item.revision};
+  if(openedReactionId){
+   $('title').textContent=item.name;
+   document.title=item.name+' — 分子エディタ';
+  }
+  for(const state of [...history,...future])state.edited=true;
+  edited=atoms.length!==record.atoms.length||atoms.some(({el,x,y,z},i)=>{
+   const saved=record.atoms[i];
+   return el!==saved.el||x!==saved.x||y!==saved.y||z!==saved.z;
+  });
+  if(!openedReactionId){
+   const change={type:'overwritten',item};
+   miniChange(change);
+   Mol.notify(change);
+  }
+  notice('「'+item.name+'」を上書き保存しました。');
+ }catch(error){notice(error.message);}
+ finally{overwriting=false;update();}
+};
+let saveMode='save';function naming(mode){if(!molecule||!atoms.length)return;finishKeys();saveMode=mode;$('name').value=molecule.name+(edited?'_edited':'');$('dialogTitle').textContent=mode==='save'?'新しい分子として保存':'xyzをダウンロード';$('confirm').textContent=mode==='save'?'保存':'ダウンロード';$('nameDialog').showModal();}
+$('save').onclick=()=>naming('save');$('direct').onclick=()=>naming('download');$('back').onclick=()=>$('nameDialog').close();$('confirm').onclick=async()=>{const name=Mol.safeName($('name').value);const m=edited?editedRecord(name):{...molecule,name};try{if(saveMode==='download')Mol.downloadBlob(Mol.calculationOutput(m),name+'.xyz');else{const items=await Mol.saveBatch([m]);miniChange({type:'added',items});Mol.notify({type:'added',items});notice('「'+items[0].name+'」として保存しました。');}$('nameDialog').close();}catch(e){notice((e.name==='QuotaExceededError'?'保存容量を超えました':e.message));}};
+function isTyping(e){return /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)||e.target.isContentEditable||document.querySelector('dialog[open]')!==null;}
+const movement=new Set(['KeyW','KeyA','KeyS','KeyD','Space','ShiftLeft','ShiftRight']);
+window.addEventListener('keydown',e=>{if(isTyping(e))return;
+ if(e.ctrlKey&&e.shiftKey&&!e.altKey&&!e.metaKey&&e.key==='Backspace'){
+   e.preventDefault();
+   if(!e.repeat)deleteSelection();
+   return;
+ }
+ if(e.ctrlKey&&(e.code==='KeyZ'||e.code==='KeyY')){e.preventDefault();e.code==='KeyZ'?undo():redo();return;}if(movement.has(e.code)&&!e.ctrlKey&&!e.altKey&&!e.metaKey&&selected.size){e.preventDefault();keys.add(e.code);}});
+window.addEventListener('keyup',e=>{keys.delete(e.code);if(!keys.size)finishKeys();if(e.key==='Alt'&&drag?.mode==='rotate')finishRotation();});window.addEventListener('blur',()=>{finishKeys();if(drag?.mode==='rotate')finishRotation();drag=null;if(controls)controls.enabled=true;});
+function pick(e){const r=renderer.domElement.getBoundingClientRect();pointer.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);raycaster.setFromCamera(pointer,camera);const hit=model&&raycaster.intersectObject(model.userData.spheres,false)[0];return hit?hit.instanceId:null;}
+function local(e){const r=renderer.domElement.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};}
+function finishRotation(){if(drag?.mode==='rotate'&&drag.changed){push(drag.before);drag.changed=false;}if(drag?.mode==='rotate')drag.mode='finished';}
+function inside(p,poly){let yes=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const a=poly[i],b=poly[j];if((a.y>p.y)!==(b.y>p.y)&&p.x<(b.x-a.x)*(p.y-a.y)/(b.y-a.y)+a.x)yes=!yes;}return yes;}
+function drawLasso(){const c=$('lassoCanvas'),ctx=c.getContext('2d');ctx.clearRect(0,0,c.width,c.height);if(!drag?.path)return;ctx.beginPath();drag.path.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();ctx.fillStyle='#62d6bf33';ctx.fill();ctx.strokeStyle='#62d6bf';ctx.setLineDash([5,4]);ctx.stroke();}
+async function init(){try{const id=new URLSearchParams(location.search).get('id');
+if(new URLSearchParams(location.search).has('reaction'))molecule=await loadReactionStructure();
+else{
+ if(!id)throw Error('ライブラリで分子を選び、「エディタで開く」を押してください');
+ molecule=await Mol.get('body',id);
+}
+if(!molecule)throw Error('指定した分子は見つかりません');atoms=molecule.atoms.map(a=>({...a}));syncReactionSave();$('optimizeGfn1').disabled=$('optimize').disabled=atoms.length<2;edited=!openedReactionId&&!!molecule.edited;update();$('title').textContent=molecule.name;document.title=molecule.name+' — 分子エディタ';if(id&&!molecule.builtin&&!id.startsWith('builtin-'))Mol.editName($('title'),async name=>{
+ const change=await Mol.renameMolecule(id,Mol.safeName(name));
+ miniChange(change);
+ Mol.notify(change);
+ return change.name;
+},notice);else if(openedReactionId)Mol.editName($('title'),async value=>{
+ const name=Mol.safeName(value.replace(new RegExp('[_＿]'+openedReactionSlot+'$','i'),''));
+ const saved=await ReactionStore.update(openedReactionId,{name});
+ molecule.name=saved.name+'_'+openedReactionSlot;
+ syncReactionSave();
+ document.title=molecule.name+' — 分子エディタ';
+ return molecule.name;
+},notice);graphics=await Mol.graphics;const {T,OrbitControls}=graphics;scene=new T.Scene();scene.background=new T.Color(0x101515);graphics.light(scene);camera=new T.PerspectiveCamera(40,1,.01,2000);renderer=new T.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));$('view').prepend(renderer.domElement);controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=false;controls.mouseButtons={LEFT:T.MOUSE.ROTATE,MIDDLE:T.MOUSE.PAN,RIGHT:null};raycaster=new T.Raycaster();pointer=new T.Vector2();
+ const numberCanvas=$('atomNumberCanvas'),numberButton=$('atomNumbers');
+ const numberContext=numberCanvas.getContext('2d'),projected=new T.Vector3();
+ let showNumbers=false,numbersDirty=true;
+ numberButton.disabled=false;
+ numberButton.onclick=()=>{
+  showNumbers=!showNumbers;
+  numberCanvas.hidden=!showNumbers;
+  numberButton.setAttribute('aria-pressed',String(showNumbers));
+  numberButton.textContent=showNumbers?'原子番号を非表示':'原子番号を表示';
+  numbersDirty=true;
+ };
+ controls.addEventListener('change',()=>{numbersDirty=true;});
+ function drawAtomNumbers(){
+  const {width,height}=numberCanvas;
+  numberContext.clearRect(0,0,width,height);
+  numberContext.font='bold 12px system-ui';
+  numberContext.textAlign='center';
+  numberContext.lineJoin='round';
+  numberContext.lineWidth=3;
+  numberContext.strokeStyle='#fff';
+  numberContext.fillStyle='#183438';
+  atoms.forEach((atom,index)=>{
+   projected.set(atom.x,atom.y,atom.z).project(camera);
+   if(Math.abs(projected.x)>1||Math.abs(projected.y)>1||Math.abs(projected.z)>1)return;
+   const x=(projected.x+1)*width/2,y=(1-projected.y)*height/2-9;
+   numberContext.strokeText(String(index+1),x,y);
+   numberContext.fillText(String(index+1),x,y);
+  });
+ }
+ const resize=()=>{const w=$('view').clientWidth,h=$('view').clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();$('lassoCanvas').width=w;$('lassoCanvas').height=h;numberCanvas.width=w;numberCanvas.height=h;numbersDirty=true;};new ResizeObserver(resize).observe($('view'));resize();graphics.fit(camera,atoms,controls.target);controls.update();
+ sceneReady=true;$('add').disabled=!miniSelected;const canvas=renderer.domElement;canvas.addEventListener('contextmenu',e=>e.preventDefault());
+ canvas.addEventListener('pointerdown',e=>{if(e.button!==0)return;finishKeys();const p=local(e);let mode=e.ctrlKey&&e.altKey?'special':e.altKey?'rotate':lasso?'lasso':e.ctrlKey?'toggle':'camera';drag={mode,start:p,last:p,max:0,hit:pick(e),ctrl:e.ctrlKey,before:mode==='rotate'?snapshot():null,changed:false,path:[p],id:e.pointerId};if(mode!=='camera'){controls.enabled=false;e.stopImmediatePropagation();canvas.setPointerCapture(e.pointerId);}if(mode==='rotate'&&!selected.size)drag.mode='none';},true);
+ canvas.addEventListener('pointermove',e=>{if(!drag)return;const p=local(e);drag.max=Math.max(drag.max,Math.hypot(p.x-drag.start.x,p.y-drag.start.y));if(drag.mode==='lasso'){drag.path.push(p);drawLasso();}else if(drag.mode==='rotate'&&drag.max>=4&&e.altKey&&!e.ctrlKey){const dx=p.x-drag.last.x,dy=p.y-drag.last.y,center=point!==null?{...atoms[point]}:Mol.centroid(atoms,selected),right=new T.Vector3(1,0,0).applyQuaternion(camera.quaternion),up=new T.Vector3(0,1,0).applyQuaternion(camera.quaternion),q=new T.Quaternion().setFromAxisAngle(up,dx*.008).multiply(new T.Quaternion().setFromAxisAngle(right,dy*.008));for(const i of selected){const v=new T.Vector3(atoms[i].x-center.x,atoms[i].y-center.y,atoms[i].z-center.z).applyQuaternion(q);atoms[i].x=v.x+center.x;atoms[i].y=v.y+center.y;atoms[i].z=v.z+center.z;}drag.changed=true;dirty=true;}drag.last=p;});
+ const up=e=>{if(!drag||drag.id!==e.pointerId)return;const d=drag;finishRotation();if(d.max<4){if(d.mode==='special'&&d.hit!==null){selected.add(d.hit);point=d.hit;}else if(!['rotate','finished','none','special'].includes(d.mode)){if(d.hit===null){selected.clear();point=null;}else if(e.ctrlKey){selected.has(d.hit)?selected.delete(d.hit):selected.add(d.hit);}else{selected=new Set([d.hit]);point=null;}}}else if(d.mode==='lasso'){if(!d.ctrl){selected.clear();point=null;}const width=canvas.clientWidth,height=canvas.clientHeight;atoms.forEach((a,i)=>{const v=new T.Vector3(a.x,a.y,a.z).project(camera);if(v.z>=-1&&v.z<=1&&inside({x:(v.x+1)*width/2,y:(1-v.y)*height/2},d.path))selected.add(i);});}drag=null;controls.enabled=true;drawLasso();update();};canvas.addEventListener('pointerup',up);canvas.addEventListener('pointercancel',e=>{finishRotation();drag=null;controls.enabled=true;drawLasso();update();});
+ let previous=performance.now();function frame(now){requestAnimationFrame(frame);const dt=Math.min(.05,(now-previous)/1000);previous=now;if(keys.size&&selected.size){if(!keySnapshot)keySnapshot=snapshot();const horizontal=Number(keys.has('KeyD'))-Number(keys.has('KeyA'));
+ const vertical=Number(keys.has('Space'))-Number(keys.has('ShiftLeft')||keys.has('ShiftRight'));
+ const depth=Number(keys.has('KeyS'))-Number(keys.has('KeyW'));
+ const v=new T.Vector3(horizontal,vertical,depth)
+  .normalize().applyQuaternion(camera.quaternion).multiplyScalar(dt*Number($('speed').value));
+ for(const i of selected){atoms[i].x+=v.x;atoms[i].y+=v.y;atoms[i].z+=v.z;}dirty=true;}
+ if(dirty){if(model){scene.remove(model);graphics.dispose(model);}model=atoms.length?graphics.model(atoms,selected,point,moieties,$('displayMode').value):null;if(model)scene.add(model);dirty=false;numbersDirty=true;}renderer.render(scene,camera);if(showNumbers&&numbersDirty){drawAtomNumbers();numbersDirty=false;}}update();requestAnimationFrame(frame);
+ }catch(e){notice(e.message);if(!molecule)$('lineInfo').textContent='分子を表示できません';$('save').disabled=$('direct').disabled=true;}}
+document.addEventListener("DOMContentLoaded",init,{once:true});
+</script><script src="reaction-editor.js"></script><script src="optimize-ui.js"></script></body></html>

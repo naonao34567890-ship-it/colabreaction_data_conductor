@@ -1,0 +1,4 @@
+.mode-switch { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.mode-link { padding: 9px 14px; border: 1px solid var(--border); border-radius: 7px; background: #191e1e; color: var(--ink); text-decoration: none; }
+.mode-link:hover { border-color: var(--accent); background: #263330; }
+.mode-link[aria-current="page"] { background: var(--accent); color: #10201c; border-color: var(--accent); }

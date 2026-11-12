@@ -1,0 +1,6 @@
+GFN2-xTB geometry optimization via xtb-wasm 1.1.1 (GPL-3.0-or-later).
+Source: https://github.com/cheminfo/xtb-wasm
+Release package (includes TypeScript source): https://registry.npmjs.org/xtb-wasm/-/xtb-wasm-1.1.1.tgz
+Local modification: occModule.js points to the vendored OCC loader.
+OCC / occjs 0.9.6 source and WASM build instructions: https://github.com/peterspackman/occ
+See LICENSE and occ/LICENSE for license terms.

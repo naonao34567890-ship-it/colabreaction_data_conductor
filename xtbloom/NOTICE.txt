@@ -1,0 +1,3 @@
+xTBloom 0.2.3, GPL-3.0. Upstream: https://github.com/jinzhezenggroup/xtbloom
+Unmodified web engine from https://xtbloom.jinzhezeng.group/
+Corresponding source and upstream build instructions: xtbloom-0.2.3-source.tar.gz
