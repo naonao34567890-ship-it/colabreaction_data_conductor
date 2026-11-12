@@ -12,14 +12,14 @@ async function unseal(env,name,value){const [iv,data]=JSON.parse(value);return J
 async function exchange(env,fields){const r=await fetch('https://oauth2.googleapis.com/token',{method:'POST',body:new URLSearchParams({client_id:CLIENT,client_secret:env.GOOGLE_CLIENT_SECRET,...fields})});return {ok:r.ok,data:await r.json()};}
 async function route(request,env){
  const url=new URL(request.url);
- if(url.pathname==='/')return json({service:'Mol Bench Drive',configured:!!(env.DRIVE_KV&&env.DRIVE_STORAGE_KEY&&env.GOOGLE_CLIENT_SECRET&&env.ALLOWED_EMAIL)});
- if(!env.DRIVE_KV||!env.DRIVE_STORAGE_KEY||!env.GOOGLE_CLIENT_SECRET||!env.ALLOWED_EMAIL)return json({state:'unavailable'},503);
+ if(url.pathname==='/')return json({service:'Mol Bench Drive',configured:!!(env.DRIVE_KV&&env.DRIVE_STORAGE_KEY&&env.GOOGLE_CLIENT_SECRET)});
+ if(!env.DRIVE_KV||!env.DRIVE_STORAGE_KEY||!env.GOOGLE_CLIENT_SECRET)return json({state:'unavailable'},503);
  if(url.pathname==='/connect'&&request.method==='GET'){
   const flow=url.searchParams.get('flow');if(!/^[a-f0-9]{64}$/.test(flow??''))return json({state:'invalid_flow'},400);
   const state=random(),verifier=random(),name='oauth/'+state;
   await env.DRIVE_KV.put(name,await seal(env,name,{flow,verifier,expiresAt:Date.now()+600000}),{expirationTtl:600});
   const challenge=b64(await digest(verifier)).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');
-  return redirect('https://accounts.google.com/o/oauth2/v2/auth?'+new URLSearchParams({client_id:CLIENT,redirect_uri:CALLBACK,response_type:'code',scope:'openid email https://www.googleapis.com/auth/drive.file',access_type:'offline',prompt:'consent',state,code_challenge:challenge,code_challenge_method:'S256'}));
+  return redirect('https://accounts.google.com/o/oauth2/v2/auth?'+new URLSearchParams({client_id:CLIENT,redirect_uri:CALLBACK,response_type:'code',scope:'openid email https://www.googleapis.com/auth/drive.file',access_type:'offline',prompt:'consent select_account',state,code_challenge:challenge,code_challenge_method:'S256'}));
  }
  if(url.pathname==='/callback'&&request.method==='GET'){
   const state=url.searchParams.get('state');if(!/^[a-f0-9]{64}$/.test(state??''))return json({state:'invalid_state'},400);
@@ -31,7 +31,7 @@ async function route(request,env){
   if(!ok||!data.refresh_token||!data.scope?.split(' ').includes('https://www.googleapis.com/auth/drive.file'))return fail('exchange');
   const identity=await fetch('https://openidconnect.googleapis.com/v1/userinfo',{headers:{Authorization:'Bearer '+data.access_token}});
   if(!identity.ok)return fail('identity');const user=await identity.json();
-  if(user.email_verified!==true||user.email?.toLowerCase()!==env.ALLOWED_EMAIL.trim().toLowerCase())return fail('forbidden');
+  if(user.email_verified!==true||typeof user.email!=='string'||!user.email)return fail('forbidden');
   const session=random(),sessionKey='session/'+await hash(session);
   await env.DRIVE_KV.put(sessionKey,await seal(env,sessionKey,{refresh:data.refresh_token,expiresAt:Date.now()+AGE*1000}),{expirationTtl:AGE});
   return redirect(RETURN+'#drive_session='+session+'&flow='+pending.flow);

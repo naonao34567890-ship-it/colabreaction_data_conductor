@@ -847,7 +847,7 @@ async function restoreDrive() {
       authorization_error: 'Googleとの接続を完了できませんでした。もう一度接続してください。',
       migration_required: 'この移転先ではGoogle Driveの継続接続は準備中です。',
       signin: '継続接続を利用するにはChatGPTでログインしてください。',
-      forbidden: 'このサイトの継続接続はオーナー専用です。',
+      forbidden: standaloneDrive ? 'Googleアカウントの確認が完了しませんでした。別のアカウントで接続し直してください。' : 'このサイトの継続接続はオーナー専用です。',
       setup: 'Googleで作成したクライアントシークレットを登録してください。',
       invalid_secret: 'Googleがシークレットを認識できませんでした。値を登録し直してください。',
       connect: 'Google Driveに一度接続してください。',

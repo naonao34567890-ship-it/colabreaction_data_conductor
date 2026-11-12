@@ -23,7 +23,7 @@ Worker: https://mol-bench-drive.naonao34567890.workers.dev
 | --- | --- | --- |
 | `GOOGLE_CLIENT_SECRET` | Secret | 既存Google OAuthクライアントのシークレット |
 | `DRIVE_STORAGE_KEY` | Secret | 暗号化用のランダム32バイトをBase64にした文字列 |
-| `ALLOWED_EMAIL` | Variable | Drive接続を許可する本人のGoogleメールアドレス（1件） |
+メールアドレスの許可リストは使用しない。旧設定の `ALLOWED_EMAIL` は削除してよい（新コードでは参照しない）。
 
 暗号鍵はCloud Shellで `openssl rand -base64 32` を実行して生成する。鍵やシークレットはチャット・GitHubに貼らずCloudflareに入力する。鍵を変更すると保存済み接続は読めなくなる。
 
@@ -48,7 +48,7 @@ Colab計算記録ページの「Google Driveに接続」からGoogleの許可を
 - ブラウザには接続用のランダムセッションだけを保存し、Googleの更新トークンやクライアントシークレットは送らない。
 - セッション有効期限は接続から30日。ブラウザの保存データ削除やGoogle側の失効でも再許可が必要。
 - ページ再訪時とDriveの401応答時にサーバーでGoogleトークンを更新する。
-- Googleで確認済みのメールがALLOWED_EMAILと一致するアカウントだけを許可する。
+- Googleで確認済みのメールを持つアカウントを許可する。各セッションはその利用者が許可したDriveだけに接続する。アカウント選択画面を毎回の新規接続時に表示する。
 - OAuthのstateとPKCEに加え、ブラウザに保存したflow値とコールバックを照合する。
 - サードパーティCookieは使わない。
 - バックエンドのlogout APIはセッションを削除する。Google側のアクセス許可取り消しも利用できる。
