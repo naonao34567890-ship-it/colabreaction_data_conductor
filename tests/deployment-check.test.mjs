@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {checkDeployment} from '../scripts/check-deployment.mjs';
+const sha='a'.repeat(40),options={wait:async()=>{},attempts:2};
+await checkDeployment('worker',sha,{...options,fetcher:async()=>Response.json({configured:true,libraryConfigured:true,deploymentCommit:sha})});
+await assert.rejects(checkDeployment('worker',sha,{...options,fetcher:async()=>Response.json({configured:true,libraryConfigured:false,deploymentCommit:sha})}));
+await assert.rejects(checkDeployment('worker',sha,{...options,fetcher:async()=>Response.json({configured:true,libraryConfigured:true,deploymentCommit:'old'})}));
+let reads=0;await checkDeployment('hosting',sha,{...options,fetcher:async()=>Response.json({commit:++reads===1?'old':sha})});assert.equal(reads,2);
+await assert.rejects(checkDeployment('hosting',sha,{...options,fetcher:async()=>new Response('not found',{status:404})}));
+await assert.rejects(checkDeployment('hosting',sha,{...options,fetcher:async()=>new Response('<html>old application</html>')}));
+console.log('PASS deployment checks reject missing configuration, stale source, missing markers and HTML fallbacks; propagation retries succeed');

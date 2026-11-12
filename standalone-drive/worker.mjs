@@ -1,3 +1,4 @@
+const deploymentCommit = typeof DEPLOYMENT_COMMIT === 'string' ? DEPLOYMENT_COMMIT : null;
 export {LibraryCoordinator} from './library-coordinator.mjs';
 const APP='https://mol-bench.web.app', CLIENT='816593665225-jlsi7t1qdl5icihukahrb3t567qu9qnj.apps.googleusercontent.com';
 const CALLBACK='https://mol-bench-drive.naonao34567890.workers.dev/callback', RETURN=APP+'/colab.html', AGE=30*86400;
@@ -13,7 +14,7 @@ async function unseal(env,name,value){const [iv,data]=JSON.parse(value);return J
 async function exchange(env,fields){const r=await fetch('https://oauth2.googleapis.com/token',{method:'POST',body:new URLSearchParams({client_id:CLIENT,client_secret:env.GOOGLE_CLIENT_SECRET,...fields})});return {ok:r.ok,data:await r.json()};}
 async function route(request,env){
  const url=new URL(request.url);
- if(url.pathname==='/')return json({service:'Mol Bench Drive',libraryConfigured:!!env.LIBRARY_COORDINATOR,configured:!!(env.DRIVE_KV&&env.DRIVE_STORAGE_KEY&&env.GOOGLE_CLIENT_SECRET)});
+ if(url.pathname==='/')return json({service:'Mol Bench Drive',deploymentCommit,libraryConfigured:!!env.LIBRARY_COORDINATOR,configured:!!(env.DRIVE_KV&&env.DRIVE_STORAGE_KEY&&env.GOOGLE_CLIENT_SECRET)});
  if(!env.DRIVE_KV||!env.DRIVE_STORAGE_KEY||!env.GOOGLE_CLIENT_SECRET)return json({state:'unavailable'},503);
  if(url.pathname==='/connect'&&request.method==='GET'){
   const flow=url.searchParams.get('flow');if(!/^[a-f0-9]{64}$/.test(flow??''))return json({state:'invalid_flow'},400);

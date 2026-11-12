@@ -33,34 +33,15 @@ Firebase版 `https://mol-bench.web.app` の分子・反応の保存先をGoogle 
 
 削除も正本の索引から同じIDを外す操作になる。Driveに準備した旧版ファイルや、失敗時の未参照ファイルを自動で完全削除しないため、Driveの使用容量は増える。これらはアプリ上の別ライブラリや編集先ではない。
 
-## 公開手順（Workerを先に更新）
+## 公開手順
 
-既存のCloudflare Worker `mol-bench-drive` に新しいDurable Objectの設定が必要。**worker.mjs単体のコピー・貼り付けでは公開できない。** GitHub連携によるビルドで設定ファイルごと公開する。
+[公開スイッチの設定](PUBLISH.md) に従い、GitHub Actionsの手動公開を一度設定する。以降は **Actions → Publish Mol Bench → Run workflow** でWorkersとFirebaseを順番に公開する。コード保存だけでは公開されない。
 
-1. Cloudflare → Workers & Pages → mol-bench-drive → Settings → Builds。
-2. Git repositoryのConnectから `naonao34567890-ship-it/colabreaction_data_conductor` を接続する。
-3. 本番ブランチは `main`。ルートディレクトリはリポジトリのルート。
-4. ビルドコマンドは空欄。Deploy commandを次にする。
+Workerは複数ファイルとDurable Objectの設定を使うため、worker.mjs単体のコピー・貼り付けでは公開しない。公開設定は `standalone-drive/wrangler.jsonc`。既存の `GOOGLE_CLIENT_SECRET`、`DRIVE_STORAGE_KEY`、KV namespaceを保持する。
 
-```text
-npx --yes wrangler@4.161.0 deploy --config standalone-drive/wrangler.jsonc
-```
+SQLite Durable ObjectsのWorkers Free枠を利用する。Firebase FunctionsやBlazeプランは使わない。各サービスの無料枠・Driveの容量上限は適用される。
 
-5. ビルド・公開を実行する。設定済みの `GOOGLE_CLIENT_SECRET`、`DRIVE_STORAGE_KEY` はそのまま保持する。鍵を作り直さない。KVも既存のnamespaceを使用する。
-6. WorkerのルートURLで `configured: true` と `libraryConfigured: true` を確認する。
-
-SQLite Durable ObjectsのWorkers Free枠を利用する設定。Firebase FunctionsやBlazeプランは使わない。各サービスの無料枠・Driveの容量上限は適用される。
-
-Worker更新後、FirebaseのCloud Shellで実行する。
-
-```bash
-cd ~/mol-bench-site
-git fetch origin
-git checkout origin/main -- dist firebase.json standalone-drive
-npx --yes firebase-tools deploy --only hosting --project mol-bench
-```
-
-サイトの古いタブを閉じて更新版を開き、Driveの継続接続と、初回移行の件数・保存先を確認する。移行中はタブを閉じない。
+初回公開後、古いサイトのタブを閉じ、`https://mol-bench.web.app/` を開いてCtrl＋Shift＋Rで更新する。Driveの継続接続と、初回移行の件数・保存先を確認する。移行中はタブを閉じない。
 
 ## 検証
 

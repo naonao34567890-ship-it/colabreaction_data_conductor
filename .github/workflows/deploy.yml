@@ -1,0 +1,134 @@
+name: Publish Mol Bench
+run-name: "Mol Bench · ${{ inputs.publish && 'Publish' || 'Verify' }} (${{ inputs.target }}) · ${{ github.sha }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 公開する（オフならテストだけ）
+        type: boolean
+        default: true
+        required: true
+      target:
+        description: 公開する対象（通常は both）
+        type: choice
+        options: [both, worker, hosting]
+        default: both
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mol-bench-production
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '22'
+  FIREBASE_PROJECT: mol-bench
+
+jobs:
+  validate:
+    name: Check configuration and code
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require the reviewed main branch
+        shell: bash
+        run: |
+          test "$GITHUB_REF" = refs/heads/main || { echo 'Run this switch on main.'; exit 1; }
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Check deployment credentials before changing either service
+        if: inputs.publish
+        env:
+          TARGET: ${{ inputs.target }}
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+          DEPLOY_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+        shell: bash
+        run: |
+          if [[ "$TARGET" = both || "$TARGET" = worker ]]; then
+            : "${CF_TOKEN:?Set repository secret CLOUDFLARE_API_TOKEN}"
+            : "${CF_ACCOUNT:?Set repository variable CLOUDFLARE_ACCOUNT_ID}"
+          fi
+          if [[ "$TARGET" = both || "$TARGET" = hosting ]]; then
+            : "${WIF_PROVIDER:?Set repository variable GCP_WIF_PROVIDER}"
+            : "${DEPLOY_ACCOUNT:?Set repository variable GCP_SERVICE_ACCOUNT}"
+          fi
+      - name: Test code, browser storage and Worker packaging
+        run: bash scripts/validate-release.sh
+      - name: Record the exact source revision
+        shell: bash
+        run: |
+          echo "Source: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo 'No service has been published by this validation job.' >> "$GITHUB_STEP_SUMMARY"
+
+  worker:
+    name: Publish Drive Worker
+    needs: validate
+    if: inputs.publish && (inputs.target == 'both' || inputs.target == 'worker')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Publish Worker and Durable Object migration
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4.161.0 deploy --config standalone-drive/wrangler.jsonc --define "DEPLOYMENT_COMMIT:\"${GITHUB_SHA}\""
+      - name: Check the published backend revision
+        run: node scripts/check-deployment.mjs worker "$GITHUB_SHA"
+      - name: Record the backend result
+        run: echo 'Worker published and configuration checked.' >> "$GITHUB_STEP_SUMMARY"
+
+  hosting:
+    name: Publish Firebase Hosting
+    needs: [validate, worker]
+    if: >-
+      always() && inputs.publish && needs.validate.result == 'success' &&
+      (needs.worker.result == 'success' || needs.worker.result == 'skipped') &&
+      (inputs.target == 'both' || inputs.target == 'hosting')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Check backend compatibility before changing Hosting
+        run: node scripts/check-deployment.mjs worker
+      - name: Obtain short-lived Google credentials
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          project_id: mol-bench
+      - name: Stamp the exact frontend revision
+        run: |
+          node --input-type=module <<'JS'
+          import {writeFileSync} from 'node:fs';
+          writeFileSync('dist/deployment.json', JSON.stringify({commit:process.env.GITHUB_SHA,createdAt:new Date().toISOString()}));
+          JS
+      - name: Publish this same revision to Firebase
+        run: npx --yes firebase-tools@15.36.0 deploy --only hosting --project "$FIREBASE_PROJECT" --non-interactive
+      - name: Check the published frontend revision
+        run: node scripts/check-deployment.mjs hosting "$GITHUB_SHA"
+      - name: Record the frontend result
+        run: |
+          echo 'Firebase published: https://mol-bench.web.app/' >> "$GITHUB_STEP_SUMMARY"
