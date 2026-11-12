@@ -1,4 +1,5 @@
 import {readEnergy} from './dmf-energy.js';
+import {standaloneDrive, beginDriveConnection, driveFetch} from './drive-connection.js';
 
 const get = id => document.getElementById(id);
 const connect = get('driveConnect');
@@ -48,7 +49,7 @@ async function request(url, options = {}, retry = true) {
   });
   if (response.status === 401) {
     if (retry && persistent) {
-      const renewed = await fetch('/api/drive/token', {cache: 'no-store'});
+      const renewed = await driveFetch('token', {cache: 'no-store'});
       const result = await renewed.json();
       if (result.state === 'connected' && result.access_token) {
         token = result.access_token;
@@ -829,7 +830,7 @@ async function restoreDrive() {
   checking = true;
   connect.disabled = true;
   try {
-    const response = await fetch('/api/drive/token', {cache: 'no-store'});
+    const response = await driveFetch('token', {cache: 'no-store'});
     const result = await response.json();
     connectionState = result.state;
     setup.hidden = !['setup', 'invalid_secret'].includes(result.state);
@@ -839,10 +840,11 @@ async function restoreDrive() {
       await authorize(result);
       return;
     }
-    connect.hidden = !['signin', 'connect', 'unavailable', 'google_error'].includes(result.state);
+    connect.hidden = !['signin', 'connect', 'unavailable', 'google_error', 'authorization_error'].includes(result.state);
     connect.textContent = result.state === 'signin' ? 'ChatGPTでログイン' :
-      result.state === 'connect' ? 'Google Driveに接続' : '接続を再確認';
+      ['connect', 'authorization_error'].includes(result.state) ? 'Google Driveに接続' : '接続を再確認';
     const messages = {
+      authorization_error: 'Googleとの接続を完了できませんでした。もう一度接続してください。',
       migration_required: 'この移転先ではGoogle Driveの継続接続は準備中です。',
       signin: '継続接続を利用するにはChatGPTでログインしてください。',
       forbidden: 'このサイトの継続接続はオーナー専用です。',
@@ -869,6 +871,10 @@ async function restoreDrive() {
   }
 }
 connect.onclick = () => {
+  if (standaloneDrive && ['connect', 'authorization_error'].includes(connectionState)) {
+    beginDriveConnection();
+    return;
+  }
   if (connectionState === 'signin') {
     window.top.location.href = '/signin-with-chatgpt?return_to=' + encodeURIComponent('/colab.html?drive=1');
   } else if (connectionState === 'connect') {
