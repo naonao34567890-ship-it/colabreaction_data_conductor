@@ -20,7 +20,7 @@ class ImportJob{
    if(this.cancelled)break;
    if(total<2){
     for(const error of errors)this.reason(error,file.name);
-    if(single)await this.add(single,file.name.replace(/\.(?:py)?xyz$/i,''));
+    if(single)await this.add(single,Mol.structureBaseName(file.name));
     else if(!errors.length)this.reason('登録可能な分子なし',file.name);
     continue;
    }
@@ -29,7 +29,7 @@ class ImportJob{
    if(this.cancelled)break;
    const choice=await this.choose(file.name,total,file);
    if(this.cancelled||choice.action==='skip')continue;
-   const base=file.name.replace(/\.(?:py)?xyz$/i,'');
+   const base=Mol.structureBaseName(file.name);
    let index=0,selected=0;
    for await(const block of Mol.parseFile(file,()=>this.cancelled)){
     if(block.error){this.reason(block.error,file.name);continue;}
@@ -41,7 +41,7 @@ class ImportJob{
    this.stats.extra+=Math.max(0,selected-1);
    continue;
   }
-  let first=null,count=0,errors=0;const base=file.name.replace(/\.(?:py)?xyz$/i,'');
+  let first=null,count=0,errors=0;const base=Mol.structureBaseName(file.name);
   for await(const b of Mol.parseFile(file,()=>this.cancelled)){if(b.error){errors++;this.reason(b.error,file.name);continue;}count++;if(count===1)first=b;else{if(first){await this.add(first,base+'(1)');first=null;}await this.add(b,`${base}(${count})`);}}
   if(first&&!this.cancelled)await this.add(first,base);if(!count&&!errors&&!this.cancelled)this.reason('登録可能な分子なし',file.name);this.stats.extra+=Math.max(0,count-1);
  }catch(e){if(this.stats.fatal)break;this.reason(e.message,file.name,true);}finally{this.stats.processed++;if(Date.now()-this.last>80){this.emit({type:'progress',stats:this.stats});this.last=Date.now();}await Mol.tick();}}

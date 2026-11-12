@@ -388,7 +388,7 @@ async function init() {
     throw Error('ライブラリで複数構造入りのXYZを開き、スライドショーを選んでください。');
   }
   const name = params.get('name') || 'trajectory.xyz';
-  baseName = name.replace(/\.(?:py)?xyz$/i,'');
+  baseName = Mol.structureBaseName(name);
   $('title').textContent = name;
   const suffix = ' — ' + (reaction?'反応経路ビューア':'構造のスライドショー');
   document.title = name + suffix;
@@ -411,13 +411,13 @@ async function init() {
       imageChannel.addEventListener('message',reply);
       imageChannel.postMessage({id,name:renamed});
     });
-    baseName = renamed.replace(/\.(?:py)?xyz$/i,'');
+    baseName = Mol.structureBaseName(renamed);
     document.title = renamed + suffix;
     return renamed;
   },status);
   const response = await fetch(source);
   if (!response.ok) throw Error('元のXYZを読み込めません。ライブラリから開き直してください。');
-  const file = await response.blob();
+  const file = new File([await response.blob()],name);
   URL.revokeObjectURL(source);
   let csvPoints;
   const energySource = params.get('energy');

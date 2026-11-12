@@ -30,8 +30,89 @@ async function* lines(file, cancelled=()=>false) {
  if(pending.endsWith('\r'))yield {text:pending.slice(0,-1),raw:pending};
  else if(pending)yield {text:pending,raw:pending};
 }
+const structureExtension = /\.(?:xyz|pyxyz|sdf)$/i;
+const acceptsStructure = name => structureExtension.test(name);
+const structureBaseName = name => name.replace(structureExtension,'');
+
+function parseSdfRecord(rows) {
+ const counts = rows[3] || '';
+ const atoms = [];
+ function addAtom(symbol, coordinates) {
+  const el = normalized(symbol);
+  if (!Object.hasOwn(elements,el)) throw Error('未知の元素: '+el);
+  const [x,y,z] = coordinates.map(Number);
+  if (coordinates.some(value=>!value.trim()) || ![x,y,z].every(Number.isFinite)) {
+   throw Error('原子座標が不正です');
+  }
+  atoms.push({el,x,y,z});
+ }
+
+ if (/\bV2000\s*$/.test(counts)) {
+  const countField = counts.slice(0,3).trim();
+  const count = Number(countField);
+  if (!/^\d+$/.test(countField) || count<1 || count>rows.length-5) throw Error('原子数が不正です');
+  for (const row of rows.slice(4,4+count)) {
+   addAtom(row.slice(31,34).trim(),[row.slice(0,10),row.slice(10,20),row.slice(20,30)]);
+  }
+ } else if (/\bV3000\s*$/.test(counts)) {
+  let count, inAtoms=false, ended=false, continuation='';
+  for (const row of rows.slice(4)) {
+   const payload = row.match(/^M  V30 (.*)$/)?.[1].trimEnd();
+   if (payload===undefined) continue;
+   if (payload.endsWith('-')) {
+    continuation+=payload.slice(0,-1);
+    continue;
+   }
+   const line=continuation+payload;
+   continuation='';
+   if (line.startsWith('COUNTS ')) count=Number(line.split(/\s+/)[1]);
+   if (line==='BEGIN ATOM') {inAtoms=true;continue;}
+   if (line==='END ATOM') {ended=inAtoms;break;}
+   if (!inAtoms) continue;
+   const [index,element,x,y,z]=line.trim().split(/\s+/);
+   if (!/^\d+$/.test(index) || z===undefined) throw Error('原子行が不正です');
+   addAtom(element,[x,y,z]);
+  }
+  if (!ended || !count || count!==atoms.length) throw Error('原子数または原子ブロックが不正です');
+ } else {
+  throw Error('V2000またはV3000の形式を確認できません');
+ }
+
+ return {atoms,comment:'',rawParts:[standard({atoms})],baseLines:atoms.length+2,
+  originalLines:atoms.length+2,footerLines:0};
+}
+
+async function* parseSdf(file,cancelled) {
+ let rows=[], ended=false, record=0;
+ function finish() {
+  record++;
+  try {
+   if (!ended) throw Error('M  END がありません');
+   return parseSdfRecord(rows);
+  } catch (error) {
+   return {error:'SDF レコード '+record+'：'+error.message};
+  }
+ }
+ for await (const {text} of lines(file,cancelled)) {
+  if (cancelled()) return;
+  if (text.trim()==='$$$$') {
+   yield finish();
+   rows=[];
+   ended=false;
+  } else if (!ended) {
+   rows.push(text);
+   if (rows.length>4 && /^M\s+END\s*$/.test(text)) ended=true;
+  }
+ }
+ if (!cancelled() && (ended || rows.some(row=>row.trim()))) yield finish();
+}
+
 /* Bounded lookahead: never concatenate the complete file. A single block is retained. */
 async function* parseFile(file,cancelled=()=>false){
+ if (/\.sdf$/i.test(file.name || '')) {
+  yield* parseSdf(file,cancelled);
+  return;
+ }
  const iter=lines(file,cancelled)[Symbol.asyncIterator]();let buf=[],head=0,eof=false,lineNo=0,current=null,noise=0;
  async function peek(n){while(buf.length-head<=n&&!eof){const v=await iter.next();eof=v.done;if(!v.done)buf.push(v.value);}return buf[head+n];}
  function take(){const v=buf[head++];lineNo++;if(head>4096){buf=buf.slice(head);head=0;}return v;}
@@ -247,7 +328,7 @@ function notify(change){if(typeof BroadcastChannel!=='undefined'){const c=new Br
 const crcTable=Array.from({length:256},(_,n)=>{for(let k=0;k<8;k++)n=n&1?0xedb88320^(n>>>1):n>>>1;return n>>>0;});
 function crc32(bytes){let c=0xffffffff;for(const b of bytes)c=crcTable[(c^b)&255]^(c>>>8);return(c^0xffffffff)>>>0;}
 function safeName(n){return n.replace(/[\\/:*?"<>|\x00-\x1f]/g,'_').trim()||'molecule';}
-async function scanEntries(entries,{accept=entry=>/\.(?:py)?xyz$/i.test(entry.name),cancelled=()=>false,progress=()=>{},error=()=>{}}={}){const found=[],stack=entries.slice();let visited=0;while(stack.length&&!cancelled()){const entry=stack.pop();if(entry.isFile){if(accept(entry))found.push(entry);}else if(entry.isDirectory){const reader=entry.createReader();while(!cancelled()){let batch;try{batch=await new Promise((r,j)=>reader.readEntries(r,j));}catch(e){error(entry.fullPath+': '+e.message);break;}if(!batch.length)break;for(const child of batch)stack.push(child);progress(found.length);await tick();}}if(++visited%100===0){progress(found.length);await tick();}}progress(found.length);return found;}
+async function scanEntries(entries,{accept=entry=>acceptsStructure(entry.name),cancelled=()=>false,progress=()=>{},error=()=>{}}={}){const found=[],stack=entries.slice();let visited=0;while(stack.length&&!cancelled()){const entry=stack.pop();if(entry.isFile){if(accept(entry))found.push(entry);}else if(entry.isDirectory){const reader=entry.createReader();while(!cancelled()){let batch;try{batch=await new Promise((r,j)=>reader.readEntries(r,j));}catch(e){error(entry.fullPath+': '+e.message);break;}if(!batch.length)break;for(const child of batch)stack.push(child);progress(found.length);await tick();}}if(++visited%100===0){progress(found.length);await tick();}}progress(found.length);return found;}
 function parseFrameRanges(value,total){
  const ranges=value.normalize('NFKC').split(',').map(entry=>{
   const match=/^(\d+)\s*(?:-\s*(\d+))?$/.exec(entry.trim());
@@ -257,7 +338,7 @@ function parseFrameRanges(value,total){
  });
  return ranges;
 }
-const API={calculationOutput,readMemo,formatMemo,compareTagNames:displayNames.compare,parseFrameRanges,scanEntries,elements,tick,atomLine,lines,parseFile,standard,compareDisplayOrder,output,centroid,swap,bonds,db,get,metadata,saveBatch,overwrite,remove,removeMany,cacheThumb,notify,crc32,safeName};root.Mol=API;if(typeof module!=='undefined')module.exports=API;
+const API={acceptsStructure,structureBaseName,calculationOutput,readMemo,formatMemo,compareTagNames:displayNames.compare,parseFrameRanges,scanEntries,elements,tick,atomLine,lines,parseFile,standard,compareDisplayOrder,output,centroid,swap,bonds,db,get,metadata,saveBatch,overwrite,remove,removeMany,cacheThumb,notify,crc32,safeName};root.Mol=API;if(typeof module!=='undefined')module.exports=API;
 })(globalThis);
 
 /* Browser-only presentation helpers; no DOM or Three dependency in Worker. */

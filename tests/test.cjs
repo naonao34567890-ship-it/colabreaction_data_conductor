@@ -3,6 +3,45 @@ async function parse(text){const result=[];for await(const b of M.parseFile(new 
 async function test(name,fn){await fn();passed++;console.log('PASS',name);}
 (async()=>{
 const fixture=fs.readFileSync(path.join(__dirname,'qm9_39.xyz'),'utf8');
+await test('SDF import converts V2000 and V3000, ignores properties, and recovers across records',async()=>{
+ const v2000=['','SDF test','','  2  1  0  0  0  0            999 V2000',
+  '    1.2345   -2.5000    0.0000 C   0  0  0  0  0  0',
+  '    0.0000    0.0000    3.0000 O   0  0  0  0  0  0',
+  '  1  2  1  0','M  CHG  1   2  -1','M  END','>  <PUBCHEM_COMPOUND_CID>','123','',
+  '>  <IGNORED>','2','','H 0 0 0','$$$$'].join('\r\n');
+ const v3000=['second','','','  0  0  0  0  0  0            999 V3000',
+  'M  V30 BEGIN CTAB','M  V30 COUNTS 1 0 0 0 0','M  V30 BEGIN ATOM',
+  'M  V30 1 Cl -1.2e-2 2 3 0 -','M  V30 CHG=-1','M  V30 END ATOM','M  V30 END CTAB','M  END'].join('\n');
+ const file=new File([v2000+'\ninvalid\n$$$$\n'+v3000],'example.SDF');
+ const blocks=[];
+ for await(const block of M.parseFile(file))blocks.push(block);
+ assert.deepEqual(blocks[0].atoms,[{el:'C',x:1.2345,y:-2.5,z:0},{el:'O',x:0,y:0,z:3}]);
+ assert.match(blocks[1].error,/SDF レコード 2/);
+ assert.deepEqual(blocks[2].atoms,[{el:'Cl',x:-.012,y:2,z:3}]);
+ assert.equal(blocks[0].rawParts[0].split('\n')[1],'');
+ assert.equal((await parse(blocks[0].rawParts[0]))[0].atoms.length,2);
+ assert.ok(M.acceptsStructure(file.name));
+ assert.equal((await M.scanEntries([{isFile:true,name:file.name}])).length,1);
+
+ const saveBatch=M.saveBatch,notify=M.notify;
+ const stored=[];
+ M.saveBatch=async records=>{stored.push(...records);return records;};
+ M.notify=()=>{};
+ try {
+  const job=new MolJobs.ImportJob(()=>{},async(name,total)=>{
+   assert.equal(name,file.name);
+   assert.equal(total,2);
+   return {action:'import',ranges:[[2,2]]};
+  });
+  await job.files([file]);
+  await job.finish();
+  assert.equal(job.stats.registered,1);
+  assert.equal(job.stats.skipped,1);
+  assert.equal(stored[0].name,'example(2)');
+  assert.deepEqual(stored[0].atoms,blocks[2].atoms);
+  assert.equal(await stored[0].raw.text(),blocks[2].rawParts[0]);
+ } finally {M.saveBatch=saveBatch;M.notify=notify;}
+});
 await test('QM9 14 atoms / 16 base / 19 total / raw exact',async()=>{const r=await parse(fixture);assert.equal(r.length,1);assert.equal(r[0].atoms.length,14);assert.equal(r[0].baseLines,16);assert.equal(r[0].originalLines,19);assert.equal(r[0].rawParts.join(''),fixture);assert.equal(r[0].atoms[0].extra[0],'-0.377162');assert.equal(r[0].atoms[0].x,-.0300762365);});
 await test('Empty comment, whitespace, case, exponents, extra invalid retained',async()=>{const r=await parse('2\n\ncl 1.5*^-6\t2E-3 3e+2 bad\nH 0 0 0\n');assert.equal(r[0].comment,'');assert.equal(r[0].atoms[0].el,'Cl');assert.equal(r[0].atoms[0].x,1.5e-6);assert.equal(r[0].atoms[0].y,.002);assert.equal(r[0].atoms[0].z,300);assert.deepEqual(r[0].atoms[0].extra,['bad']);});
 await test('CRLF / CR / LF exact output',async()=>{for(const newline of ['\r\n','\r','\n']){const input=['1','','H 0 0 0',''].join(newline);const r=await parse(input);assert.equal(r.length,1);assert.equal(r[0].rawParts.join(''),input);}});
