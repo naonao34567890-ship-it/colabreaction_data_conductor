@@ -912,6 +912,7 @@ export function createDriveStore(local) {
             id: body.id,
             name: body.name,
             count: body.atoms.length,
+            mass: Mol.mass.calculate(body.atoms),
             thumb: false,
             addedAt: Date.now(),
             batchPosition: puts.length,
@@ -937,6 +938,7 @@ export function createDriveStore(local) {
             ...old.meta,
             revision,
             count: record.atoms.length,
+            mass: Mol.mass.calculate(record.atoms),
             bytes: record.raw.size,
             thumb: false,
           };

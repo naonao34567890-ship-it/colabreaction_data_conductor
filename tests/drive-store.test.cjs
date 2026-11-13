@@ -282,6 +282,7 @@ const { chromium } = require('playwright'),
       await Mol.renameMolecule(rows[0].id, 'renamed');
       return rows[0].id;
     });
+    assert.equal(await p.evaluate(async id=>(await Mol.get('meta',id)).mass.text,created),'1.0078–1.0081');
     await p.evaluate(async (id) => {
       await Mol.cloud.call('tagsTransaction', (catalog, meta, done) => {
         catalog.add({ name: 'new tag' });

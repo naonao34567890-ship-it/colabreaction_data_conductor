@@ -1,0 +1,30 @@
+const assert=require('node:assert/strict');
+const M=require('../dist/common.js'),mass=M.mass;
+const atoms=(...els)=>els.map(el=>({el}));
+assert.equal(Object.keys(mass.weights).length,118);
+assert.equal(Object.values(mass.weights).filter(Boolean).length,84);
+assert.equal(mass.calculate(atoms('H','H','O')).text,'18.0147–18.0160');
+assert.equal(mass.calculate(atoms('Au')).text,'196.9666');
+assert.equal(mass.calculate(atoms('F')).text,'18.9984');
+assert.equal(mass.calculate(atoms('Cs')).text,'132.9055');
+assert.equal(mass.calculate(atoms('Li')).text,'6.9380–6.9970');
+assert.equal(mass.calculate(atoms('Pb')).text,'206.1400–207.9400');
+assert.equal(mass.calculate(atoms('Zr')).text,'91.2220');
+assert.equal(mass.calculate(atoms('Gd')).text,'157.2490');
+assert.equal(mass.calculate(atoms('Lu')).text,'174.9667');
+assert.deepEqual(mass.calculate(atoms('Tc','H')).missing,['Tc']);
+assert.equal(mass.calculate(atoms('Tc')).text,'');
+// Rounding at exactly half a decimal step must be deterministic, not binary-float dependent.
+const a=mass.weights.H;mass.weights.H={lower:'1.00001',upper:'1.00004'};
+assert.equal(mass.calculate(atoms('H')).text,'1.0000');
+mass.weights.H={lower:'1.00004',upper:'1.00005'};
+assert.equal(mass.calculate(atoms('H')).text,'1.0000–1.0001');
+mass.weights.H=a;
+const record=(id,els)=>({id,name:id,mass:mass.calculate(atoms(...els))});
+const records=[record('unknown',['Tc']),record('gold',['Au']),record('builtin-water',['H','H','O']),record('builtin-hydrogen',['H'])];
+assert.deepEqual([...records].sort((a,b)=>M.compareDisplayOrder(a,b,'mass-asc')).map(r=>r.id),['builtin-hydrogen','builtin-water','gold','unknown']);
+assert.deepEqual([...records].sort((a,b)=>M.compareDisplayOrder(a,b,'mass-desc')).map(r=>r.id),['gold','builtin-water','builtin-hydrogen','unknown']);
+// Midpoints, not lower limits or displayed rounding, determine interval order.
+assert.ok(mass.compare({mass:{version:mass.version,key:'300',text:'x'}},{mass:{version:mass.version,key:'299',text:'x'}})>0);
+assert.equal(M.compareDisplayOrder(records[2],records[3],'name-asc'),-1,'existing pinned order retained outside mass sorts');
+console.log('PASS CIAAW 2024 weights, interval sum, four-place rounding, midpoint sort, missing standards and builtins');
