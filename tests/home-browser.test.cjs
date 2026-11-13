@@ -13,7 +13,7 @@ const path=require('node:path'),fs=require('node:fs'),assert=require('node:asser
   await page.route('https://cdn.jsdelivr.net/**',route=>route.abort());
   for(const width of [1440,390]){
    requests.length=0;await page.setViewportSize({width,height:900});await page.goto('https://home.test/');
-   assert.equal(await page.locator('h1').innerText(),'分子構造を編集して、\n保存する。');
+   assert.equal(await page.locator('h1').innerText(),'分子構造の\n編集・保存');
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'no horizontal overflow');
    assert.ok(!requests.some(url=>/\.wasm|\/api\/|common\.js|drive-store\.js/.test(url)),'home needs no calculation engine or Drive session');
    for(const href of await page.locator('a[href]').evaluateAll(a=>a.map(x=>x.getAttribute('href')))){
