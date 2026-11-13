@@ -183,6 +183,9 @@ async function renderReactions() {
   if (revision === renderRevision) status.textContent = error.message;
  }
 }
+// A completed account-scoped Drive refresh must redraw the list too.
+// Focus can render before that refresh finishes; focus alone misses the new head.
+document.addEventListener('drive-store-updated',renderReactions);
 window.addEventListener('focus',renderReactions);
 void renderReactions();
 

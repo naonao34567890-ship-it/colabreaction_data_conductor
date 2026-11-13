@@ -384,6 +384,25 @@ const { chromium } = require('playwright'),
     assert.ok(lazy.cards>=24&&lazy.reads<lazy.cards,'list renders all names while only visible reaction cards fetch bodies');
     console.log('PASS loading: warm index downloads = 0; visible body requests '+lazy.reads+' / '+lazy.cards+' reactions');
     await p.evaluate(()=>window.restoreReactionRead());
+    // Keep the list open while another tab saves. No focus or navigation should
+    // be needed to consume a completed Drive catalogue refresh.
+    const liveList=await ctx.newPage();
+    await liveList.goto('https://mol-bench.web.app/reactions.html');
+    await liveList.evaluate(()=>Mol.cloud.ready);
+    await liveList.waitForFunction(()=>document.querySelectorAll('.reaction-card').length>0);
+    const liveId=await p.evaluate(async()=>{
+      const saved=await ReactionStore.create('START',{atoms:[{el:'H',x:0,y:0,z:0}],revision:'live-start',edited:true},'live created reaction');
+      return saved.id;
+    });
+    await liveList.waitForFunction(id=>!!document.querySelector('[data-id="'+id+'"]'),liveId,{timeout:5000});
+    await liveList.evaluate(id=>{selected.add(id);selectionUI();},liveId);
+    await p.evaluate(id=>ReactionStore.update(id,{name:'live updated reaction',FINISH:{atoms:[{el:'O',x:1,y:0,z:0}],revision:'live-finish',edited:true}}),liveId);
+    await liveList.waitForFunction(id=>document.querySelector('[data-id="'+id+'"] h3')?.textContent==='live updated reaction',liveId,{timeout:5000});
+    await liveList.waitForFunction(id=>{const rows=document.querySelectorAll('[data-id="'+id+'"] .reaction-slot');return rows.length===2&&!rows[1].querySelector('button').disabled;},liveId,{timeout:5000});
+    assert.equal(await liveList.evaluate(id=>selected.has(id),liveId),true,'live list refresh preserves selection');
+    await p.evaluate(id=>ReactionStore.remove([id]),liveId);
+    await liveList.waitForFunction(id=>!document.querySelector('[data-id="'+id+'"]'),liveId,{timeout:5000});
+    await liveList.close();
     // A second browser has no local dataset. It reads exactly the same canonical IDs.
     const ctx2 = await context(),
       q = await ctx2.newPage();
