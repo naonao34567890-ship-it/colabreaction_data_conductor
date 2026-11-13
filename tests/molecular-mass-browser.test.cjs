@@ -19,7 +19,7 @@ const path=require('node:path'),assert=require('node:assert/strict');
    const db=await Mol.db();await new Promise((resolve,reject)=>{const tx=db.transaction('meta','readwrite');tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);for(const m of result){delete m.mass;tx.objectStore('meta').put(m);}});
    return result.map(r=>r.id);
   });
-  await page.goto('https://mass.test/');
+  await page.goto('https://mass.test/library.html');
   await page.waitForFunction(()=>document.querySelectorAll('.tile-mass').length>=5);
   await page.waitForFunction(()=>[...document.querySelectorAll('.tile-mass')].some(n=>n.textContent==='196.9666'));
   const display=await page.evaluate(()=>[...document.querySelectorAll('.tile')].map(tile=>({name:tile.querySelector('.tile-name').textContent,text:tile.querySelector('.tile-mass').textContent,right:tile.querySelector('.tile-mass').getBoundingClientRect().left,delete:tile.querySelector('.delete')?.getBoundingClientRect().right,font:getComputedStyle(tile.querySelector('.tile-mass')).fontSize,deleteFont:tile.querySelector('.delete')&&getComputedStyle(tile.querySelector('.delete')).fontSize,scroll:tile.scrollWidth,width:tile.clientWidth})));

@@ -155,7 +155,7 @@ const { chromium } = require('playwright'),
   try {
     const disconnectedContext = await context(),
       disconnected = await disconnectedContext.newPage();
-    await disconnected.goto('https://mol-bench.web.app/');
+    await disconnected.goto('https://mol-bench.web.app/library.html');
     const message = await disconnected.evaluate(async () => {
       try {
         await Mol.cloud.ready;
@@ -232,7 +232,7 @@ const { chromium } = require('playwright'),
         };
       });
     });
-    await p.goto('https://mol-bench.web.app/');
+    await p.goto('https://mol-bench.web.app/library.html');
     await p.evaluate(() => Mol.cloud.ready);
     const initial = await p.evaluate(async () => ({
       ids: (await Mol.metadata()).map((m) => m.id),
@@ -408,12 +408,12 @@ const { chromium } = require('playwright'),
       q = await ctx2.newPage();
     await q.goto('https://mol-bench.web.app/seed.html');
     await q.evaluate(() => localStorage.setItem('mol-bench-drive-connection-v1', 'a'.repeat(64)));
-    await q.goto('https://mol-bench.web.app/');
+    await q.goto('https://mol-bench.web.app/library.html');
     await q.evaluate(() => Mol.cloud.ready);
     assert.ok(
       await q.evaluate(async (id) => (await Mol.metadata()).some((m) => m.id === id), created),
     );
-    await p.goto('https://mol-bench.web.app/');
+    await p.goto('https://mol-bench.web.app/library.html');
     await p.evaluate(() => Mol.cloud.ready);
     const stale = await p.evaluate(async (id) => Mol.get('body', id), created);
     await q.evaluate(async (id) => {
@@ -610,7 +610,7 @@ const { chromium } = require('playwright'),
         headers: { 'Access-Control-Allow-Origin': 'https://mol-bench.web.app' },
       });
     });
-    await cold.goto('https://mol-bench.web.app/', { waitUntil: 'domcontentloaded' });
+    await cold.goto('https://mol-bench.web.app/library.html', { waitUntil: 'domcontentloaded' });
     await paused;
     const duringBootstrap = await q.evaluate(() =>
       Mol.saveBatch([
@@ -734,7 +734,7 @@ const { chromium } = require('playwright'),
     // Switching accounts uses a different catalogue and cache, not this machine's old DB.
     await p.goto('https://mol-bench.web.app/seed.html');
     await p.evaluate(() => localStorage.setItem('mol-bench-drive-connection-v1', 'b'.repeat(64)));
-    await p.goto('https://mol-bench.web.app/');
+    await p.goto('https://mol-bench.web.app/library.html');
     await p.evaluate(() => Mol.cloud.ready);
     assert.equal(
       await p.evaluate(async () => (await Mol.metadata()).filter((m) => !m.builtin).length),
