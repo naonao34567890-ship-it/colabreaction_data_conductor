@@ -29,16 +29,22 @@ export function parseConfig(config) {
   }
   return result;
 }
-export function summaryProperties(config, files, overrideCount) {
+export function summaryProperties(config, files, overrideCount, existing = {}) {
   const parsed = parseConfig(config);
-  const props = {summaryVersion:SUMMARY_VERSION};
+  const props = {};
+  const add = (key, value) => {
+    if (!fits(key,value)) return;
+    const total = new Set([...Object.keys(existing),...Object.keys(props),key]).size;
+    if (total <= 30) props[key] = value;
+  };
+  add('summaryVersion',SUMMARY_VERSION);
   const count = overrideCount === undefined ? (parsed.count ?? '?') : String(overrideCount);
-  if (count !== undefined && fits('summaryCount',count)) props.summaryCount = count;
+  if (count !== undefined) add('summaryCount',count);
   for (const [name,key] of Object.entries(fields)) {
     // A repeated field must retain all lines; otherwise use the original config.
     const lines = parsed.lines[name] ?? [];
     const value = JSON.stringify(lines);
-    if (fits(key,value)) props[key] = value;
+    add(key,value);
   }
   for (const [name,key] of Object.entries(keys)) {
     const value = files.get(name) ?? '';
