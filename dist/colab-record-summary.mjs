@@ -48,7 +48,7 @@ export function summaryProperties(config, files, overrideCount, existing = {}) {
   }
   for (const [name,key] of Object.entries(keys)) {
     const value = files.get(name) ?? '';
-    if (fits(key,value)) props[key] = value;
+    add(key,value);
   }
   return props;
 }
