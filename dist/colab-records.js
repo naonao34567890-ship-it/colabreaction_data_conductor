@@ -1,4 +1,5 @@
 import {readEnergy} from './dmf-energy.js';
+import {parseConfig, summaryProperties, readSummary, displayLines, resultDate as summaryResultDate} from './colab-record-summary.mjs';
 import {standaloneDrive, beginDriveConnection, driveFetch} from './drive-connection.js?v=2';
 
 const get = id => document.getElementById(id);
@@ -281,10 +282,14 @@ async function importRecords(name, sourceLabel, readFiles) {
       await upload(name, dir, blob);
       status('Google Driveに保存しています… ' + (++saved) + '/' + files.size);
     }
-    await upload('START.png', parent, start);
-    await upload('FINAL.png', parent, final);
-    await upload('Energy.png', parent, plot);
-    await upload('config.txt', parent, new Blob([config], {type:'text/plain'}));
+    const images = new Map([['計算結果',originals]]);
+    images.set('START.png', await upload('START.png', parent, start));
+    images.set('FINAL.png', await upload('FINAL.png', parent, final));
+    images.set('Energy.png', await upload('Energy.png', parent, plot));
+    images.set('config.txt', await upload('config.txt', parent, new Blob([config], {type:'text/plain'})));
+    // The completion marker (config.txt) remains the last upload.
+    // A metadata write failure must not invalidate a successfully uploaded record.
+    await writeRecordSummary(parent, summaryProperties(config,images));
     parent = null;
     await refresh();
     status('計算記録を保存しました。');
@@ -300,6 +305,17 @@ async function importRecords(name, sourceLabel, readFiles) {
     message.textContent = name + ' — ' + error.message + partial;
     get('colabErrors').append(message);
     status(error.message + partial);
+  }
+}
+
+async function writeRecordSummary(id, properties) {
+  try {
+    await request(drive + '/files/' + encodeURIComponent(id) + '?fields=id', {
+      method:'PATCH', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({appProperties:properties}),
+    });
+  } catch (error) {
+    console.warn('Colab記録の一覧要約を保存できませんでした:',id,error);
   }
 }
 
@@ -671,16 +687,30 @@ async function loadRecords() {
   for (let offset=0; offset<folders.length; offset+=4) {
     const group = folders.slice(offset,offset+4);
     const results = await Promise.allSettled(group.map(renderRecord));
-    sortCards();
     if (results.some(result => result.status === 'rejected')) {
       get('colabErrors').textContent = '一部の計算記録を読み込めませんでした。';
     }
   }
+  sortCards();
 }
 
 async function renderRecord(job) {
-  const files = new Map((await list("'" + job.id + "' in parents")).map(file => [file.name, file.id]));
+  const summary = readSummary(job.appProperties);
+  let files = summary?.files ?? new Map();
+  if (!summary || summary.needsFiles) {
+    const listed = new Map((await list("'" + job.id + "' in parents")).map(file => [file.name,file.id]));
+    // Preserve the cached IDs when the child list is only a fallback.
+    files = new Map([...listed,...files]);
+  }
   if (!files.has('config.txt')) return;
+  let config;
+  let parsed;
+  if (!summary || summary.needsConfig) {
+    config = await (await download(files.get('config.txt'))).text();
+    parsed = parseConfig(config);
+  } else {
+    parsed = {count:summary.count,lines:summary.lines};
+  }
   const card = document.createElement('article');
   card.className = 'colab-job';
   const images = document.createElement('div');
@@ -700,19 +730,15 @@ async function renderRecord(job) {
   }
   const info = document.createElement('div');
   info.className = 'colab-meta';
-  const config = await (await download(files.get('config.txt'))).text();
-  const savedCount = config.match(/^ファイル数: (\d+)$/m)?.[1];
+  const savedCount = parsed.count;
   const count = document.createElement('span');
   count.textContent = savedCount !== undefined ? savedCount + 'ファイル'
     : files.has('計算結果') ? 'ファイル数を確認中…'
     : 'ファイル数不明';
   info.append(count);
-  for (const line of config.split(/\r?\n/)) {
-    if (!/^(プロット点数|電荷|spin(?:（出力値）)?|結果出力日時):/.test(line)) continue;
+  for (const line of displayLines(parsed)) {
     const field = document.createElement('span');
-    field.textContent = line.replace(/^電荷:\s*/, '⚡ ')
-      .replace(/^spin(?:（出力値）)?:\s*/, '🌀 ')
-      .replace(/^(結果出力日時:.*?)（[^）]*）$/, '$1');
+    field.textContent = line;
     info.append(field);
   }
   const open = document.createElement('button');
@@ -756,12 +782,27 @@ async function renderRecord(job) {
   archive.disabled = !files.has('計算結果');
   archive.onclick = () => void downloadArchive(job,files.get('計算結果'),archive);
   card.append(title, images, info, notes, open, classificationButton, archive);
-  const resultDate = config.match(/^結果出力日時: (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/m)?.[1];
+  const resultDate = summaryResultDate(parsed);
   cards.set(job.id,Object.assign(job,{card,title,classificationButton,resultDate}));
   jobs.append(card);
+  let counted;
   if (savedCount === undefined && files.has('計算結果')) {
-    try { count.textContent = (await countOriginalFiles(files.get('計算結果'))) + 'ファイル'; }
-    catch { count.textContent = 'ファイル数不明'; }
+    try {
+      counted = await countOriginalFiles(files.get('計算結果'));
+      count.textContent = counted + 'ファイル';
+    } catch { count.textContent = 'ファイル数不明'; }
+  }
+  if (!summary || summary.needsFiles || summary.needsConfig || counted !== undefined) {
+    // Do not overwrite an out-of-limit field with a shortened value.
+    const source = config ?? [
+      'ファイル数: ' + (savedCount ?? counted ?? ''),
+      ...Object.values(parsed.lines).flat(),
+    ].join('\n');
+    const props = summaryProperties(source,files,counted);
+    // No need to repeat a failed write every time an oversized field is encountered.
+    if (!summary || Object.entries(props).some(([key,value]) => job.appProperties?.[key] !== value)) {
+      void writeRecordSummary(job.id,props);
+    }
   }
 }
 
