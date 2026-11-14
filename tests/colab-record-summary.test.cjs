@@ -98,7 +98,7 @@ const {pathToFileURL} = require('node:url');
         compareTagNames:(a,b)=>a.localeCompare(b),editName(){},safeName:v=>v},
       readEnergy(){},standaloneDrive:false,beginDriveConnection(){},
       driveFetch:async()=>({json:async()=>({state:'connect'})}),
-      ...helper,setTimeout,clearTimeout};
+      ...helper,summaryResultDate:helper.resultDate,setTimeout,clearTimeout};
     vm.runInNewContext(code,context,{filename:'colab-records.js'});
     context.__test.setRoot('root');
     await context.__test.loadRecords();
