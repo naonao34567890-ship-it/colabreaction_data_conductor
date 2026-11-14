@@ -730,7 +730,7 @@ async function renderRecord(job) {
   }
   const info = document.createElement('div');
   info.className = 'colab-meta';
-  const savedCount = parsed.count;
+  const savedCount = parsed.count === '?' ? undefined : parsed.count;
   const count = document.createElement('span');
   count.textContent = savedCount !== undefined ? savedCount + 'ファイル'
     : files.has('計算結果') ? 'ファイル数を確認中…'
@@ -786,7 +786,7 @@ async function renderRecord(job) {
   cards.set(job.id,Object.assign(job,{card,title,classificationButton,resultDate}));
   jobs.append(card);
   let counted;
-  if (savedCount === undefined && files.has('計算結果')) {
+  if (savedCount === undefined && files.has('計算結果') && (!summary || summary.count !== '?')) {
     try {
       counted = await countOriginalFiles(files.get('計算結果'));
       count.textContent = counted + 'ファイル';
@@ -801,7 +801,7 @@ async function renderRecord(job) {
     const props = summaryProperties(source,files,counted);
     // No need to repeat a failed write every time an oversized field is encountered.
     if (!summary || Object.entries(props).some(([key,value]) => job.appProperties?.[key] !== value)) {
-      void writeRecordSummary(job.id,props);
+      await writeRecordSummary(job.id,props);
     }
   }
 }
