@@ -309,8 +309,9 @@ async function saveEndpoint(finish, openEditor = false) {
       }
       if (target.FINISH && !await Mol.confirmFileAction('生成物の上書き',target.name+'_FINISH を上書きしますか？','生成物を上書きする')) return;
       structure.name = target.name+'_FINISH';
-      if(!await Mol.confirmElectronicSave({...target,FINISH:structure}))return;
-      saved = await ReactionStore.update(target.id,{FINISH:structure},current=>
+      const reviewed=await Mol.reviewReactionSave({...target,FINISH:structure},'FINISH');if(!reviewed)return;
+      const fields={FINISH:structure};if(reviewed.START!==target.START)fields.START=reviewed.START;
+      saved = await ReactionStore.update(target.id,fields,current=>
         !!current.FINISH===!!target.FINISH && current.FINISH?.revision===target.FINISH?.revision && current.START?.revision===target.START?.revision);
     } else {
       if(!await Mol.confirmElectronicSave({START:structure})){tab?.close();return;}
@@ -362,8 +363,8 @@ $('rangesForm').onsubmit = async event => {
       }
       const name = Mol.safeName(baseName.replace(/[_＿](?:START|FINISH)$/i,''));
       const structures={START:endpointRecord(start,name,'START'),FINISH:endpointRecord(finish,name,'FINISH')};
-      if(!await Mol.confirmElectronicSave(structures))return;
-      const saved = await ReactionStore.createReaction(structures,name);
+      const reviewed=await Mol.reviewReactionSave(structures,'START');if(!reviewed)return;
+      const saved = await ReactionStore.createReaction(reviewed,name);
       lastReactionId = saved.id;
       $('rangesDialog').close();
       status(saved.name+' を反応ライブラリに保存しました（#'+first+' → #'+last+'）。');

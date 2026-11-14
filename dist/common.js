@@ -208,17 +208,26 @@ function checkElectronicState(record){
  if((electrons%2)===(multiplicity%2))return {...info,valid:false,message:prefix+(electrons%2===0?'偶数個の電子には奇数の多重度':'奇数個の電子には偶数の多重度')+'が必要です。現在の多重度：'+multiplicity+'。'};
  return {...info,valid:true,message:prefix+'多重度 '+multiplicity+' は電子数の条件を満たします。'};
 }
-function electronicWarnings(record){
- if(Array.isArray(record))return record.flatMap(r=>electronicWarnings(r).map(message=>(r.name||r.id||'構造')+'：'+message));
- const warnings=[];
- if(Array.isArray(record?.atoms)){const check=checkElectronicState(record);if(!check.valid)warnings.push(check.message);return warnings;}
- for(const slot of ['START','FINISH'])if(record?.[slot]){const check=checkElectronicState(record[slot]);if(!check.valid)warnings.push(slot+'：'+check.message);}
- if(record?.START&&record?.FINISH){try{const start=electronicState(record.START).charge,finish=electronicState(record.FINISH).charge;if(start!==finish)warnings.push('反応前後で電荷が異なります（START: '+start+' / FINISH: '+finish+'）。');}catch{}}
+function internalElectronicWarnings(record){
+ if(Array.isArray(record))return record.flatMap(r=>internalElectronicWarnings(r).map(message=>(r.name||r.id||'構造')+'：'+message));
+ if(Array.isArray(record?.atoms)){const check=checkElectronicState(record);return check.valid?[]:[check.message];}
+ const warnings=[];for(const slot of ['START','FINISH'])if(record?.[slot]){const check=checkElectronicState(record[slot]);if(!check.valid)warnings.push(slot+'：'+check.message);}
  return warnings;
 }
+function reactionChargeWarnings(record){
+ if(Array.isArray(record))return record.flatMap(r=>reactionChargeWarnings(r).map(message=>(r.name||r.id||'反応')+'：'+message));
+ if(record?.START&&record?.FINISH){try{const start=electronicState(record.START).charge,finish=electronicState(record.FINISH).charge;if(start!==finish)return ['反応前後で電荷が異なります（START: '+start+' / FINISH: '+finish+'）。'];}catch{}}
+ return [];
+}
+function electronicWarnings(record){return [...internalElectronicWarnings(record),...reactionChargeWarnings(record)];}
 function electronicWarningText(record){
  const warnings=electronicWarnings(record);
  return warnings.length?'\n\n'+warnings.slice(0,5).join('\n')+(warnings.length>5?'\nほか '+(warnings.length-5)+' 件':'')+'\n不整合がありますが保存しますか？':'';
+}
+function mirrorReactionState(record,sourceSlot){
+ const other=sourceSlot==='START'?'FINISH':sourceSlot==='FINISH'?'START':null;
+ if(!other||!record?.[sourceSlot]||!record?.[other])throw Error('反映する出発物・生成物がありません。');
+ return {...record,[other]:{...record[other],...electronicState(record[sourceSlot]),revision:crypto.randomUUID()}};
 }
 function validateElectronicFields(value){
  for(const key of ['charge','multiplicity'])if(Object.hasOwn(value,key)&&(value[key]===null||!Number.isSafeInteger(value[key])||(key==='multiplicity'&&value[key]<1)))throw Error('電荷・スピン多重度の値が不正です。');
@@ -426,7 +435,7 @@ function parseFrameRanges(value,total){
  });
  return ranges;
 }
-const API={electronicWarningText,electronicWarnings,checkElectronicState,electronicComment,electronicState,validateElectronicFields,moleculeSignature,importMolecules,mass:Mass,setDatabaseName,acceptsStructure,structureBaseName,calculationOutput,readMemo,formatMemo,compareTagNames:displayNames.compare,parseFrameRanges,scanEntries,elements,tick,atomLine,lines,parseFile,standard,compareDisplayOrder,output,centroid,swap,bonds,db,get,metadata,saveBatch,overwrite,remove,removeMany,cacheThumb,notify,crc32,safeName};root.Mol=API;if(typeof module!=='undefined')module.exports=API;
+const API={internalElectronicWarnings,reactionChargeWarnings,mirrorReactionState,electronicWarningText,electronicWarnings,checkElectronicState,electronicComment,electronicState,validateElectronicFields,moleculeSignature,importMolecules,mass:Mass,setDatabaseName,acceptsStructure,structureBaseName,calculationOutput,readMemo,formatMemo,compareTagNames:displayNames.compare,parseFrameRanges,scanEntries,elements,tick,atomLine,lines,parseFile,standard,compareDisplayOrder,output,centroid,swap,bonds,db,get,metadata,saveBatch,overwrite,remove,removeMany,cacheThumb,notify,crc32,safeName};root.Mol=API;if(typeof module!=='undefined')module.exports=API;
 })(globalThis);
 
 /* Browser-only presentation helpers; no DOM or Three dependency in Worker. */
@@ -468,7 +477,23 @@ Mol.confirmElectronicSave=async function(record){
  if(!warnings.length)return true;
  return Mol.confirmFileAction('電荷・多重度の確認',Mol.electronicWarningText(record).trim(),'そのまま保存する');
 };
-Mol.confirmFileAction = function(title, description, label) {
+Mol.reviewReactionSave=async function(record,sourceSlot){
+ const internal=Mol.internalElectronicWarnings(record);
+ if(internal.length&&!await Mol.confirmFileAction('構造内の電荷・多重度の確認',internal.join('\n')+'\n\n内部に不整合がありますが保存を続けますか？','そのまま続ける'))return null;
+ const charge=Mol.reactionChargeWarnings(record);
+ if(!charge.length)return record;
+ const other=sourceSlot==='START'?'FINISH':'START';
+ const source=record[sourceSlot]&&Mol.electronicState(record[sourceSlot]),target=record[other]&&Mol.electronicState(record[other]);
+ const canMirror=source&&target&&(source.charge!==target.charge||source.multiplicity!==target.multiplicity);
+ const description=charge.join('\n')+'\n\nこのまま保存しますか？'+(canMirror?'\n反映する設定：'+sourceSlot+'の電荷 '+source.charge+'・多重度 '+source.multiplicity+' → '+other:'');
+ const choice=await Mol.confirmFileAction('反応前後の電荷の確認',description,'そのまま保存する',canMirror?other+'にも反映して保存':undefined);
+ if(!choice)return null;
+ if(choice!=='mirror')return record;
+ const updated=Mol.mirrorReactionState(record,sourceSlot),remaining=Mol.internalElectronicWarnings(updated);
+ if(remaining.length&&!await Mol.confirmFileAction('反映後の電荷・多重度の確認',remaining.join('\n')+'\n\n反映後も内部に不整合がありますが保存しますか？','そのまま保存する'))return null;
+ return updated;
+};
+Mol.confirmFileAction = function(title, description, label, mirrorLabel) {
  if(actionDialog?.open)return Promise.resolve(false);
  const dialog=document.createElement('dialog');
  actionDialog=dialog;
@@ -489,14 +514,16 @@ Mol.confirmFileAction = function(title, description, label) {
  confirm.className='danger';
  confirm.value='confirm';
  confirm.textContent=label;
- actions.append(cancel,confirm);
+ actions.append(cancel);
+ if(mirrorLabel){const mirror=document.createElement('button');mirror.value='mirror';mirror.textContent=mirrorLabel;actions.append(mirror);actions.style.flexWrap='wrap';}
+ actions.append(confirm);
  dialog.append(heading,message,actions);
  document.body.append(dialog);
  return new Promise(resolve=>{
   dialog.addEventListener('close',()=>{
    dialog.remove();
    if(actionDialog===dialog)actionDialog=null;
-   resolve(dialog.returnValue==='confirm');
+   resolve(dialog.returnValue==='confirm'?true:mirrorLabel&&dialog.returnValue==='mirror'?'mirror':false);
   },{once:true});
   dialog.showModal();
  });

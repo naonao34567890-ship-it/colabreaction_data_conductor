@@ -20,9 +20,10 @@ async function overwriteReactionStructure(record, revision) {
  delete structure.id;
  const target=await ReactionStore.read(openedReactionId);
  if(!target||target[slot]?.revision!==revision)throw Error('別のタブで構造が更新されました。開き直してください。');
- if(!await Mol.confirmElectronicSave({...target,[slot]:structure}))return null;
+ const reviewed=await Mol.reviewReactionSave({...target,[slot]:structure},slot);if(!reviewed)return null;
  const other=slot==='START'?'FINISH':'START';
- const saved = await ReactionStore.update(openedReactionId,{[slot]:structure},current=>
+ const fields={[slot]:structure};if(reviewed[other]!==target[other])fields[other]=reviewed[other];
+ const saved = await ReactionStore.update(openedReactionId,fields,current=>
   !!current[slot] && current[slot].revision===revision && current[other]?.revision===target[other]?.revision);
  return {name:saved.name+'_'+slot,revision:structure.revision};
 }
@@ -118,9 +119,10 @@ $('reactionSaveForm').onsubmit=async event=>{
    if(openedSlot && previous?.revision!==molecule.revision) {
     throw Error('別のタブで構造が更新されました。開き直してから保存してください。');
    }
-   if(!await Mol.confirmElectronicSave({...target,[slot]:structure}))return;
+   const reviewed=await Mol.reviewReactionSave({...target,[slot]:structure},slot);if(!reviewed)return;
+   const other=slot==='START'?'FINISH':'START',fields={[slot]:structure};if(reviewed[other]!==target[other])fields[other]=reviewed[other];
    if(previous && !await Mol.confirmFileAction('上書き保存','「'+structure.name+'」を上書きします。','上書きする'))return;
-   saved=await ReactionStore.update(id,{[slot]:structure},current=>
+   saved=await ReactionStore.update(id,fields,current=>
     current[(slot==='START'?'FINISH':'START')]?.revision===target[(slot==='START'?'FINISH':'START')]?.revision && current.name===target.name && !!current[slot]===!!previous && current[slot]?.revision===previous?.revision);
    if(openedSlot) {
     molecule={...structure};
