@@ -167,8 +167,63 @@ function readMemo(comment=''){
  memo.tags=[...new Set(tags.filter(tag=>typeof tag==='string'&&tag.trim()&&!/[\t\r\n]/.test(tag)).map(tag=>tag.trim()))].sort(displayNames.compare);
  return memo;
 }
-function formatMemo(comment,tags){
- const memo=readMemo(comment);
+// Missing legacy fields are interpreted lazily; opening a library never rewrites it.
+function electronicComment(comment='',spinIsMultiplicity=false){
+ const fields={};
+ for(const key of ['charge','multiplicity',...(spinIsMultiplicity?['spin']:[])]){
+  const pattern=new RegExp('(?:^|[\\s,;])'+key+'=([+-]?\\d+)(?=$|[\\s,;])','g');
+  const values=[...String(comment).matchAll(pattern)].map(m=>Number(m[1]));
+  if(values.some(v=>!Number.isSafeInteger(v))||new Set(values).size>1)throw Error('電荷・多重度の記録が不正、または重複しています。');
+  if(values.length)fields[key]=values[0];
+ }
+ if(spinIsMultiplicity&&fields.spin!==undefined){
+  if(fields.multiplicity!==undefined&&fields.multiplicity!==fields.spin)throw Error('spinとmultiplicityが一致しません。');
+  fields.multiplicity=fields.spin;delete fields.spin;
+ }
+ return fields;
+}
+function electronicState(record={}) {
+ const memo=electronicComment(record.comment||'');
+ const result={};
+ for(const [key,fallback] of [['charge',0],['multiplicity',1]]){
+  const value=record[key]??memo[key]??fallback;
+  if(!Number.isSafeInteger(value)||(key==='multiplicity'&&value<1))throw Error(key==='charge'?'電荷は整数で指定してください。':'スピン多重度は1以上の整数で指定してください。');
+  result[key]=value;
+ }
+ return result;
+}
+function validateElectronicFields(value){
+ for(const key of ['charge','multiplicity'])if(Object.hasOwn(value,key)&&(value[key]===null||!Number.isSafeInteger(value[key])||(key==='multiplicity'&&value[key]<1)))throw Error('電荷・スピン多重度の値が不正です。');
+ return electronicState(value);
+}
+// Existing labels may have been renamed or disambiguated; reimport never overwrites them.
+function moleculeSignature(record){return JSON.stringify([standard(record),electronicState(record),[...new Set(record.tags||[])].sort()]);}
+async function importMolecules(items){
+ const seen=new Set(),expected=new Map();
+ for(const item of items){
+  if(typeof item.id!=='string'||!item.id||seen.has(item.id))throw Error('分子IDが欠けているか重複しています。');seen.add(item.id);
+  let old=await get('body',item.id);const oldMeta=await get('meta',item.id);if(old&&oldMeta)old={...old,name:oldMeta.name,tags:oldMeta.tags||[]};
+  if(old&&moleculeSignature(old)!==moleculeSignature(item))throw Error('同じ分子IDの異なる内容があります。上書きせず停止しました：'+item.name+'（'+item.id+'）');
+  if(item.id.startsWith('builtin-')&&!old)throw Error('未対応の組み込み分子IDです。');
+  expected.set(item.id,oldMeta);
+ }
+ const d=await db();return new Promise((resolve,reject)=>{
+  const tx=d.transaction(['meta','body','tags'],'readwrite');let failure,added=0,skipped=0;
+  const meta=tx.objectStore('meta'),body=tx.objectStore('body');
+  tx.oncomplete=()=>resolve({added,skipped});tx.onabort=()=>reject(failure||tx.error||Error('取り込みに失敗しました。'));
+  const fail=()=>{failure=Error('別のタブで分子が更新されました。取り込み直してください。');tx.abort();};
+  let i=0;function next(){if(i===items.length)return;const item=items[i++],r=meta.get(item.id);r.onsuccess=()=>{
+   if(JSON.stringify(r.result)!==JSON.stringify(expected.get(item.id))){fail();return;}
+   if(r.result||builtins.has(item.id)){skipped++;next();return;}
+   const record={...item,...electronicState(item)},base=item.name;let n=1;
+   function add(){const q=meta.index('name').getKey(record.name);q.onsuccess=()=>{if(q.result!==undefined){record.name=base+' ('+(++n)+')';add();return;}
+    const m={id:record.id,name:record.name,count:record.atoms.length,mass:Mass.calculate(record.atoms),...electronicState(record),thumb:false,bytes:record.raw?.size||standard(record).length,tags:record.tags||[],addedAt:Date.now(),batchPosition:i};
+    meta.add(m);body.add(record);for(const name of m.tags)tx.objectStore('tags').put({name});added++;next();};}add();
+  };}next();
+ });
+}
+function formatMemo(comment,tags,state={}){
+ const memo={...readMemo(comment),...state};
  const fields=[];
  for(const key of ['energy','multiplicity','spin','charge']){
   if(memo[key]!==undefined)fields.push(key+'='+memo[key]);
@@ -280,13 +335,14 @@ function compareDisplayOrder(a, b, order='name-asc') {
  return byName || byId;
 }
 async function metadata(){const d=await db();return new Promise((res,rej)=>{const result=builtinMeta.map(record => ({...record})),t=d.transaction('meta'),r=t.objectStore('meta').openCursor();r.onsuccess=()=>{const c=r.result;if(c){result.push(c.value);c.continue();}else res(result);};r.onerror=()=>rej(r.error);});}
-async function saveBatch(records){if(!records.length)return [];const d=await db();return new Promise((res,rej)=>{
+async function saveBatch(records){if(!records.length)return [];for(const r of records)Object.assign(r,electronicState(r));const d=await db();return new Promise((res,rej)=>{
  const tx=d.transaction(['meta','body','tags'],'readwrite'),meta=tx.objectStore('meta'),body=tx.objectStore('body'),saved=[];
  tx.oncomplete=()=>res(saved);tx.onabort=()=>rej(tx.error||Error('保存失敗'));tx.onerror=()=>{};
  // Request chaining keeps the transaction alive and serializes collision checks.
- let i=0;function next(){if(i>=records.length)return;const r=records[i++],base=r.name;let suffix=nameHints.get(base)||1;if(suffix>1)r.name=`${base} (${suffix})`;function attempt(){const q=meta.index('name').getKey(r.name);q.onsuccess=()=>{if(q.result!==undefined){r.name=`${base} (${++suffix})`;attempt();}else{nameHints.set(base,suffix+1);r.id=crypto.randomUUID();delete r.revision;const m={id:r.id,name:r.name,count:r.atoms.length,mass:Mass.calculate(r.atoms),thumb:false,addedAt:performance.timeOrigin+performance.now(),batchPosition:i,bytes:r.raw?.size||standard(r).length};if(r.tags?.length){m.tags=r.tags;for(const name of r.tags)tx.objectStore('tags').put({name});}meta.add(m);body.add(r);saved.push(m);next();}};}attempt();}next();
+ let i=0;function next(){if(i>=records.length)return;const r=records[i++],base=r.name;Object.assign(r,electronicState(r));let suffix=nameHints.get(base)||1;if(suffix>1)r.name=`${base} (${suffix})`;function attempt(){const q=meta.index('name').getKey(r.name);q.onsuccess=()=>{if(q.result!==undefined){r.name=`${base} (${++suffix})`;attempt();}else{nameHints.set(base,suffix+1);r.id=crypto.randomUUID();delete r.revision;const m={id:r.id,name:r.name,count:r.atoms.length,mass:Mass.calculate(r.atoms),...electronicState(r),thumb:false,addedAt:performance.timeOrigin+performance.now(),batchPosition:i,bytes:r.raw?.size||standard(r).length};if(r.tags?.length){m.tags=r.tags;for(const name of r.tags)tx.objectStore('tags').put({name});}meta.add(m);body.add(r);saved.push(m);next();}};}attempt();}next();
  });}
 async function overwrite(record, expectedRevision) {
+ record={...record,...electronicState(record)};
  if(builtins.has(record.id))throw Error('組み込みの分子は上書きできません。');
  const d=await db();
  return new Promise((resolve,reject)=>{
@@ -304,7 +360,7 @@ async function overwrite(record, expectedRevision) {
     return;
    }
    const revision=crypto.randomUUID();
-   result={...current,revision,count:record.atoms.length,mass:Mass.calculate(record.atoms),bytes:record.raw.size,thumb:false};
+   result={...current,revision,count:record.atoms.length,mass:Mass.calculate(record.atoms),...electronicState(record),bytes:record.raw.size,thumb:false};
    tx.objectStore('body').put({...record,name:current.name,revision});
    meta.put(result);
    tx.objectStore('thumb').delete(record.id);
@@ -342,7 +398,7 @@ function parseFrameRanges(value,total){
  });
  return ranges;
 }
-const API={mass:Mass,setDatabaseName,acceptsStructure,structureBaseName,calculationOutput,readMemo,formatMemo,compareTagNames:displayNames.compare,parseFrameRanges,scanEntries,elements,tick,atomLine,lines,parseFile,standard,compareDisplayOrder,output,centroid,swap,bonds,db,get,metadata,saveBatch,overwrite,remove,removeMany,cacheThumb,notify,crc32,safeName};root.Mol=API;if(typeof module!=='undefined')module.exports=API;
+const API={electronicComment,electronicState,validateElectronicFields,moleculeSignature,importMolecules,mass:Mass,setDatabaseName,acceptsStructure,structureBaseName,calculationOutput,readMemo,formatMemo,compareTagNames:displayNames.compare,parseFrameRanges,scanEntries,elements,tick,atomLine,lines,parseFile,standard,compareDisplayOrder,output,centroid,swap,bonds,db,get,metadata,saveBatch,overwrite,remove,removeMany,cacheThumb,notify,crc32,safeName};root.Mol=API;if(typeof module!=='undefined')module.exports=API;
 })(globalThis);
 
 /* Browser-only presentation helpers; no DOM or Three dependency in Worker. */
@@ -642,11 +698,11 @@ Mol.VirtualGrid=class{
 // The existing UI and Worker call the same API. On Firebase only, Drive is the
 // authoritative store; the old IndexedDB is retained solely for one-time migration.
 if(typeof location!=='undefined'&&location.origin==='https://mol-bench.web.app'){
- const local={};for(const key of ['db','metadata','get','saveBatch','overwrite','remove','removeMany','setDatabaseName','renameMolecule'])local[key]=Mol[key];
+ const local={};for(const key of ['db','metadata','get','saveBatch','importMolecules','overwrite','remove','removeMany','setDatabaseName','renameMolecule'])local[key]=Mol[key];
  let service;
  const load=()=>service||(service=import('./drive-store.js').then(module=>module.createDriveStore(local)));
  Mol.cloud={get ready(){return load().then(s=>s.ready);},call:(method,...args)=>load().then(s=>s[method](...args)),get reactionDatabaseName(){return Mol.cloudDatabaseNames?.reactions;}};
- for(const key of ['db','metadata','get','saveBatch','overwrite','removeMany','renameMolecule'])Mol[key]=(...args)=>Mol.cloud.call(key,...args);
+ for(const key of ['db','metadata','get','saveBatch','importMolecules','overwrite','removeMany','renameMolecule'])Mol[key]=(...args)=>Mol.cloud.call(key,...args);
  Mol.remove=id=>Mol.cloud.call('removeMany',[id]);
  // Drive commits notify account-scoped listeners; the old global local-DB channel is not used.
  Mol.notify=()=>{};

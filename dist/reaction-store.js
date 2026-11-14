@@ -29,6 +29,7 @@ const ReactionStore = (() => {
   });
  }
  function update(id, fields, check) {
+  fields={...fields};for(const slot of ['START','FINISH'])if(fields[slot])fields[slot]={...fields[slot],...Mol.electronicState(fields[slot])};
   return transaction('readwrite',(store,done,abort)=>{
    const request = store.get(id);
    request.onsuccess = () => {
@@ -42,6 +43,7 @@ const ReactionStore = (() => {
   });
  }
  function createReaction(structures, reactionName) {
+  structures={...structures};for(const slot of ['START','FINISH'])if(structures[slot])structures[slot]={...structures[slot],...Mol.electronicState(structures[slot])};
   const date = new Date();
   const name = [date.getHours(),date.getMinutes()].map(n=>String(n).padStart(2,'0')).join('');
   const value = {id:crypto.randomUUID(), createdAt:date.getTime(), name:reactionName || name, ...structures};

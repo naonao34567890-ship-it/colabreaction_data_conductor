@@ -47,7 +47,8 @@ const Archive=require('../dist/reaction-archive.js');
  await MolJobs.exportFiles(files,bytes=>chunks.push(Buffer.from(bytes)));
  const zipBlob=new Blob(chunks);
  const restoredArchive=await Archive.read(new File([zipBlob],'download.zip'));
- assert.deepEqual(restoredArchive.records,input,'read actual ZIP without relying on names');
+ const normalized=input.map(r=>({...r,...Object.fromEntries(['START','FINISH'].filter(k=>r[k]).map(k=>[k,{...r[k],...Mol.electronicState(r[k])}]))}));
+ assert.deepEqual(restoredArchive.records,normalized,'read actual ZIP without relying on names and apply declared electronic state');
  assert.equal(await Archive.fingerprint(restoredArchive.records[0]),await Archive.fingerprint(input[0]));
  assert.equal(await Archive.fingerprint({...input[0],_driveFileId:'cache',startPreview:'cache'}),await Archive.fingerprint(input[0]));
  async function zip(entries){const out=[];await MolJobs.exportFiles(entries,x=>out.push(x));return new File(out,'test.zip');}

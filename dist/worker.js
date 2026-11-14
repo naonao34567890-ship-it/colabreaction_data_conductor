@@ -6,7 +6,7 @@ class ImportJob{
  constructor(emit,choose){this.emit=emit;this.choose=choose;this.cancelled=false;this.batch=[];this.batchBytes=0;this.stats={processed:0,registered:0,extra:0,skipped:0,failed:0,reasons:{},examples:[]};this.last=0;}
  reason(reason,name,failed=false){this.stats[failed?'failed':'skipped']++;this.stats.reasons[reason]=(this.stats.reasons[reason]||0)+1;if(this.stats.examples.length<30)this.stats.examples.push(name+': '+reason);}
  async flush(){if(!this.batch.length)return;const batch=this.batch;this.batch=[];this.batchBytes=0;try{const saved=await Mol.saveBatch(batch);this.stats.registered+=saved.length;this.emit({type:'saved',items:saved});Mol.notify({type:'added',items:saved});}catch(e){this.cancelled=true;this.stats.failed+=batch.length;this.stats.fatal=(e.name==='QuotaExceededError'?'保存容量を超えました':e.message);throw e;}}
- async add(block,name){const estimated=block.rawParts.reduce((n,s)=>n+s.length*2,0)+block.atoms.length*160;if(this.batchBytes+estimated>32*1024*1024)await this.flush();this.batchBytes+=estimated;this.batch.push({name,atoms:block.atoms,comment:block.comment,tags:Mol.readMemo(block.comment).tags,raw:new Blob(block.rawParts,{type:'chemical/x-xyz'}),originalLines:block.originalLines,baseLines:block.baseLines,edited:false});if(this.batch.length>=200||this.batchBytes>=32*1024*1024)await this.flush();}
+ async add(block,name){const estimated=block.rawParts.reduce((n,s)=>n+s.length*2,0)+block.atoms.length*160;if(this.batchBytes+estimated>32*1024*1024)await this.flush();this.batchBytes+=estimated;this.batch.push({name,...Mol.electronicState(block),atoms:block.atoms,comment:block.comment,tags:Mol.readMemo(block.comment).tags,raw:new Blob(block.rawParts,{type:'chemical/x-xyz'}),originalLines:block.originalLines,baseLines:block.baseLines,edited:false});if(this.batch.length>=200||this.batchBytes>=32*1024*1024)await this.flush();}
  async files(files){for(const file of files){if(this.cancelled)break;try{
   if(file.size>50*1024*1024){this.reason('50 MiBの上限超過',file.name);continue;}
   let single=null;
@@ -50,22 +50,25 @@ class ImportJob{
 }
 function header(size){const a=new Uint8Array(size);return{a,v:new DataView(a.buffer)};}
 async function exportData(ids,format,send,cancelled,progress,withMemo=false,bodies=null,files=null){
- const central=[],encoder=new TextEncoder(),names=new Set();let offset=0,done=0;
- for(const id of ids){if(cancelled())return;const body=files?{}:bodies?bodies[id]:await Mol.get('body',id);if(!body)throw Error('出力対象が削除されました。選択し直してください');const meta=withMemo?await Mol.get('meta',id):null;const blob=files?files[id].blob:withMemo?await Mol.output(body,Mol.formatMemo(body.comment,meta?.tags||[])):Mol.calculationOutput(body);
+ const central=[],encoder=new TextEncoder(),names=new Set(),molecules=[];let offset=0,done=0;
+ const listEnabled=format==='zip'&&!files;
+ const entries=[...ids,...(listEnabled?[null]:[])];
+ for(const id of entries){if(cancelled())return;const isList=listEnabled&&id===null;const body=files||isList?{}:bodies?bodies[id]:await Mol.get('body',id);if(!body)throw Error('出力対象が削除されました。選択し直してください');const meta=withMemo&&!isList?await Mol.get('meta',id):null;const blob=isList?new Blob([JSON.stringify({format:'mol-bench-molecule-library',version:1,molecules},null,2)],{type:'application/json'}):files?files[id].blob:withMemo?await Mol.output(body,Mol.formatMemo(body.comment,meta?.tags||[],Mol.electronicState(body))):Mol.calculationOutput(body);
   if(format==='zip'){
    const extension=withMemo?'.pyxyz':'.xyz';
-   const base=files?files[id].path:Mol.safeName(body.name);
-   let name=files?base:base+extension,n=1;
+   const base=isList?'lib_list':files?files[id].path:Mol.safeName(body.name);
+   let name=isList?'lib_list.json':files?base:base+extension,n=1;
    if(files&&names.has(name))throw Error('ZIP内のパスが重複しています');
    while(names.has(name))name=base+' ('+(++n)+')'+extension;
    names.add(name);
    const filename=encoder.encode(name),bytes=new Uint8Array(await blob.arrayBuffer()),crc=Mol.crc32(bytes);if(filename.length>65535)throw Error('ZIP内のファイル名が長すぎます');
+   if(listEnabled&&!isList){const m=meta||await Mol.get('meta',id);molecules.push({id,name:body.name,file:name,...Mol.electronicState(body),tags:m?.tags||body.tags||[],sha256:Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('')});}
    const h=header(30+filename.length);h.v.setUint32(0,0x04034b50,true);h.v.setUint16(4,20,true);h.v.setUint16(6,0x800,true);h.v.setUint16(12,33,true);h.v.setUint32(14,crc,true);h.v.setUint32(18,bytes.length,true);h.v.setUint32(22,bytes.length,true);h.v.setUint16(26,filename.length,true);h.a.set(filename,30);
    const largeOffset=offset>=0xffffffff,c=header(46+filename.length+(largeOffset?12:0));c.v.setUint32(0,0x02014b50,true);c.v.setUint16(4,20,true);c.v.setUint16(6,largeOffset?45:20,true);c.v.setUint16(8,0x800,true);c.v.setUint16(14,33,true);c.v.setUint32(16,crc,true);c.v.setUint32(20,bytes.length,true);c.v.setUint32(24,bytes.length,true);c.v.setUint16(28,filename.length,true);c.v.setUint32(42,largeOffset?0xffffffff:offset,true);c.a.set(filename,46);if(largeOffset){c.v.setUint16(30,12,true);const x=46+filename.length;c.v.setUint16(x,1,true);c.v.setUint16(x+2,8,true);c.v.setBigUint64(x+4,BigInt(offset),true);}central.push(c.a);
    // The worker transfers ownership of each buffer, detaching it after send.
    offset+=h.a.length+bytes.length;await send(h.a);await send(bytes);
   }else{if(done)await send(encoder.encode('\n'));for(let p=0;p<blob.size;p+=262144){if(cancelled())return;await send(new Uint8Array(await blob.slice(p,p+262144).arrayBuffer()));}}
-  done++;progress(done);await Mol.tick();
+  done++;if(!isList)progress(done);await Mol.tick();
  }
  if(format==='zip'&&!cancelled()){
   let len=0,parts=[],partBytes=0;async function flush(){if(!partBytes)return;const out=new Uint8Array(partBytes);let p=0;for(const part of parts){out.set(part,p);p+=part.length;}await send(out);parts=[];partBytes=0;}

@@ -121,7 +121,7 @@ $('reactionSaveForm').onsubmit=async event=>{
     $('title').textContent=structure.name;
     document.title=structure.name+' — 分子エディタ';
     for(const state of [...history,...future])state.edited=true;
-    edited=atoms.length!==structure.atoms.length||atoms.some(({el,x,y,z},i)=>{
+    edited=structureState.charge!==structure.charge||structureState.multiplicity!==structure.multiplicity||atoms.length!==structure.atoms.length||atoms.some(({el,x,y,z},i)=>{
      const atom=structure.atoms[i];
      return el!==atom.el||x!==atom.x||y!==atom.y||z!==atom.z;
     });

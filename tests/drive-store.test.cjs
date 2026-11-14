@@ -664,6 +664,24 @@ const { chromium } = require('playwright'),
       'long cloud saves cannot be double-clicked into duplicate molecules',
     );
     await editor.close();
+    const stateTransfer=await q.evaluate(async()=>{
+      const input={id:'state-transfer-id',name:'state transfer',atoms:[{el:'O',x:0,y:0,z:0}],charge:-2,multiplicity:3,tags:['state-tag'],raw:new Blob(['1\n\nO 0 0 0\n']),edited:false};
+      const added=await Mol.importMolecules([input]);
+      const body=await Mol.get('body',input.id),meta=(await Mol.metadata()).find(m=>m.id===input.id);
+      const out=[];await MolJobs.exportData([input.id],'zip',b=>out.push(b),()=>false,()=>{});
+      const parsed=await MoleculeArchive.read(new File(out,'state.zip'));
+      const repeated=await Mol.importMolecules(parsed.records);
+      let conflict;try{await Mol.importMolecules([{...input,id:'state-should-not-exist'},{...input,charge:0}]);}catch(e){conflict=e.message;}
+      const partial=await Mol.get('body','state-should-not-exist');
+      await Mol.remove(input.id);
+      return {added,repeated,state:Mol.electronicState(body),metaState:Mol.electronicState(meta),sameId:parsed.records[0].id,conflict,partial:!!partial};
+    });
+    assert.deepEqual(stateTransfer.added,{added:1,skipped:0});
+    assert.deepEqual(stateTransfer.repeated,{added:0,skipped:1});
+    assert.deepEqual(stateTransfer.state,{charge:-2,multiplicity:3});
+    assert.deepEqual(stateTransfer.metaState,stateTransfer.state);
+    assert.equal(stateTransfer.sameId,'state-transfer-id');
+    assert.match(stateTransfer.conflict,/上書き/);assert.equal(stateTransfer.partial,false);
     const large = await q.evaluate(async () => {
       const raw = new Blob(['1\n' + 'a'.repeat(5 * 1024 * 1024) + '\nH 0 0 0\n']);
       const saved = await Mol.saveBatch([

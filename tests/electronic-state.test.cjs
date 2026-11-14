@@ -1,0 +1,51 @@
+const assert=require('node:assert/strict');
+const Mol=globalThis.Mol=require('../dist/common.js');require('../dist/worker.js');
+const ReactionArchive=require('../dist/reaction-archive.js');
+const MoleculeArchive=require('../dist/molecule-archive.js');
+async function zip(files){const out=[];await MolJobs.exportFiles(files,b=>out.push(b));return new File(out,'test.zip');}
+(async()=>{
+ assert.deepEqual(Mol.electronicState({}),{charge:0,multiplicity:1});
+ assert.deepEqual(Mol.electronicState({comment:'charge=-2\tmultiplicity=3'}),{charge:-2,multiplicity:3});
+ assert.deepEqual(Mol.electronicState({charge:0,multiplicity:1,comment:'charge=-2 multiplicity=3'}),{charge:0,multiplicity:1});
+ assert.deepEqual(Mol.electronicComment('energy=1 spin=3 charge=-2',true),{charge:-2,multiplicity:3});
+ assert.deepEqual(Mol.electronicComment('spin=3 charge=-2'),{charge:-2},'generic spin is not guessed');
+ assert.throws(()=>Mol.electronicComment('spin=2 multiplicity=3',true),/一致/);
+ for(const v of [{charge:.5},{multiplicity:0},{charge:'0'},{multiplicity:NaN},{multiplicity:null}])assert.throws(()=>Mol.validateElectronicFields(v));
+ const legacy={id:'legacy',name:'same',atoms:[{el:'O',x:0,y:0,z:0}],comment:'',raw:new Blob(['1\n\nO 0 0 0\n'])};
+ const charged={...legacy,id:'charged',charge:-2,multiplicity:3,tags:['tag']};const before=structuredClone(legacy);
+ const get=Mol.get;Mol.get=async(store,id)=>id==='legacy'?legacy:charged;
+ const chunks=[];await MolJobs.exportData(['legacy','charged'],'zip',b=>chunks.push(b),()=>false,()=>{});
+ const memoChunks=[];await MolJobs.exportData(['charged'],'zip',b=>memoChunks.push(b),()=>false,()=>{},true,{charged});
+ Mol.get=get;
+ const memoArchive=await MoleculeArchive.read(new File(memoChunks,'memo.zip'));
+ assert.deepEqual(Mol.electronicState(memoArchive.records[0]),{charge:-2,multiplicity:3},'memo ZIP also contains a usable list');
+ const file=new File(chunks,'molecules.zip');const archive=await MoleculeArchive.read(file);
+ assert.deepEqual(legacy,before,'legacy export must not rewrite old data');
+ assert.deepEqual(archive.records.map(r=>[r.id,r.name,r.charge,r.multiplicity]),[['legacy','same',0,1],['charged','same',-2,3]]);
+ assert.equal(new Set(archive.records.map(r=>r.id)).size,2);
+ const {unzipSync}=await import('../dist/vendor/fflate.mjs');const content=unzipSync(new Uint8Array(await file.arrayBuffer()));
+ const list=JSON.parse(new TextDecoder().decode(content['lib_list.json']));
+ assert.notEqual(list.molecules[0].file,list.molecules[1].file,'duplicate names have distinct file refs');
+ async function altered(mutator){const m=structuredClone(list);mutator(m);return zip(Object.entries(content).map(([path,bytes])=>({path,blob:path==='lib_list.json'?new Blob([JSON.stringify(m)]):new Blob([bytes])})));}
+ const changed=await MoleculeArchive.read(await altered(m=>{m.molecules[0].charge=2;m.molecules[0].multiplicity=5;}));
+ assert.deepEqual(Mol.electronicState(changed.records[0]),{charge:2,multiplicity:5},'manifest fields can be edited without changing coordinates');
+ const absent=await MoleculeArchive.read(await altered(m=>{for(const r of m.molecules){delete r.charge;delete r.multiplicity;}}));
+ assert.deepEqual(Mol.electronicState(absent.records[1]),{charge:0,multiplicity:1});
+ await assert.rejects(MoleculeArchive.read(await altered(m=>m.molecules[1].id=m.molecules[0].id)),/重複/);
+ await assert.rejects(MoleculeArchive.read(await altered(m=>m.molecules[1].multiplicity=0)),/多重度/);
+ await assert.rejects(MoleculeArchive.read(await altered(m=>m.molecules[1].file='../outside.xyz')),/対応/);
+ await assert.rejects(MoleculeArchive.read(await altered(m=>m.molecules[0].sha256='bad')),/整合性/);
+ const oldZip=await MoleculeArchive.read(await zip([{path:'old.xyz',blob:legacy.raw}]));
+ assert.deepEqual(Mol.electronicState(oldZip.records[0]),{charge:0,multiplicity:1});
+ const reaction={id:'r1',name:'reaction',createdAt:1,START:legacy,FINISH:charged};
+ const built=await ReactionArchive.build([reaction]);const endpoint=built.manifest.reactions[0].endpoints;
+ assert.equal(endpoint.START.name,'same');assert.equal(endpoint.FINISH.charge,-2);assert.equal(endpoint.FINISH.multiplicity,3);
+ const restored=await ReactionArchive.read(await zip(built.files));
+ assert.deepEqual(Mol.electronicState(restored.records[0].FINISH),{charge:-2,multiplicity:3});
+ assert.equal(await ReactionArchive.fingerprint(reaction),await ReactionArchive.fingerprint(restored.records[0]));
+ for(const r of built.manifest.reactions)for(const e of Object.values(r.endpoints)){if(e){delete e.charge;delete e.multiplicity;delete e.name;}}
+ const legacyReaction=await ReactionArchive.read(await zip(built.files.map(f=>f.path==='reaction-library.json'?{...f,blob:new Blob([JSON.stringify(built.manifest)])}:f)));
+ assert.deepEqual(legacyReaction.records,[reaction],'old ZIP payload remains intact');
+ assert.deepEqual(Mol.electronicState(legacyReaction.records[0].START),{charge:0,multiplicity:1});
+ console.log('PASS electronic state: legacy defaults without mutation, explicit zero, Colab multiplicity, molecule/reaction ZIP round trips, ID/name pairing, edited settings, old ZIP and corruption rejection');
+})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -904,6 +904,7 @@ export function createDriveStore(local) {
         for (const input of values) {
           const body = {
             ...clone(input),
+            ...Mol.electronicState(input),
             id: crypto.randomUUID(),
             name: uniqueName(input.name, used),
           };
@@ -913,6 +914,7 @@ export function createDriveStore(local) {
             name: body.name,
             count: body.atoms.length,
             mass: Mol.mass.calculate(body.atoms),
+            ...Mol.electronicState(body),
             thumb: false,
             addedAt: Date.now(),
             batchPosition: puts.length,
@@ -926,7 +928,26 @@ export function createDriveStore(local) {
         return { puts, result, tags: [...tags.values()] };
       });
     },
+    async importMolecules(items) {
+      await ready;
+      const incoming=clone(items),seen=new Set();
+      for(const item of incoming){if(typeof item.id!=='string'||!item.id||seen.has(item.id))throw Error('分子IDが欠けているか重複しています。');seen.add(item.id);}
+      return commit([],async()=>{
+        const puts=[],used=new Set(entries('m').map(r=>r.meta.name)),tags=new Map(head.tags.map(t=>[t.name,t]));let skipped=0;
+        for(const item of incoming){
+          let old=builtin(item.id)?await local.get('body',item.id):await readRecord('m',item.id);
+          const oldMeta=records.get('m:'+item.id)?.meta;if(old&&oldMeta)old={...old,name:oldMeta.name,tags:oldMeta.tags||[]};
+          if(old){if(Mol.moleculeSignature(old)!==Mol.moleculeSignature(item))throw Error('同じ分子IDの異なる内容があります。上書きせず停止しました：'+item.name+'（'+item.id+'）');skipped++;continue;}
+          if(item.id.startsWith('builtin-'))throw Error('未対応の組み込み分子IDです。');
+          const body={...item,...Mol.electronicState(item),name:uniqueName(item.name,used)};delete body.revision;
+          const meta={id:body.id,name:body.name,count:body.atoms.length,mass:Mol.mass.calculate(body.atoms),...Mol.electronicState(body),thumb:false,bytes:body.raw?.size||Mol.standard(body).length,tags:body.tags||[],addedAt:Date.now(),batchPosition:puts.length};
+          for(const name of meta.tags)tags.set(name,{name});puts.push({kind:'m',meta,body});
+        }
+        return {puts,tags:[...tags.values()],result:{added:puts.length,skipped}};
+      });
+    },
     async overwrite(record, expectedRevision) {
+      record={...record,...Mol.electronicState(record)};
       if (builtin(record.id)) throw Error('組み込みの分子は上書きできません。');
       await ready;
       return commit(['m:' + record.id], async () => {
@@ -939,6 +960,7 @@ export function createDriveStore(local) {
             revision,
             count: record.atoms.length,
             mass: Mol.mass.calculate(record.atoms),
+            ...Mol.electronicState(record),
             bytes: record.raw.size,
             thumb: false,
           };
@@ -993,6 +1015,7 @@ export function createDriveStore(local) {
       return parallel(entries('r'), (ref) => readRecord('r', ref.meta.id));
     },
     async reactionCreate(structures, name) {
+      structures={...structures};for(const slot of ['START','FINISH'])if(structures[slot])structures[slot]={...structures[slot],...Mol.electronicState(structures[slot])};
       await ready;
       const now = new Date(),
         body = {
@@ -1034,6 +1057,7 @@ export function createDriveStore(local) {
       });
     },
     async reactionUpdate(id, fields, check) {
+      fields={...fields};for(const slot of ['START','FINISH'])if(fields[slot])fields[slot]={...fields[slot],...Mol.electronicState(fields[slot])};
       await ready;
       return commit(['r:' + id], async () => {
         const old = await readRecord('r', id);

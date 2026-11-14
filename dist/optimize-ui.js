@@ -76,6 +76,8 @@
   function openOptimization(engine) {
     method = engine;
     if (atoms.length < 2) return;
+    try{commitElectronicInputs();}catch(e){notice(e.message);return;}
+    inputs[0].value=structureState.charge;inputs[1].value=structureState.multiplicity;
     finishKeys();
     finishRotation();
     $('optTitle').textContent = method+'-xTB 構造最適化';
@@ -102,6 +104,7 @@
     recordLog('coordinates-applied');
     reset();
     atoms = optimized;
+    if(runLog?.selection==='all'){structureState={charge:runLog.charge,multiplicity:runLog.multiplicity};syncElectronicInputs();}
     dirty = true;
     push(before);
     dialog.close();

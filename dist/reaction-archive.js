@@ -36,7 +36,7 @@
    for(const role of ['START','FINISH']) {
     const structure=record[role];
     if(!structure){endpoints[role]=null;continue;}
-    endpoints[role]={structureId:record.id+':'+role,revision:structure.revision??null,
+    endpoints[role]={structureId:record.id+':'+role,name:structure.name||record.name+'_'+role,...Mol.electronicState(structure),revision:structure.revision??null,
      xyz:await add(folder+'/'+role+'.xyz',Mol.calculationOutput(structure))};
    }
    const data=await add(folder+'/record.json',new Blob([JSON.stringify(await encode(record,folder))],{type:'application/json'}));
@@ -46,7 +46,7 @@
   }
   const manifest={format,version:1,archiveId:crypto.randomUUID(),createdAt:new Date().toISOString(),source:{origin},count:reactions.length,reactions};
   files.push({path:'reaction-library.json',blob:new Blob([JSON.stringify(manifest,null,2)],{type:'application/json'})});
-  files.push({path:'README.txt',blob:new Blob(['Mol Bench 反応ライブラリ / version 1\nreaction-library.json が反応IDとSTART（出発物）・FINISH（生成物）の対応を保持します。\n名前から対応を推測しないでください。nullは未作成です。\nrecord.jsonはタグ・原子順・座標・元XYZなどを保持する型付きデータです。Blobは参照先の原文バイト列です。\n各参照のSHA-256は内容確認用です。ファイルを変更・削除せずZIPのまま保管してください。\nSTART.xyz / FINISH.xyzは計算用XYZです。完全な復元には対応表とrecord.jsonも必要です。\n'])});
+  files.push({path:'README.txt',blob:new Blob(['Mol Bench 反応ライブラリ / version 1\nreaction-library.json が反応IDとSTART（出発物）・FINISH（生成物）の対応を保持します。\n名前から対応を推測しないでください。nullは未作成です。\n対応表の各構造に名前・charge（電荷）・multiplicity（スピン多重度）を記録します。未指定時は電荷0・多重度1です。\nrecord.jsonはタグ・原子順・座標・元XYZなどを保持する型付きデータです。Blobは参照先の原文バイト列です。\n各参照のSHA-256は内容確認用です。ファイルを変更・削除せずZIPのまま保管してください。\nSTART.xyz / FINISH.xyzは計算用XYZです。完全な復元には対応表とrecord.jsonも必要です。\n'])});
   return {manifest,files};
  }
  async function download(records,progress) {
@@ -120,6 +120,9 @@
     const xyz=await load(endpoint.xyz);
     if(await xyz.text()!==await Mol.calculationOutput(structure).text())throw Error('計算用XYZと復元する構造が一致しません。');
     if(structure.raw!==undefined&&!(structure.raw instanceof Blob))throw Error('元XYZデータが不正です。');
+    Mol.validateElectronicFields(endpoint);
+    if(Object.hasOwn(endpoint,'charge'))structure.charge=endpoint.charge;
+    if(Object.hasOwn(endpoint,'multiplicity'))structure.multiplicity=endpoint.multiplicity;
    }
    records.push(record);progress(records.length,manifest.count);await Mol.tick();
   }
@@ -129,6 +132,7 @@
  // remain significant. ZIP paths and the archive's random IDs are irrelevant.
  async function fingerprint(value) {
   async function stable(v) {
+   if(v&&typeof v==='object'&&Array.isArray(v.atoms))v={...v,...Mol.electronicState(v)};
    if(v instanceof Blob)return ['blob',v.type,await digest(v)];
    if(v===undefined)return ['undefined'];
    if(typeof v==='number')return ['number',Object.is(v,-0)?'-0':String(v)];

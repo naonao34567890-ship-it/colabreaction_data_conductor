@@ -74,7 +74,7 @@ function syncButtons() {
 
 async function readBlock(index) {
   for await (const block of Mol.parseFile(frames[index].raw)) {
-    if (!block.error) return block;
+    if (!block.error) return {...block,...frames[index].electronic};
   }
   throw Error('フレーム '+(index+1)+' を読み込めません。');
 }
@@ -152,7 +152,7 @@ async function showFrame(index) {
     currentBlock = await readBlock(index);
     current = index;
     $('frameCount').textContent = (current+1)+' / '+frames.length;
-    $('atomCount').textContent = '原子数 '+currentBlock.atoms.length;
+    $('atomCount').textContent = '原子数 '+currentBlock.atoms.length+' · 電荷 '+currentBlock.charge+' · 多重度 '+currentBlock.multiplicity;
     const energy = frames[current].energy;
     $('frameEnergy').textContent = energy === null
       ? '2行目に読み取れるエネルギーがありません。'
@@ -282,8 +282,8 @@ $('importFrame').onclick = () => registerFrames([[current+1,current+1]]);
 let lastReactionId;
 function endpointRecord(block,name,slot) {
   return {
-    name:name+'_'+slot, atoms:block.atoms,
-    raw:Mol.calculationOutput(block), comment:'', edited:true,
+    name:name+'_'+slot, atoms:block.atoms,...Mol.electronicState(block),
+    raw:Mol.calculationOutput(block), comment:block.comment||'', edited:true,
     revision:crypto.randomUUID(),
   };
 }
@@ -431,11 +431,13 @@ async function init() {
   let skipped = 0;
   for await (const block of Mol.parseFile(file)) {
     if (block.error) {skipped++;continue;}
-    frames.push({raw:new Blob(block.rawParts),energy:csvPoints ? csvPoints.get(frames.length+skipped) ?? null :
+    frames.push({electronic:reaction?Mol.electronicComment(block.comment,true):Mol.electronicComment(block.comment),raw:new Blob(block.rawParts),energy:csvPoints ? csvPoints.get(frames.length+skipped) ?? null :
       readFrameEnergy(reaction && /(?:^|\s)energy=/.test(block.comment)
         ? (block.comment.match(/(?:^|\s)energy=([^\s]+)/)?.[1] ?? '')+' eV' : block.comment)});
   }
   if (!frames.length) throw Error('表示できる構造がありません。');
+  for(const key of ['charge','multiplicity']){const known=new Set(frames.map(f=>f.electronic[key]).filter(v=>v!==undefined));if(known.size===1){const value=[...known][0];for(const frame of frames)if(frame.electronic[key]===undefined)frame.electronic[key]=value;}}
+  for(const frame of frames)frame.electronic=Mol.electronicState(frame.electronic);
   reference = frames.findIndex(frame => frame.energy !== null);
   $('energyHint').textContent = reference < 0 ? '2行目に読み取れるエネルギーがありません。'
     : '基準はフレーム '+(reference+1)+'。単位のないエネルギーは Eh として換算します。'
