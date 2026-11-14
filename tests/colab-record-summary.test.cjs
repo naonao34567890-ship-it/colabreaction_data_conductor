@@ -79,7 +79,7 @@ const {pathToFileURL} = require('node:url');
           ? [...drive.values()].map(f=>structuredClone(f))
           : q.includes("'job-")
             ? [...Array(5)].map((_,j)=> {
-                const i=Number(q.match(/job-(\\d+)/)[1]);
+                const i=Number(q.match(/job-(\d+)/)[1]);
                 const [name,id]=[...ids(i)][j];
                 return {name,id,mimeType:name==='計算結果'?'application/vnd.google-apps.folder':'image/png'};
               })
