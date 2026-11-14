@@ -37,6 +37,7 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict'),path
   const viewer=await context.newPage();await viewer.goto('https://state.test/reaction-viewer.html#'+new URLSearchParams({source,name:'colab-state'}));
   await viewer.waitForFunction(()=>!document.querySelector('#importStart').disabled);
   assert.match(await viewer.textContent('#atomCount'),/電荷 -1 · 多重度 2/);
+  await viewer.evaluate(()=>{Mol.confirmFileAction=async()=>true;});
   await viewer.click('#importStart');await viewer.waitForFunction(()=>document.querySelector('#slideStatus').textContent.includes('保存しました'));
   await viewer.click('#next');await viewer.waitForFunction(()=>document.querySelector('#frameCount').textContent==='2 / 2');await viewer.locator('#importFinish').evaluate(button=>button.click());await viewer.waitForFunction(()=>document.querySelector('#slideStatus').textContent.includes('_FINISH'));
   const states=await viewer.evaluate(async()=>{const r=(await ReactionStore.read()).find(r=>r.name==='colab-state');return ['START','FINISH'].map(k=>Mol.electronicState(r[k]));});assert.deepEqual(states,[{charge:-1,multiplicity:2},{charge:1,multiplicity:3}]);

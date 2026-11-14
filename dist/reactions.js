@@ -253,7 +253,7 @@ async function importReactionZip(file) {
  changing=true;selectionUI();
  try{
   const {records:incoming}=await ReactionArchive.read(file,{progress:(done,total)=>{status.textContent=`ZIPの内容を検証中… ${done} / ${total} 件`;}});
-  if(!await Mol.confirmFileAction('反応ZIPを取り込む',incoming.length+' 件の反応を現在の保存先へ取り込みます。同じID・同じ内容はスキップし、異なる内容は上書きせず停止します。','取り込む')){status.textContent='取り込みをキャンセルしました。';return;}
+  if(!await Mol.confirmFileAction('反応ZIPを取り込む',incoming.length+' 件の反応を現在の保存先へ取り込みます。同じID・同じ内容はスキップし、異なる内容は上書きせず停止します。'+Mol.electronicWarningText(incoming),'取り込む')){status.textContent='取り込みをキャンセルしました。';return;}
   status.textContent='反応を保存中… タブを閉じないでください。';
   const result=await ReactionStore.importRecords(incoming);
   await renderReactions();

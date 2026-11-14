@@ -143,13 +143,13 @@
     }
     const unsupported = target.find(atom => elements.indexOf(atom.el) < 0 ||
       elements.indexOf(atom.el) >= 86);
-    const electrons = target.reduce((total, atom) => total + elements.indexOf(atom.el) + 1, -charge);
+    const stateCheck=Mol.checkElectronicState({atoms:target,charge,multiplicity});
     if (unsupported) {
       status.textContent = method+'-xTBの対応範囲はH〜Rnです。対象外の元素：' + unsupported.el;
       return;
     }
-    if (electrons < multiplicity || (electrons - multiplicity + 1) % 2 !== 0) {
-      status.textContent = '電子数とスピン多重度が合いません。全電荷と多重度を確認してください。';
+    if (!stateCheck.valid || stateCheck.electrons===0) {
+      status.textContent = stateCheck.valid?'電子が0個の系はこの計算エンジンでは扱えません。':stateCheck.message;
       return;
     }
     if (target.length > 200) {

@@ -309,9 +309,11 @@ async function saveEndpoint(finish, openEditor = false) {
       }
       if (target.FINISH && !await Mol.confirmFileAction('生成物の上書き',target.name+'_FINISH を上書きしますか？','生成物を上書きする')) return;
       structure.name = target.name+'_FINISH';
+      if(!await Mol.confirmElectronicSave({...target,FINISH:structure}))return;
       saved = await ReactionStore.update(target.id,{FINISH:structure},current=>
-        !!current.FINISH===!!target.FINISH && current.FINISH?.revision===target.FINISH?.revision);
+        !!current.FINISH===!!target.FINISH && current.FINISH?.revision===target.FINISH?.revision && current.START?.revision===target.START?.revision);
     } else {
+      if(!await Mol.confirmElectronicSave({START:structure})){tab?.close();return;}
       saved = await ReactionStore.create('START',structure,name);
     }
     lastReactionId = saved.id;
@@ -359,10 +361,9 @@ $('rangesForm').onsubmit = async event => {
         throw Error('出発物と生成物の原子数または元素の並びが一致しません。');
       }
       const name = Mol.safeName(baseName.replace(/[_＿](?:START|FINISH)$/i,''));
-      const saved = await ReactionStore.createReaction({
-        START:endpointRecord(start,name,'START'),
-        FINISH:endpointRecord(finish,name,'FINISH'),
-      },name);
+      const structures={START:endpointRecord(start,name,'START'),FINISH:endpointRecord(finish,name,'FINISH')};
+      if(!await Mol.confirmElectronicSave(structures))return;
+      const saved = await ReactionStore.createReaction(structures,name);
       lastReactionId = saved.id;
       $('rangesDialog').close();
       status(saved.name+' を反応ライブラリに保存しました（#'+first+' → #'+last+'）。');

@@ -271,7 +271,7 @@ async function runQueue(){if(active||exporting||!jobs.length)return;const state=
    $('progressText').textContent='ZIPの対応情報を確認中…';
    const archive=await MoleculeArchive.read(file);
    if(state.cancelled)break;
-   if(!await Mol.confirmFileAction('分子ZIPの取り込み',archive.records.length+' 分子を取り込みます。既存IDの異なる内容は上書きしません。','取り込む'))continue;
+   if(!await Mol.confirmFileAction('分子ZIPの取り込み',archive.records.length+' 分子を取り込みます。既存IDの異なる内容は上書きしません。'+Mol.electronicWarningText(archive.records),'取り込む'))continue;
    const result=await Mol.importMolecules(archive.records);state.archiveRegistered=(state.archiveRegistered||0)+result.added;state.archiveProcessed=(state.archiveProcessed||0)+1;Mol.notify({type:'added',items:await Mol.metadata()});
    meta=await Mol.metadata();metaMap=new Map(meta.map(m=>[m.id,m]));refresh();
    notice('ZIP：追加 '+result.added+' 分子 / 登録済み '+result.skipped+' 分子');

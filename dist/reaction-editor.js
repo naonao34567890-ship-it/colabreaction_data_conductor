@@ -18,8 +18,12 @@ async function overwriteReactionStructure(record, revision) {
  const slot = openedReactionSlot;
  const structure = {...record,revision:crypto.randomUUID()};
  delete structure.id;
+ const target=await ReactionStore.read(openedReactionId);
+ if(!target||target[slot]?.revision!==revision)throw Error('別のタブで構造が更新されました。開き直してください。');
+ if(!await Mol.confirmElectronicSave({...target,[slot]:structure}))return null;
+ const other=slot==='START'?'FINISH':'START';
  const saved = await ReactionStore.update(openedReactionId,{[slot]:structure},current=>
-  !!current[slot] && current[slot].revision===revision);
+  !!current[slot] && current[slot].revision===revision && current[other]?.revision===target[other]?.revision);
  return {name:saved.name+'_'+slot,revision:structure.revision};
 }
 
@@ -101,6 +105,7 @@ $('reactionSaveForm').onsubmit=async event=>{
   if(type==='new') {
    const name=Mol.safeName(newName.value.trim());
    structure.name=name+'_'+slot;
+   if(!await Mol.confirmElectronicSave({[slot]:structure}))return;
    saved=await ReactionStore.create(slot,structure,name);
    reactionId=saved.id;
   } else {
@@ -113,9 +118,10 @@ $('reactionSaveForm').onsubmit=async event=>{
    if(openedSlot && previous?.revision!==molecule.revision) {
     throw Error('別のタブで構造が更新されました。開き直してから保存してください。');
    }
+   if(!await Mol.confirmElectronicSave({...target,[slot]:structure}))return;
    if(previous && !await Mol.confirmFileAction('上書き保存','「'+structure.name+'」を上書きします。','上書きする'))return;
    saved=await ReactionStore.update(id,{[slot]:structure},current=>
-    current.name===target.name && !!current[slot]===!!previous && current[slot]?.revision===previous?.revision);
+    current[(slot==='START'?'FINISH':'START')]?.revision===target[(slot==='START'?'FINISH':'START')]?.revision && current.name===target.name && !!current[slot]===!!previous && current[slot]?.revision===previous?.revision);
    if(openedSlot) {
     molecule={...structure};
     $('title').textContent=structure.name;

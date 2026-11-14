@@ -648,6 +648,7 @@ const { chromium } = require('playwright'),
       created,
     );
     await editor.evaluate(() => {
+      structureState.multiplicity=2;syncElectronicInputs();
       naming('save');
       document.getElementById('name').value = 'double click guarded';
       const button = document.getElementById('confirm');
