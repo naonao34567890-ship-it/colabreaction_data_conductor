@@ -32,7 +32,7 @@ export function parseConfig(config) {
 export function summaryProperties(config, files, overrideCount) {
   const parsed = parseConfig(config);
   const props = {summaryVersion:SUMMARY_VERSION};
-  const count = overrideCount === undefined ? parsed.count : String(overrideCount);
+  const count = overrideCount === undefined ? (parsed.count ?? '?') : String(overrideCount);
   if (count !== undefined && fits('summaryCount',count)) props.summaryCount = count;
   for (const [name,key] of Object.entries(fields)) {
     // A repeated field must retain all lines; otherwise use the original config.
