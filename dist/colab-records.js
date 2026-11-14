@@ -798,7 +798,7 @@ async function renderRecord(job) {
       'ファイル数: ' + (savedCount ?? counted ?? ''),
       ...Object.values(parsed.lines).flat(),
     ].join('\n');
-    const props = summaryProperties(source,files,counted);
+    const props = summaryProperties(source,files,counted,job.appProperties);
     // No need to repeat a failed write every time an oversized field is encountered.
     if (!summary || Object.entries(props).some(([key,value]) => job.appProperties?.[key] !== value)) {
       await writeRecordSummary(job.id,props);
