@@ -58,7 +58,7 @@ const {pathToFileURL} = require('node:url');
       const f={id:'job-'+i,name:'Record-'+i,createdTime:'2026-11-14T00:00:00Z',
         mimeType:'application/vnd.google-apps.folder',description:i===0?'備考':'',
         appProperties:{classification:i===0?'A':'',importKey:'key-'+i}};
-      if(mode==='legacy-no-count')configs.set('config-'+i,config().replace('ファイル数: 3\\n',''));
+      if(mode==='legacy-no-count')configs.set('config-'+i,config().replace('ファイル数: 3\n',''));
       if(mode==='cached')Object.assign(f.appProperties,helper.summaryProperties(config(),ids(i)));
       if(mode==='partial')Object.assign(f.appProperties,helper.summaryProperties(i===0?partial:config(),ids(i)));
       drive.set(f.id,f);
