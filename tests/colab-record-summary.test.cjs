@@ -25,6 +25,12 @@ const {pathToFileURL} = require('node:url');
   assert.equal(helper.readSummary(helper.summaryProperties(partial,ids(0))).needsConfig,true);
   assert.equal(Object.hasOwn(helper.summaryProperties(partial,ids(0)),'summaryCharge'),false);
   assert.equal(helper.readSummary(helper.summaryProperties(config(),ids(0))).needsFiles,false);
+  const oversizedId = new Map(ids(0));
+  oversizedId.set('START.png','x'.repeat(200));
+  assert.equal(helper.readSummary(helper.summaryProperties(config(),oversizedId)).needsFiles,true);
+  const crowded = Object.fromEntries(Array.from({length:28},(_,i)=>['custom'+i,'value']));
+  const packed = helper.summaryProperties(config(),ids(0),undefined,crowded);
+  assert.ok(new Set([...Object.keys(crowded),...Object.keys(packed)]).size<=30);
 
   class Element {
     constructor(tag='div') {this.tag=tag;this.children=[];this.dataset={};this.value='';this.textContent='';this.hidden=false;this.disabled=false;this.className='';this.style={};}
@@ -52,10 +58,11 @@ const {pathToFileURL} = require('node:url');
       const f={id:'job-'+i,name:'Record-'+i,createdTime:'2026-11-14T00:00:00Z',
         mimeType:'application/vnd.google-apps.folder',description:i===0?'備考':'',
         appProperties:{classification:i===0?'A':'',importKey:'key-'+i}};
+      if(mode==='legacy-no-count')configs.set('config-'+i,config().replace('ファイル数: 3\\n',''));
       if(mode==='cached')Object.assign(f.appProperties,helper.summaryProperties(config(),ids(i)));
       if(mode==='partial')Object.assign(f.appProperties,helper.summaryProperties(i===0?partial:config(),ids(i)));
       drive.set(f.id,f);
-      configs.set('config-'+i,i===0 && mode==='partial'?partial:config());
+      if(mode!=='legacy-no-count')configs.set('config-'+i,i===0 && mode==='partial'?partial:config());
     }
     let requests=0, configDownloads=0, patches=0;
     const fetch = async (raw,opts={}) => {
@@ -83,7 +90,9 @@ const {pathToFileURL} = require('node:url');
                 const [name,id]=[...ids(i)][j];
                 return {name,id,mimeType:name==='計算結果'?'application/vnd.google-apps.folder':'image/png'};
               })
-            : [];
+            : q.includes("'originals-")
+              ? Array.from({length:3},(_,j)=>({id:'raw-'+j,name:'raw-'+j+'.xyz',mimeType:'text/plain'}))
+              : [];
         const page=Number(url.searchParams.get('pageToken')||0);
         body={files:all.slice(page,page+100),nextPageToken:page+100<all.length?String(page+100):undefined};
       }else throw Error('Unexpected request '+raw);
@@ -130,6 +139,11 @@ const {pathToFileURL} = require('node:url');
     console.log('N='+n,'before:',pages+2*n,'requests, cached:',cached.first.requests,
       'legacy first load including PATCH:',old.first.requests,'second:',old.second.requests);
   }
+  const noCount=await scenario(50,'legacy-no-count');
+  assert.equal(noCount.first.requests,201); // root + 50 each of child, config, original list, PATCH
+  assert.equal(noCount.second.requests,1);
+  assert.equal(noCount.second.configDownloads,0);
+  assert.equal(noCount.snapshot[0].meta[0],'3ファイル');
   const standard=await scenario(50,'cached');
   const mix=await scenario(50,'partial');
   assert.equal(mix.first.configDownloads,1);
