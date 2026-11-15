@@ -13,6 +13,129 @@ let drawStructure = () => {};
 let playing = false;
 let playbackTimer = null;
 let vibrationActive = false;
+let reactionFrames;
+let reactionIndex = 0;
+let vibrationFile = '';
+let vibrationNames;
+let vibrationChannel;
+const vibrationPending = new Map();
+const vibrationChannelId = reaction && new URLSearchParams(location.hash.slice(1)).get('vibrationChannel');
+if (vibrationChannelId) {
+  vibrationChannel = new BroadcastChannel('reaction-vibrations:' + vibrationChannelId);
+  vibrationChannel.onmessage = ({data}) => {
+    const pending = vibrationPending.get(data?.requestId);
+    if (!pending) return;
+    vibrationPending.delete(data.requestId);
+    clearTimeout(pending.timer);
+    if (data.type === 'error') pending.reject(Error(data.message));
+    else pending.resolve(data);
+  };
+  window.addEventListener('pagehide', () => {
+    vibrationChannel.postMessage({type:'close'});
+    vibrationChannel.close();
+    for (const pending of vibrationPending.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(Error('ビューアーを閉じました。'));
+    }
+    vibrationPending.clear();
+  });
+}
+function requestVibration(type, name) {
+  if (!vibrationChannel) return Promise.reject(Error('振動ファイルの通信先がありません。計算記録から開き直してください。'));
+  const requestId = crypto.randomUUID();
+  return new Promise((resolve,reject) => {
+    const timer = setTimeout(() => {
+      vibrationPending.delete(requestId);
+      reject(Error('振動ファイルの取得がタイムアウトしました。元の計算記録タブを確認してください。'));
+    },60000);
+    vibrationPending.set(requestId,{resolve,reject,timer});
+    vibrationChannel.postMessage({type,requestId,name});
+  });
+}
+async function loadVibrationIndex() {
+  if (vibrationNames) return vibrationNames;
+  const response = await requestVibration('list');
+  vibrationNames = response.names.filter(name=>/^local_maxima_\\d+_vib_\\d+\\.xyz$/i.test(name));
+  if (!vibrationNames.length) throw Error('この計算記録に振動アニメーションXYZがありません。');
+  const peaks = [...new Set(vibrationNames.map(name=>Number(name.match(/maxima_(\\d+)/i)[1])))].sort((a,b)=>a-b);
+  const peakSelect = $('vibrationPeak');
+  peakSelect.replaceChildren(...peaks.map(peak=>new Option('極大点 '+peak,String(peak))));
+  updateVibrationModes();
+  return vibrationNames;
+}
+function updateVibrationModes() {
+  const peak = Number($('vibrationPeak').value);
+  const modes = vibrationNames.filter(name=>Number(name.match(/maxima_(\\d+)/i)[1])===peak)
+    .map(name=>Number(name.match(/_vib_(\\d+)\\.xyz$/i)[1])).sort((a,b)=>a-b);
+  $('vibrationMode').replaceChildren(...modes.map(mode=>new Option('Mode '+mode,String(mode))));
+}
+function currentVibrationName() {
+  return 'local_maxima_'+$('vibrationPeak').value+'_vib_'+$('vibrationMode').value+'.xyz';
+}
+async function selectVibration() {
+  stopPlayback();
+  const fileName = currentVibrationName();
+  $('vibrationPeak').disabled = $('vibrationMode').disabled = true;
+  try {
+    status('振動XYZを読み込み中… '+fileName);
+    const response = await requestVibration('file',fileName);
+    const file = new File([response.blob],fileName);
+    const loaded = [];
+    for await (const block of Mol.parseFile(file)) {
+      if (block.error) throw Error('振動XYZに解析できないフレームがあります。');
+      loaded.push({
+        raw:new Blob(block.rawParts),energy:null,
+        electronic:Mol.electronicState({...reactionFrames[0].electronic,...Mol.electronicComment(block.comment)}),
+      });
+    }
+    if (!loaded.length) throw Error('振動XYZに有効なフレームがありません。');
+    frames.splice(0,frames.length,...loaded);
+    current = 0;
+    vibrationFile = fileName;
+    vibrationActive = true;
+    setVibrationLayout(true);
+    await showFrame(0);
+    status(fileName+' · '+loaded.length+'フレーム。再生ボタンでループします。');
+  } catch(error) {
+    status('振動アニメーションを読み込めません。'+error.message);
+    if (!vibrationActive) {
+      $('viewerMode').value='reaction';
+      setVibrationLayout(false);
+    }
+  } finally {
+    $('vibrationPeak').disabled = $('vibrationMode').disabled = false;
+    $('viewerMode').disabled = false;
+  }
+}
+function setVibrationLayout(active) {
+  for (const id of ['vibrationPeakControl','vibrationModeControl']) $(id).hidden = !active;
+  $('energyPlot').closest('.panel').style.display = active?'none':'';
+  const reactionsOnly = ['saveStartImage','saveFinalImage','importStart','importFinish','importFrameEdit','importFrame','importAll','importMany'];
+  for (const id of reactionsOnly) if ($(id)) $(id).style.display = active?'none':'';
+  $('frameEnergy').textContent = active?'振動の変位構造を表示しています。':'';
+}
+async function changeViewerMode() {
+  if (!reaction || !reactionFrames) return;
+  stopPlayback();
+  $('viewerMode').disabled=true;
+  if ($('viewerMode').value==='vibration') {
+    try {await loadVibrationIndex();await selectVibration();}
+    catch(error){$('viewerMode').value='reaction';status(error.message);setVibrationLayout(false);$('viewerMode').disabled=false;}
+  } else {
+    vibrationActive=false;
+    vibrationFile='';
+    frames.splice(0,frames.length,...reactionFrames);
+    current=reactionIndex;
+    setVibrationLayout(false);
+    await showFrame(current);
+    $('viewerMode').disabled=false;
+  }
+}
+if (reaction) {
+  $('viewerMode').onchange = () => void changeViewerMode();
+  $('vibrationPeak').onchange = () => {updateVibrationModes();void selectVibration();};
+  $('vibrationMode').onchange = () => void selectVibration();
+}
 function stopPlayback() {
   playing = false;
   if (playbackTimer !== null) clearTimeout(playbackTimer);
@@ -98,6 +221,9 @@ function status(message) {
 function syncButtons() {
   const unavailable = busy || !currentBlock;
   $('autoPlay').disabled = unavailable || frames.length < 2;
+  if (vibrationActive) {
+    for (const id of ['importStart','importFinish','importFrameEdit','importFrame','importAll','importMany']) $(id).disabled=true;
+  }
   $('prev').disabled = unavailable || current === 0;
   $('next').disabled = unavailable || current === frames.length - 1;
   $('prevTen').disabled = $('prev').disabled;
@@ -192,8 +318,10 @@ async function showFrame(index) {
     current = index;
     $('frameCount').textContent = (current+1)+' / '+frames.length;
     $('atomCount').textContent = '原子数 '+currentBlock.atoms.length+' · 電荷 '+currentBlock.charge+' · 多重度 '+currentBlock.multiplicity;
+    if (reaction && !vibrationActive) reactionIndex=current;
     const energy = frames[current].energy;
-    $('frameEnergy').textContent = energy === null
+    $('frameEnergy').textContent = vibrationActive ? vibrationFile+' · Frame '+(current+1)
+      : energy === null
       ? '2行目に読み取れるエネルギーがありません。'
       : '基準から '+(energy-frames[reference].energy).toFixed(3)+' kJ/mol';
     drawPlot();
@@ -316,7 +444,8 @@ $('numbers').onclick = () => {
 $('downloadFrame').onclick = async () => {
   const index = current;
   try {
-    Mol.downloadBlob(Mol.calculationOutput(currentBlock),Mol.safeName(baseName+'('+(index+1)+')')+'.xyz');
+    const stem = vibrationActive ? vibrationFile.replace(/\\.xyz$/i,'') : baseName;
+    Mol.downloadBlob(Mol.calculationOutput(currentBlock),Mol.safeName(stem+'('+(index+1)+')')+'.xyz');
   } catch (error) {status(error.message);}
 };
 $('importFrame').onclick = () => registerFrames([[current+1,current+1]]);
@@ -479,6 +608,7 @@ async function init() {
         ? (block.comment.match(/(?:^|\s)energy=([^\s]+)/)?.[1] ?? '')+' eV' : block.comment)});
   }
   if (!frames.length) throw Error('表示できる構造がありません。');
+  if (reaction) reactionFrames = frames.slice();
   for(const key of ['charge','multiplicity']){const known=new Set(frames.map(f=>f.electronic[key]).filter(v=>v!==undefined));if(known.size===1){const value=[...known][0];for(const frame of frames)if(frame.electronic[key]===undefined)frame.electronic[key]=value;}}
   for(const frame of frames)frame.electronic=Mol.electronicState(frame.electronic);
   reference = frames.findIndex(frame => frame.energy !== null);
