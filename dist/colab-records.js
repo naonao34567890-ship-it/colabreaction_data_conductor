@@ -455,12 +455,48 @@ async function downloadArchive(job, originals, button) {
   }
 }
 
+function serveVibrationFiles(tab, originals, channelId) {
+  const channel = new BroadcastChannel('reaction-vibrations:' + channelId);
+  let catalogPromise;
+  const catalog = async () => {
+    if (!catalogPromise) catalogPromise = (async () => {
+      const directoryIds = [originals], found = new Map();
+      while (directoryIds.length) {
+        for (const entry of await list("'" + directoryIds.pop() + "' in parents")) {
+          if (entry.mimeType === folderType) directoryIds.push(entry.id);
+          else if (/^local_maxima_\d+_vib_\d+\.xyz$/i.test(entry.name)) found.set(entry.name,entry.id);
+        }
+      }
+      return found;
+    })().catch(error=>{catalogPromise=null;throw error;});
+    return catalogPromise;
+  };
+  channel.onmessage = async ({data}) => {
+    if (data?.type === 'close') {channel.close();return;}
+    if (!data?.requestId || !['list','file'].includes(data.type)) return;
+    try {
+      if (tab.closed) {channel.close();return;}
+      const found = await catalog();
+      if (data.type === 'list') channel.postMessage({
+        requestId:data.requestId,type:'list',names:[...found.keys()].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))
+      });
+      else {
+        if (!found.has(data.name)) throw Error('指定された振動ファイルが見つかりません。');
+        const blob = await (await download(found.get(data.name))).blob();
+        channel.postMessage({requestId:data.requestId,type:'file',name:data.name,blob});
+      }
+    } catch (error) {channel.postMessage({requestId:data.requestId,type:'error',message:error.message});}
+  };
+  return channel;
+}
+
 async function openReaction(jobId, name, originals, images) {
   const tab = window.open('about:blank', '_blank');
   if (!tab) { status('反応経路ビューアのタブを開けませんでした。'); return; }
   tab.opener = null;
   tab.document.body.textContent = '反応経路を読み込み中…';
   const urls = [];
+  let vibrationChannel;
   try {
     if (!originals) throw Error('計算結果フォルダーがありません。');
     const directories = [originals];
@@ -481,10 +517,14 @@ async function openReaction(jobId, name, originals, images) {
       params.set(key,url);
     }
     if (tab.closed) throw Error('反応経路ビューアを閉じました。');
+    const vibrationChannelId = crypto.randomUUID();
+    vibrationChannel = serveVibrationFiles(tab, originals, vibrationChannelId);
+    params.set('vibrationChannel',vibrationChannelId);
     if (images.has('START.png') && images.has('FINAL.png')) params.set('imageSaving','1');
     connectImageSaver(params,jobId,images);
     tab.location.replace('reaction-viewer.html#' + params);
   } catch (error) {
+    vibrationChannel?.close();
     for (const url of urls) URL.revokeObjectURL(url);
     if (!tab.closed) tab.document.body.textContent = error.message;
     status(error.message);
