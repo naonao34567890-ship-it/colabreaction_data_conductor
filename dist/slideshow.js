@@ -55,8 +55,9 @@ function requestVibration(type, name) {
 async function loadVibrationIndex() {
   if (vibrationNames) return vibrationNames;
   const response = await requestVibration('list');
-  vibrationNames = response.names.filter(name=>/^local_maxima_\d+_vib_\d+\.xyz$/i.test(name));
-  if (!vibrationNames.length) throw Error('この計算記録に振動アニメーションXYZがありません。');
+  const names = response.names.filter(name=>/^local_maxima_\d+_vib_\d+\.xyz$/i.test(name));
+  if (!names.length) throw Error('この計算記録に振動アニメーションXYZがありません。');
+  vibrationNames = names;
   const peaks = [...new Set(vibrationNames.map(name=>Number(name.match(/maxima_(\d+)/i)[1])))].sort((a,b)=>a-b);
   const peakSelect = $('vibrationPeak');
   peakSelect.replaceChildren(...peaks.map(peak=>new Option('極大点 '+peak,String(peak))));
@@ -166,7 +167,8 @@ function startPlayback() {
 $('autoPlay').onclick = () => playing ? stopPlayback() : startPlayback();
 $('playbackSpeed').onchange = () => {
   if (!playing) return;
-  if (playbackTimer !== null) clearTimeout(playbackTimer);
+  if (playbackTimer === null) return; // Current frame is still rendering; use the new speed for the next tick.
+  clearTimeout(playbackTimer);
   playbackTimer = setTimeout(playbackTick,1000/Number($('playbackSpeed').value));
 };
 document.addEventListener('visibilitychange',() => {if (document.hidden) stopPlayback();});
@@ -221,9 +223,6 @@ function status(message) {
 function syncButtons() {
   const unavailable = busy || !currentBlock;
   $('autoPlay').disabled = unavailable || frames.length < 2;
-  if (vibrationActive) {
-    for (const id of ['importStart','importFinish','importFrameEdit','importFrame','importAll','importMany']) $(id).disabled=true;
-  }
   $('prev').disabled = unavailable || current === 0;
   $('next').disabled = unavailable || current === frames.length - 1;
   $('prevTen').disabled = $('prev').disabled;
@@ -235,6 +234,7 @@ function syncButtons() {
   for (const id of ['numbers','importFrame','downloadFrame','importAll','importMany']) {
     $(id).disabled = unavailable;
   }
+  if (vibrationActive) for (const id of ['importStart','importFinish','importFrameEdit','importFrame','importAll','importMany']) $(id).disabled = true;
 }
 
 async function readBlock(index) {
@@ -307,7 +307,7 @@ if (reaction) $('energyPlot').addEventListener('click',event => {
       event.clientY - rect.top - point.y * rect.height / canvas.height);
     if (d < distance) { nearest = point; distance = d; }
   }
-  if (nearest) void showFrame(nearest.index);
+  if (nearest) {stopPlayback();void showFrame(nearest.index);}
 });
 
 async function showFrame(index) {
