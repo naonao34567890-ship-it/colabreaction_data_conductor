@@ -55,9 +55,9 @@ function requestVibration(type, name) {
 async function loadVibrationIndex() {
   if (vibrationNames) return vibrationNames;
   const response = await requestVibration('list');
-  vibrationNames = response.names.filter(name=>/^local_maxima_\\d+_vib_\\d+\\.xyz$/i.test(name));
+  vibrationNames = response.names.filter(name=>/^local_maxima_\d+_vib_\d+\.xyz$/i.test(name));
   if (!vibrationNames.length) throw Error('この計算記録に振動アニメーションXYZがありません。');
-  const peaks = [...new Set(vibrationNames.map(name=>Number(name.match(/maxima_(\\d+)/i)[1])))].sort((a,b)=>a-b);
+  const peaks = [...new Set(vibrationNames.map(name=>Number(name.match(/maxima_(\d+)/i)[1])))].sort((a,b)=>a-b);
   const peakSelect = $('vibrationPeak');
   peakSelect.replaceChildren(...peaks.map(peak=>new Option('極大点 '+peak,String(peak))));
   updateVibrationModes();
@@ -65,8 +65,8 @@ async function loadVibrationIndex() {
 }
 function updateVibrationModes() {
   const peak = Number($('vibrationPeak').value);
-  const modes = vibrationNames.filter(name=>Number(name.match(/maxima_(\\d+)/i)[1])===peak)
-    .map(name=>Number(name.match(/_vib_(\\d+)\\.xyz$/i)[1])).sort((a,b)=>a-b);
+  const modes = vibrationNames.filter(name=>Number(name.match(/maxima_(\d+)/i)[1])===peak)
+    .map(name=>Number(name.match(/_vib_(\d+)\.xyz$/i)[1])).sort((a,b)=>a-b);
   $('vibrationMode').replaceChildren(...modes.map(mode=>new Option('Mode '+mode,String(mode))));
 }
 function currentVibrationName() {
@@ -444,7 +444,7 @@ $('numbers').onclick = () => {
 $('downloadFrame').onclick = async () => {
   const index = current;
   try {
-    const stem = vibrationActive ? vibrationFile.replace(/\\.xyz$/i,'') : baseName;
+    const stem = vibrationActive ? vibrationFile.replace(/\.xyz$/i,'') : baseName;
     Mol.downloadBlob(Mol.calculationOutput(currentBlock),Mol.safeName(stem+'('+(index+1)+')')+'.xyz');
   } catch (error) {status(error.message);}
 };
