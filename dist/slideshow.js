@@ -10,6 +10,44 @@ let currentBlock = null;
 let busy = true;
 let showNumbers = false;
 let drawStructure = () => {};
+let playing = false;
+let playbackTimer = null;
+let vibrationActive = false;
+function stopPlayback() {
+  playing = false;
+  if (playbackTimer !== null) clearTimeout(playbackTimer);
+  playbackTimer = null;
+  $('autoPlay').setAttribute('aria-pressed','false');
+  $('autoPlay').textContent = '▶ 自動送り';
+}
+async function playbackTick() {
+  playbackTimer = null;
+  if (!playing || document.hidden) {stopPlayback();return;}
+  const atEnd = current >= frames.length-1;
+  if (atEnd && !vibrationActive) {stopPlayback();return;}
+  const ok = await showFrame(atEnd ? 0 : current+1);
+  if (!ok || !playing) {stopPlayback();return;}
+  playbackTimer = setTimeout(playbackTick, 1000/Number($('playbackSpeed').value));
+}
+function startPlayback() {
+  if (busy || frames.length<2) return;
+  playing = true;
+  $('autoPlay').setAttribute('aria-pressed','true');
+  $('autoPlay').textContent = 'Ⅱ 一時停止';
+  if (!vibrationActive && current === frames.length-1) {
+    void showFrame(0).then(ok => {
+      if (ok && playing) playbackTimer = setTimeout(playbackTick,1000/Number($('playbackSpeed').value));
+    });
+  } else playbackTimer = setTimeout(playbackTick,1000/Number($('playbackSpeed').value));
+}
+$('autoPlay').onclick = () => playing ? stopPlayback() : startPlayback();
+$('playbackSpeed').onchange = () => {
+  if (!playing) return;
+  if (playbackTimer !== null) clearTimeout(playbackTimer);
+  playbackTimer = setTimeout(playbackTick,1000/Number($('playbackSpeed').value));
+};
+document.addEventListener('visibilitychange',() => {if (document.hidden) stopPlayback();});
+window.addEventListener('pagehide', stopPlayback);
 Mol.displayMode($('displayMode'));
 $('displayMode').onchange = () => { if (currentBlock) drawStructure(true); };
 let baseName = 'trajectory';
@@ -59,6 +97,7 @@ function status(message) {
 
 function syncButtons() {
   const unavailable = busy || !currentBlock;
+  $('autoPlay').disabled = unavailable || frames.length < 2;
   $('prev').disabled = unavailable || current === 0;
   $('next').disabled = unavailable || current === frames.length - 1;
   $('prevTen').disabled = $('prev').disabled;
@@ -160,8 +199,10 @@ async function showFrame(index) {
     drawPlot();
     drawStructure(true);
     status('');
+    return true;
   } catch (error) {
     status(error.message);
+    return false;
   } finally {
     busy = false;
     syncButtons();
@@ -261,10 +302,10 @@ async function registerFrames(ranges) {
   }
 }
 
-$('prevTen').onclick = () => showFrame(Math.max(0,current-10));
-$('nextTen').onclick = () => showFrame(Math.min(frames.length-1,current+10));
-$('prev').onclick = () => showFrame(current-1);
-$('next').onclick = () => showFrame(current+1);
+$('prevTen').onclick = () => {stopPlayback();void showFrame(Math.max(0,current-10));};
+$('nextTen').onclick = () => {stopPlayback();void showFrame(Math.min(frames.length-1,current+10));};
+$('prev').onclick = () => {stopPlayback();void showFrame(current-1);};
+$('next').onclick = () => {stopPlayback();void showFrame(current+1);};
 $('numbers').onclick = () => {
   showNumbers = !showNumbers;
   $('frameNumbers').hidden = !showNumbers;
