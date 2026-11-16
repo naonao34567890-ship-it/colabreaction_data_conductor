@@ -11,6 +11,8 @@
 <link rel="stylesheet" href="frame-save.css">
 <style>
 .playback-control{display:inline-flex;align-items:center;gap:6px;font-size:14px}
+.playback-strip{display:flex;flex:0 0 auto;align-items:center;gap:6px;flex-wrap:wrap}
+.playback-strip button{padding:7px 10px}
 .playback-control[hidden]{display:none!important}
 #autoPlay[aria-pressed="true"]{outline:2px solid #62d6bf}
 
@@ -25,6 +27,15 @@
 <header>
 <div class="heading"><div><div class="eyebrow">COLAB / REACTION PATH</div><h1 id="title">反応経路ビューア</h1></div><span class="badge">XYZ · フレーム表示</span></div>
 <div class="toolbar">
+<!-- The playback strip stays first in both viewers, regardless of vibration mode. -->
+<div class="playback-strip" role="group" aria-label="フレーム再生操作">
+<button id="prevTen" aria-label="10枚前" title="10枚前" disabled>◀◀</button>
+<button id="prev" aria-label="1枚前" title="1枚前" disabled>◀</button>
+<button id="autoPlay" type="button" disabled aria-pressed="false">▶ 自動送り</button>
+<button id="next" aria-label="1枚先" title="1枚先" disabled>▶</button>
+<button id="nextTen" aria-label="10枚先" title="10枚先" disabled>▶▶</button>
+<label class="playback-control">速度 <select id="playbackSpeed" aria-label="自動送り速度"><option value="1">1 枚/秒</option><option value="2">2 枚/秒</option><option value="4" selected>4 枚/秒</option><option value="8">8 枚/秒</option><option value="12">12 枚/秒</option><option value="24">24 枚/秒</option><option value="48">48 枚/秒</option></select></label>
+</div>
 <label class="playback-control">表示 <select id="viewerMode" aria-label="反応経路と振動の切替"><option value="reaction">反応経路</option><option value="vibration">振動アニメーション</option></select></label>
 <label id="vibrationPeakControl" class="playback-control" hidden>極大点 <select id="vibrationPeak" aria-label="振動する極大点"></select></label>
 <label id="vibrationModeControl" class="playback-control" hidden>振動モード <select id="vibrationMode" aria-label="振動モード"></select></label>
@@ -32,12 +43,7 @@
 <button id="saveFinalImage" disabled>この画像をFINALに使用</button>
 <select id="displayMode" aria-label="分子の表示形式"></select>
 <button id="numbers" aria-pressed="false" disabled>原子番号を表示</button>
-<button id="prevTen" aria-label="10枚前" title="10枚前" disabled>◀◀</button>
-<button id="prev" aria-label="1枚前" title="1枚前" disabled>◀</button>
-<button id="next" aria-label="1枚先" title="1枚先" disabled>▶</button>
-<button id="nextTen" aria-label="10枚先" title="10枚先" disabled>▶▶</button>
-<button id="autoPlay" type="button" disabled aria-pressed="false">▶ 自動送り</button>
-<label class="playback-control">速度 <select id="playbackSpeed" aria-label="自動送り速度"><option value="1">1 枚/秒</option><option value="2">2 枚/秒</option><option value="4" selected>4 枚/秒</option><option value="8">8 枚/秒</option><option value="12">12 枚/秒</option></select></label>
+
 <div class="frame-import-actions">
 <button id="importStart" class="primary" disabled>反応ライブラリに出発物として保存</button>
 <div class="frame-import-options">
