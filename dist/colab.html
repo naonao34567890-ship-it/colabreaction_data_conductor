@@ -47,7 +47,7 @@
 .colab-meta { display: flex; gap: 16px; overflow-x: auto; white-space: nowrap; padding: 8px 0; }
 .colab-images figure { min-width: 0; margin: 0; }
 .colab-images img { display: block; width: 100%; height: 150px; object-fit: contain; }
-</style><link rel="stylesheet" href="ui-controls.css">
+</style><link rel="stylesheet" href="ui-controls.css"><link rel="stylesheet" href="library-shell.css">
 </head>
 <body><div class="page" id="colabPage">
 <nav class="mode-switch" aria-label="ナビゲーション">
@@ -58,38 +58,44 @@
 <a class="mode-link" href="orca.html">ORCA計算結果</a>
 </nav>
 <section id="colabPanel" aria-labelledby="colabTitle">
-<div id="colabDrop">
-<label>計算結果のZIPまたはフォルダーをドロップ
-<input id="colabZip" type="file" multiple accept=".zip,application/zip" disabled>
-</label>
-<label>フォルダーを選択 <input id="colabFolder" type="file" webkitdirectory multiple disabled></label>
-</div>
+<header class="library-shell-header">
+  <div class="heading library-shell-heading"><div><div class="eyebrow">MOLECULAR WORKSPACE / 04</div><h1 id="colabTitle">Colab計算記録</h1></div><div class="badge">Google Drive / Colab</div></div>
+  <div id="colabControls" class="toolbar tidy-toolbar" aria-label="Colab計算記録の操作">
+    <div class="colab-connect-group tidy-group"><span class="colab-action-label">Google Drive</span>
+      <button id="driveConnect" type="button" class="primary">Google Driveに接続</button>
+      <button id="driveTemporary" type="button">一時接続</button>
+    </div>
+    <details class="colab-maintenance"><summary>記録の管理・メンテナンス</summary><div class="colab-maintenance-content">
+      <button id="replotExisting" type="button" disabled title="保存済みのDMF_energy.csvから全Energy.pngを新しい目盛り仕様で再生成します">既存のエネルギー画像を更新</button>
+    </div></details>
+  </div>
+  <div class="row library-list-row">
+    <h2>すべての計算記録</h2><span id="colabCount" class="muted"></span><span class="spacer"></span>
+    <label>並び順 <select id="colabOrder" autocomplete="off">
+      <option value="name-asc">名前順</option>
+      <option value="added-asc">追加時間昇順</option>
+      <option value="added-desc">追加時間降順</option>
+      <option value="name-desc">名前逆順</option>
+      <option value="id">内部ID順</option>
+      <option value="classification" selected>分類の名前順</option>
+    </select></label>
+  </div>
+</header>
 <div id="colabScroll" role="region" aria-label="Colab計算記録の操作・ログ・一覧" tabindex="0">
-<h1 id="colabTitle">Colab計算記録</h1>
-<div id="colabControls">
-<div class="colab-connect-group"><span class="colab-action-label">Google Drive</span>
-<button id="driveConnect" type="button" class="primary">Google Driveに接続</button>
-<button id="driveTemporary" type="button">一時接続</button></div>
-<details class="colab-maintenance"><summary>記録の管理・メンテナンス</summary><div class="colab-maintenance-content">
-<button id="replotExisting" type="button" disabled title="保存済みのDMF_energy.csvから全Energy.pngを新しい目盛り仕様で再生成します">既存のエネルギー画像を更新</button>
-</div></details>
+<div id="colabDrop" class="library-shell-drop">
+  <label>計算結果のZIPまたはフォルダーをドロップ
+    <input id="colabZip" type="file" multiple accept=".zip,application/zip" disabled>
+  </label>
+  <label>フォルダーを選択 <input id="colabFolder" type="file" webkitdirectory multiple disabled></label>
+</div>
 <form id="driveSetup" hidden>
-<label>Googleクライアントシークレット
-<input id="driveSecret" type="password" autocomplete="new-password" required>
-</label>
-<button type="submit">設定を保存</button>
+  <label>Googleクライアントシークレット<input id="driveSecret" type="password" autocomplete="new-password" required></label>
+  <button type="submit">設定を保存</button>
 </form>
-<p id="colabStatus" role="status">Google Driveに接続すると計算記録を表示します。</p>
-<p id="colabQueue" role="status">待機中 0件</p>
-<div id="colabErrors" role="status"></div>
-<label>並び順 <select id="colabOrder" autocomplete="off">
-<option value="name-asc">名前順</option>
-<option value="added-asc">追加時間昇順</option>
-<option value="added-desc">追加時間降順</option>
-<option value="name-desc">名前逆順</option>
-<option value="id">内部ID順</option>
-<option value="classification" selected>分類の名前順</option>
-</select></label>
+<div class="library-shell-status">
+  <p id="colabStatus" role="status">Google Driveに接続すると計算記録を表示します。</p>
+  <p id="colabQueue" role="status">待機中 0件</p>
+  <div id="colabErrors" role="status"></div>
 </div>
 <div id="colabResults" role="region" aria-label="計算記録一覧" tabindex="0">
 <div id="colabJobs"></div>
