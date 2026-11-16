@@ -502,7 +502,7 @@ export function createDriveStore(local, options = {}) {
     queue = next;
     return next;
   }
-  async function commit(targets, build, { expectedTags, expectedVersions } = {}) {
+  async function commit(targets, build, { expectedTags, expectedVersions, checkTagsVersion = false } = {}) {
     if (offline)
       throw Error(
         'オフラインのためDriveに保存できません。編集内容は画面に残っています。接続が戻ってから保存してください。',
@@ -527,7 +527,8 @@ export function createDriveStore(local, options = {}) {
               '別のタブ・端末で内容が更新されました。編集内容は画面に残っています。最新の内容を確認してから保存してください。',
             );
           }
-        if (expectedTags !== undefined && head.tagsVersion !== expectedTags)
+        if ((checkTagsVersion || expectedTags !== undefined) &&
+            (head.tagsVersion ?? null) !== (expectedTags ?? null))
           throw Error('別の画面でタグが更新されました。タグ一覧を開き直してください。');
         const change = await build();
         if (
@@ -871,7 +872,7 @@ export function createDriveStore(local, options = {}) {
         ...(tagCatalog!==undefined?{tags:tagCatalog}:
           changes.some(change=>change.kind==='m'&&change.action==='put')?
           {tags:[...new Map([...head.tags,...changes.filter(change=>change.kind==='m'&&change.action==='put').flatMap(change=>(change.meta.tags||[]).map(name=>({name})))].map(tag=>[tag.name,tag])).values()]}:{})
-      }),{expectedVersions,...(tagCatalog!==undefined?{expectedTags:tagVersion}:{})});
+      }),{expectedVersions,...(tagCatalog!==undefined?{expectedTags:tagVersion,checkTagsVersion:true}:{})});
     },
     get reactionDatabaseName() {
       return reactName;
