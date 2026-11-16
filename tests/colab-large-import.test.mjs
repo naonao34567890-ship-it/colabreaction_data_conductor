@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {zipSync,Unzip,UnzipInflate,unzipSync} from '../dist/vendor/fflate.mjs';
+import {zipSync,unzipSync} from '../dist/vendor/fflate.mjs';
 
 // Execute the actual import routines with a local ZIP and synthetic >1 GiB file.
 // No Google Drive connection or large test fixture is required.
@@ -17,23 +17,18 @@ assert.doesNotMatch(readZipSource,/file\.arrayBuffer\(/);
 assert.doesNotMatch(readZipSource,/100\s*\*\s*1024/);
 assert.doesNotMatch(source,/計算結果が100 MiBを超えています/);
 
-const parseFunctions=new Function('Unzip','UnzipInflate','status',readZipSource
- .replace("await import('./vendor/fflate.mjs')",'Promise.resolve({Unzip,UnzipInflate})')
- +'return {readZip,readFolder};');
-const {readZip,readFolder}=parseFunctions(Unzip,UnzipInflate,()=>{});
+// ZIP-to-OPFS content and cleanup are tested in colab-zip-spool.test.mjs.
 const zip=zipSync({
  'calculation/':new Uint8Array(0),
- 'calculation/reactant.xyz':new TextEncoder().encode('1\n\nH 0 0 0\n'),
- 'calculation/product.xyz':new TextEncoder().encode('1\n\nH 0 0 0\n'),
- 'calculation/DMF_energy.csv':new TextEncoder().encode('step,energy\n0,-1\n'),
+ 'calculation/reactant.xyz':new TextEncoder().encode('1\\n\\nH 0 0 0\\n'),
+ 'calculation/product.xyz':new TextEncoder().encode('1\\n\\nH 0 0 0\\n'),
+ 'calculation/DMF_energy.csv':new TextEncoder().encode('step,energy\\n0,-1\\n'),
 });
-const files=await readZip(new Blob([zip]));
-assert.deepEqual([...files.keys()].sort(),[
- 'calculation/DMF_energy.csv','calculation/product.xyz','calculation/reactant.xyz']);
-assert.equal(await files.get('calculation/reactant.xyz').text(),'1\n\nH 0 0 0\n');
 assert.deepEqual(Object.keys(unzipSync(zip)).sort(),[
  'calculation/','calculation/DMF_energy.csv','calculation/product.xyz','calculation/reactant.xyz']);
 const huge={name:'1GiB-plus.gbw',size:1024**3+120};
+const folderSource=section('function readFolder(files, relativePath) {','async function importKey(name) {');
+const readFolder=new Function(folderSource+'return readFolder;')();
 assert.equal(readFolder([huge],f=>f.name).get(huge.name),huge);
 
 let offset=0,calls=0;
