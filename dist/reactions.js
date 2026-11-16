@@ -266,7 +266,7 @@ control('reactionClassify').onclick=()=>{
 };
 control('reactionClassificationCancel').onclick=()=>control('reactionClassificationDialog').close();
 async function applyClassification(ids,value){
- for(const id of ids)await ReactionStore.update(id,{classification:value});
+ await ReactionStore.classify(ids,value);
  await renderReactions();
 }
 control('reactionClassificationApply').onclick=()=>void changeSelection(async ids=>{
