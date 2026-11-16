@@ -350,12 +350,13 @@ export function startFastLocalSync(scope){
         // Only simultaneous divergent edits require confirmation.
         const needsReview=conflicts.length>0;
         const signature=JSON.stringify(conflicts.map(c=>[c.key,c.hash,c.version]).sort());
+        let decision='safe';
         if(needsReview){
           status('同期に確認が必要（競合 '+conflicts.length+'件）');
           if(!manual&&signature===lastConflict)return;
           lastConflict=signature;
           localStorage.setItem(conflictKey,signature);
-          const decision=await showConflictDialog(conflicts.length,conflicts.filter(c=>c.key!=='tags'&&local.has(c.key)).length);
+          decision=await showConflictDialog(conflicts.length,conflicts.filter(c=>c.key!=='tags'&&local.has(c.key)).length);
           if(decision==='cancel'){
             status('競合の同期を保留しました（データは保持）');
             return;
@@ -383,7 +384,10 @@ export function startFastLocalSync(scope){
         const remainingConflicts=conflicts.filter(c=>!resolvedConflicts.has(c.key));
         // push and pull contain only non-conflicting, single-sided changes.
         // Local-wins overrides are written with optimistic Drive version checks.
-        const remoteChanges=[...push,...overrides];
+        // The local-wins action promises no deletion; defer even ordinary local deletions.
+        const deferredDeletes=localWins?push.filter(c=>c.action==='delete'):[];
+        for(const change of deferredDeletes)safe.delete(change.kind+':'+change.id);
+        const remoteChanges=[...push.filter(c=>!localWins||c.action!=='delete'),...overrides];
         const localChanges=pull;
         if(remoteChanges.length||pushTags){
           status('Driveへバックアップ '+remoteChanges.length+'件…');
