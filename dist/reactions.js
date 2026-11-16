@@ -360,7 +360,7 @@ document.addEventListener('drop',event=>{
  event.preventDefault();
  if(changing)return;
  const files=[...event.dataTransfer.files];
- if(files.length!==1||!/\\.zip$/i.test(files[0].name)){
+ if(files.length!==1||!/\.zip$/i.test(files[0].name)){
   status.textContent='対応情報付き反応ZIPを1つずつドロップしてください。';return;
  }
  void importReactionZip(files[0]);
