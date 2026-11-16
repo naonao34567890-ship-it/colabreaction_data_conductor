@@ -26,7 +26,7 @@
 <div class="page">
 <header>
 <div class="heading"><div><div class="eyebrow">COLAB / REACTION PATH</div><h1 id="title">反応経路ビューア</h1></div><span class="badge">XYZ · フレーム表示</span></div>
-<div class="toolbar">
+<div class="toolbar viewer-toolbar">
 <!-- The playback strip stays first in both viewers, regardless of vibration mode. -->
 <div class="playback-strip" role="group" aria-label="フレーム再生操作">
 <button id="prevTen" aria-label="10枚前" title="10枚前" disabled>◀◀</button>
@@ -35,15 +35,8 @@
 <button id="next" aria-label="1枚先" title="1枚先" disabled>▶</button>
 <button id="nextTen" aria-label="10枚先" title="10枚先" disabled>▶▶</button>
 <label class="playback-control">速度 <select id="playbackSpeed" aria-label="自動送り速度"><option value="1">1 枚/秒</option><option value="2">2 枚/秒</option><option value="4" selected>4 枚/秒</option><option value="8">8 枚/秒</option><option value="12">12 枚/秒</option><option value="24">24 枚/秒</option><option value="48">48 枚/秒</option></select></label>
-</div>
-<label class="playback-control">表示 <select id="viewerMode" aria-label="反応経路と振動の切替"><option value="reaction">反応経路</option><option value="vibration">振動アニメーション</option></select></label>
-<label id="vibrationPeakControl" class="playback-control" hidden>極大点 <select id="vibrationPeak" aria-label="振動する極大点"></select></label>
-<label id="vibrationModeControl" class="playback-control" hidden>振動モード <select id="vibrationMode" aria-label="振動モード"></select></label>
-<button id="saveStartImage" disabled>この画像をSTARTに使用</button>
-<button id="saveFinalImage" disabled>この画像をFINALに使用</button>
-<select id="displayMode" aria-label="分子の表示形式"></select>
-<button id="numbers" aria-pressed="false" disabled>原子番号を表示</button>
-
+</div><div class="viewer-tool-group" aria-label="再生表示設定"><span class="viewer-tool-label">表示</span><label class="playback-control">表示 <select id="viewerMode" aria-label="反応経路と振動の切替"><option value="reaction">反応経路</option><option value="vibration">振動アニメーション</option></select></label><label id="vibrationPeakControl" class="playback-control" hidden>極大点 <select id="vibrationPeak" aria-label="振動する極大点"></select></label><label id="vibrationModeControl" class="playback-control" hidden>振動モード <select id="vibrationMode" aria-label="振動モード"></select></label><select id="displayMode" aria-label="分子の表示形式"></select><button id="numbers" aria-pressed="false" disabled>原子番号を表示</button></div>
+<div class="viewer-tool-group viewer-save-group" aria-label="構造の保存"><span class="viewer-tool-label">構造の保存</span>
 <div class="frame-import-actions">
 <button id="importStart" class="primary" disabled>反応ライブラリに出発物として保存</button>
 <div class="frame-import-options">
@@ -53,9 +46,12 @@
 <button id="importFrameEdit" disabled>反応ライブラリに出発物として保存してエディタを開く</button>
 </div>
 </div>
-<button id="downloadFrame" disabled>この構造をダウンロード</button>
-<button id="importAll" disabled>すべての構造を取り込み</button>
 <button id="importMany" disabled>反応の始点・終点を選ぶ</button>
+</div>
+<details class="viewer-options-menu"><summary>その他の保存・出力</summary><div class="viewer-options-menu-content">
+<span class="viewer-tool-label">画像の保存</span><button id="saveStartImage" disabled>この画像をSTARTに使用</button><button id="saveFinalImage" disabled>この画像をFINALに使用</button><button id="downloadFrame" disabled>この構造をダウンロード</button><button id="importAll" disabled>すべての構造を取り込み</button>
+</div></details>
+utton>
 </div>
 <p id="slideStatus" class="status" role="status">XYZを読み込み中…</p>
 </header>
