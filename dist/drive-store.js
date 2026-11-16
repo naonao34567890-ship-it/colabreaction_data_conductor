@@ -1085,6 +1085,19 @@ export function createDriveStore(local) {
         async () => ({ deletes: ids.map((id) => 'r:' + id) }),
       );
     },
+    async reactionClassify(ids,classification){
+      if(!ids.length)return;
+      if(classification!==null&&typeof classification!=='string')throw Error('分類名が不正です。');
+      await ready;
+      return commit(ids.map(id=>'r:'+id),async()=>({
+        puts:await parallel(ids,async id=>{
+          const old=await readRecord('r',id);
+          if(!old)throw Error('反応が見つかりません。');
+          const body={...old,classification};
+          return {kind:'r',meta:reactionMeta(body),body};
+        })
+      }));
+    },
     async reactionTag(ids, name, attach) {
       if (!ids.length) return;
       await ready;
