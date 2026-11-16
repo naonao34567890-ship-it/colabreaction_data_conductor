@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ORCA計算結果ギャラリー — Mol Bench</title>
-<link rel="stylesheet" href="library-nav.css">
+<link rel="stylesheet" href="catalogue-base.css"><link rel="stylesheet" href="library-nav.css">
 <style>
 
-button,select,input{font:inherit;color:inherit}button,select,input[type=search]{background:#192521;border:1px solid var(--border);border-radius:7px;padding:8px 11px}button{cursor:pointer}button:hover{border-color:var(--accent)}button:disabled{opacity:.45;cursor:not-allowed}a{color:var(--accent)}
+a{color:var(--accent)}
 .muted{color:var(--muted)}.toolbar input{max-width:270px}
 #drop{padding:25px;border:1px dashed #618078;background:#16221e;border-radius:12px;text-align:center;cursor:pointer}#drop.drag{background:#243f35}#drop p{margin:6px}#status{min-height:25px}
 #cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px;margin:15px 0}.card{padding:14px;background:#17201d;border:1px solid var(--border);border-radius:12px;min-width:0}.card h2{overflow-wrap:anywhere}.meta{font-size:.89rem;color:var(--muted);display:grid;gap:2px}.status-chip{display:inline-block;border-radius:12px;padding:2px 9px;font-size:.78rem;background:#46544e;color:#eef5f2}.ok{background:#1c5744}.fail{background:#70383a}.preview{height:150px;background:#0b1311;border-radius:8px;display:flex;align-items:center;justify-content:center;margin:12px 0}.preview img{max-height:100%;max-width:100%;object-fit:contain}.card-actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px}.card-actions button{padding:6px 9px;font-size:.85rem}
@@ -21,7 +21,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:32vh;overflow:auto;pa
 .orca-export-options{position:absolute;top:calc(100% + 5px);right:0;z-index:20;min-width:225px;display:grid;gap:6px;padding:10px;border:1px solid var(--border);background:#192521;border-radius:9px;box-shadow:0 8px 24px #0008}
 .orca-export-options button{white-space:normal;text-align:left}
 
-#drop strong{font-size:1rem}
+#drop strong{font-size:13px}
 #drop button:first-of-type{border-color:#548b78;font-weight:700}
 @media(max-width:650px){.orca-search-group{flex-basis:100%}.orca-export-options{right:auto;left:0}}
 @media(max-width:650px){#cards{grid-template-columns:1fr}}
@@ -54,7 +54,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:32vh;overflow:auto;pa
   </div>
 </header>
 <main class="workspace orca-workspace" id="orcaScroll">
-<div class="heading library-shell-heading"><div><div class="eyebrow">MOLECULAR WORKSPACE / 05</div><h1>ORCA計算結果ギャラリー</h1></div><div class="badge">ORCA / ローカル記録</div></div>
+<div class="heading library-shell-heading"><div><div class="eyebrow">MOLECULAR WORKSPACE / 05</div><h1>ORCA計算結果</h1></div><div class="badge">ORCA / ローカル記録</div></div>
 <p class="muted">ORCA計算のログ・構造・画像をまとめて保存・閲覧します。現在はブラウザのIndexedDBへ保存し、Google Driveとの通信は行いません。</p>
 <section id="drop" tabindex="0" role="button" aria-label="ORCA計算結果のZIPまたはファイルを読み込む" class="library-shell-drop">
 <strong>ORCA計算結果のZIP、または複数のファイルをドロップ</strong>
