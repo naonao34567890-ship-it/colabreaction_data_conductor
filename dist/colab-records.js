@@ -587,13 +587,17 @@ async function downloadArchive(job, originals, button) {
             const {done,value}=await reader.read();
             if(done)break;
             item.push(value,false);
+            // Backpressure: do not buffer gigabytes of pending writes.
+            if(output)await write;
             if(failure)throw failure;
           }
         }finally{reader.releaseLock();}
       }else{
         item.push(new Uint8Array(await response.arrayBuffer()),false);
+        if(output)await write;
       }
       item.push(new Uint8Array(0),true);
+      if(output)await write;
       if(failure)throw failure;
     }
     button.textContent='ZIPを完成中…';
