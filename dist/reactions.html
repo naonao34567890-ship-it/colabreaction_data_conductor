@@ -11,11 +11,12 @@
 <script src="reaction-store.js"></script>
 <script src="worker.js"></script>
 <script src="reaction-archive.js"></script>
+<script src="molecular-clipboard.js"></script>
 <script defer src="reactions.js"></script>
 <style>
 .reaction-workspace { overflow-y: auto; }
 .reaction-card.selected { outline: 2px solid var(--accent); outline-offset: -2px; }
-.reaction-selection-box { position: fixed; pointer-events: none; border: 1px solid var(--accent); background: #62d6bf22; z-index: 20; }
+.reaction-selection-box { position: absolute; pointer-events: none; border: 1px solid var(--accent); background: #62d6bf22; z-index: 20; }
 .reaction-day { border-top: 1px solid var(--border); padding-top: 10px; margin-bottom: 16px; }
 .reaction-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(min(100%,220px),1fr)); gap: 12px; margin-top: 8px; }
 .reaction-card { background: #191e1e; border: 1px solid var(--border); border-radius: 10px; padding: 10px; min-width: 0; }
@@ -42,9 +43,15 @@
     <h1>反応ライブラリ</h1>
     <p class="muted">ColabReaction用のSTARTとFINISHの構造を、反応ごとにまとめる場所です。</p>
     <div class="toolbar">
+      <button id="reactionCopy" disabled title="Ctrl+C">コピー</button><button id="reactionPaste" title="Ctrl+V">貼り付け</button>
       <select id="thumbnailMode" aria-label="サムネイルの表示形式"></select>
+      <label>並べ替え<select id="reactionOrder">
+       <option value="classification" selected>分類の名前順</option>
+       <option value="added-desc">追加時間降順</option><option value="added-asc">追加時間昇順</option>
+       <option value="name-asc">名前順</option><option value="name-desc">名前逆順</option><option value="id">内部ID順</option>
+      </select></label>
       <button id="reactionAll">全選択</button><button id="reactionNone">全解除</button>
-      <button id="reactionTag" disabled>タグ付け</button><button id="reactionDelete" disabled>削除</button>
+      <button id="reactionTag" disabled>タグ付け</button><button id="reactionClassify" disabled>分類</button><button id="reactionDelete" disabled>削除</button>
       <button id="reactionArchive" disabled>選択分を対応情報付きZIPで保存</button>
       <button id="reactionArchiveAll" disabled>全件を対応情報付きZIPで保存</button>
       <button id="reactionZip" disabled>選択分をXYZのみのZIPで保存</button><span id="reactionSelection" class="muted"></span>
@@ -58,6 +65,18 @@
     </section>
     <p id="reactionStatus" class="muted" role="status">読み込み中…</p>
     <div id="reactionDays"></div>
+    <dialog id="reactionClassificationDialog">
+     <h2>反応の分類</h2>
+     <label>分類名（既存の分類も選択可能）<input id="reactionClassificationName" list="reactionClassificationNames" maxlength="200" placeholder="分類名"></label>
+     <datalist id="reactionClassificationNames"></datalist>
+     <div class="dialog-actions">
+      <button type="button" id="reactionClassificationCancel">閉じる</button>
+      <button type="button" id="reactionClassificationRemove">分類を外す</button>
+      <button type="button" id="reactionClassificationRename">分類名を一括変更</button>
+      <button type="button" class="primary" id="reactionClassificationApply">選択反応に分類を設定</button>
+     </div>
+     <p class="muted">一括変更は選択反応が所属する分類を、新しい分類名にまとめて変更します。</p>
+    </dialog>
   </main>
 </div>
 <dialog id="reactionTagDialog">
