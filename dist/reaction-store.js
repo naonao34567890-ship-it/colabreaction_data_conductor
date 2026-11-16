@@ -133,5 +133,15 @@ const ReactionStore = (() => {
  }
  const api={read,list:()=>read(),update,importRecords,remove,tag,classify,cacheStartPreview,clearStartPreviews,create:(slot,structure,name)=>createReaction({[slot]:structure},name),createReaction};
  if(Mol.cloud){for(const [key,method]of Object.entries({read:'reactionRead',list:'reactionList',update:'reactionUpdate',remove:'reactionRemove',tag:'reactionTag',classify:'reactionClassify',createReaction:'reactionCreate',importRecords:'reactionImport'}))api[key]=(...args)=>Mol.cloud.call(method,...args);api.create=(slot,structure,name)=>Mol.cloud.call('reactionCreate',{[slot]:structure},name);}
+ if(Mol.localFast){
+  for(const method of ['update','importRecords','remove','tag','classify','create','createReaction']){
+   const original=api[method];
+   api[method]=async(...args)=>{
+    const value=await original(...args);
+    document.dispatchEvent(new Event('mol-bench-local-mutated'));
+    return value;
+   };
+  }
+ }
  return api;
 })();
