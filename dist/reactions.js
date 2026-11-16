@@ -222,6 +222,75 @@ function selectCard(id,additive) {
  if(remove)selected.delete(id);else selected.add(id);
  selectionUI();
 }
+
+/* Clipboard: preserve complete reaction records, but allocate new IDs on paste. */
+async function copyReactions(){
+ if(changing||!selected.size)return;
+ const items=(await Promise.all([...selected].map(id=>ReactionStore.read(id)))).filter(Boolean);
+ await MolClipboard.copy('reactions',items);
+ status.textContent=items.length+' 件の反応をコピーしました。';
+}
+async function pasteReactions(){
+ if(changing)return;
+ const items=await MolClipboard.paste('reactions');
+ if(!items?.length)return;
+ changing=true;selectionUI();
+ try{
+  let copied=0;
+  for(const item of items){
+   if(typeof item.name!=='string'||!item.name||
+      !['START','FINISH'].some(slot=>Array.isArray(item[slot]?.atoms)&&item[slot].atoms.length))continue;
+   if(['START','FINISH'].some(slot=>item[slot]&&!Mol.checkElectronicState(item[slot]).valid))continue;
+   const {id,createdAt,name,startPreview,_driveFileId,...rest}=item;
+   await ReactionStore.createReaction(rest,name);
+   copied++;
+  }
+  await renderReactions();
+  status.textContent=copied+' 件の反応を貼り付けました。';
+ }finally{changing=false;selectionUI();}
+}
+control('reactionCopy').onclick=()=>void copyReactions().catch(e=>status.textContent=e.message);
+control('reactionPaste').onclick=()=>void pasteReactions().catch(e=>status.textContent=e.message);
+window.addEventListener('keydown',event=>{
+ if(!(event.ctrlKey||event.metaKey)||event.altKey||event.shiftKey||MolClipboard.editable(event))return;
+ const key=event.key.toLowerCase();
+ if(key==='c'&&selected.size){event.preventDefault();void copyReactions().catch(e=>status.textContent=e.message);}
+ if(key==='v'){event.preventDefault();void pasteReactions().catch(e=>status.textContent=e.message);}
+});
+/* Classification: assign/remove/rename on the reaction record itself. */
+control('reactionClassify').onclick=()=>{
+ const names=[...new Set(records.map(x=>x.classification).filter(Boolean))].sort(Mol.compareTagNames);
+ control('reactionClassificationNames').replaceChildren(...names.map(n=>new Option(n)));
+ control('reactionClassificationName').value='';
+ control('reactionClassificationDialog').showModal();
+};
+control('reactionClassificationCancel').onclick=()=>control('reactionClassificationDialog').close();
+async function applyClassification(ids,value){
+ for(const id of ids)await ReactionStore.update(id,{classification:value});
+ await renderReactions();
+}
+control('reactionClassificationApply').onclick=()=>void changeSelection(async ids=>{
+ const value=control('reactionClassificationName').value.trim();
+ if(!value||value.length>200)throw Error('分類名は1〜200文字で指定してください。');
+ await applyClassification(ids,value);
+ control('reactionClassificationDialog').close();
+});
+control('reactionClassificationRemove').onclick=()=>void changeSelection(async ids=>{
+ await applyClassification(ids,null);
+ control('reactionClassificationDialog').close();
+});
+control('reactionClassificationRename').onclick=async()=>{
+ if(changing||!selected.size)return;
+ const oldNames=new Set(records.filter(r=>selected.has(r.id)).map(r=>r.classification).filter(Boolean));
+ const name=control('reactionClassificationName').value.trim();
+ if(oldNames.size!==1){status.textContent='同一分類の反応を選んでください。';return;}
+ if(!name||name.length>200){status.textContent='1〜200文字の分類名を指定してください。';return;}
+ const from=[...oldNames][0];
+ changing=true;selectionUI();
+ try{await applyClassification(records.filter(r=>r.classification===from).map(r=>r.id),name);control('reactionClassificationDialog').close();}
+ catch(e){status.textContent=e.message;}finally{changing=false;selectionUI();}
+};
+
 control('reactionAll').onclick=()=>{for(const item of records)selected.add(item.id);selectionUI();};
 control('reactionNone').onclick=()=>{selected.clear();selectionUI();};
 async function changeSelection(action) {
