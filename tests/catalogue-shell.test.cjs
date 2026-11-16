@@ -26,7 +26,7 @@ assert.match(orca,/<header class="library-shell-header">/,'ORCA should use fixed
 assert.match(orca,/<main class="workspace orca-workspace" id="orcaScroll">/,'ORCA should have an independent catalogue scroll region');
 assert.doesNotMatch(orca,/class="main"/,'ORCA should not retain the former standalone centered frame');
 const shell=fs.readFileSync(path.join(root,'library-shell.css'),'utf8');
-assert.match(shell,/#orcaPage\\s*\\{[\\s\\S]*?height:100dvh/,'ORCA shell should fill the viewport');
+assert.match(shell,/#orcaPage\s*\{[\s\S]*?height:100dvh/,'ORCA shell should fill the viewport');
 for(const filename of ['reactions.html','colab.html','orca.html']){
  const html=fs.readFileSync(path.join(root,filename),'utf8');
  assert.match(html, /class="[^"]*tidy-import[^"]*"/,filename+': missing top file import toolbar');
