@@ -1,0 +1,35 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {zipSync,Unzip,UnzipInflate} from '../dist/vendor/fflate.mjs';
+
+// Exercise the actual streaming ZIP parser without initializing the ORCA browser UI.
+const source=readFileSync(new URL('../dist/orca-gallery.js',import.meta.url),'utf8');
+const between=(start,end)=>{const a=source.indexOf(start),b=source.indexOf(end,a);assert.ok(a>=0&&b>a);return source.slice(a,b);};
+const parseSource=between('async function parseZip(file){','async function readInputs(files){');
+const readSource=between('async function readInputs(files){','async function readLogWindow(blob){');
+const logSource=between('async function readLogWindow(blob){','async function importFiles(files){');
+assert.doesNotMatch(source,/const MAX=512\*1024\*1024/);
+assert.doesNotMatch(readSource,/file\.size\s*>/,'raw files must not have an arbitrary hard size cap');
+assert.doesNotMatch(parseSource,/file\.arrayBuffer\(/,'ZIP archives must not be read into a single buffer');
+assert.match(parseSource,/file\.stream\(\)\.getReader\(\)/);
+const supported=/\.(?:out|log|xyz|png|jpe?g|json|inp|engrad|hess|gbw|trj)$/i;
+const suffix=/\.(?:out|log|xyz|zip|json|inp|png|jpe?g|engrad|hess|gbw|trj)$/i;
+const baseName=name=>String(name).split(/[\\/]/).pop().replace(suffix,'');
+const create=new Function('Unzip','UnzipInflate','supported','baseName',parseSource+readSource+logSource+'return {parseZip,readInputs,readLogWindow};');
+const {parseZip,readInputs,readLogWindow}=create(Unzip,UnzipInflate,supported,baseName);
+const zipped=zipSync({'job.out':new TextEncoder().encode('FINAL SINGLE POINT ENERGY -100.123\nORCA TERMINATED NORMALLY'),'job.gbw':new Uint8Array(1024),'ignored.bin':new Uint8Array(2048)});
+const archive=new Blob([zipped]);
+const unpacked=await parseZip({stream:()=>archive.stream()});
+assert.deepEqual(unpacked.map(x=>x.path).sort(),['job.gbw','job.out']);
+assert.equal(await unpacked.find(x=>x.path==='job.out').blob.text(),'FINAL SINGLE POINT ENERGY -100.123\nORCA TERMINATED NORMALLY');
+assert.equal(unpacked.find(x=>x.path==='job.gbw').blob.size,1024);
+const giant={name:'huge.gbw',size:1024*1024*1024+123};
+const batches=await readInputs([giant]);
+assert.equal(batches.length,1);
+assert.equal(batches[0].files[0].blob,giant);
+const bigLog=new Blob(['START\n',new Uint8Array(20*1024*1024),'\nFINAL SINGLE POINT ENERGY -1.0']);
+const preview=await readLogWindow(bigLog);
+assert.ok(preview.includes('START'));
+assert.ok(preview.includes('FINAL SINGLE POINT ENERGY -1.0'));
+assert.ok(preview.length<20*1024*1024);
+console.log('PASS ORCA ZIP streaming, >1GiB raw file acceptance, and bounded large-log decoding');
