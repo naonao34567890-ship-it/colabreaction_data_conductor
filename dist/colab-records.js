@@ -8,6 +8,15 @@ const get = id => document.getElementById(id);
 const connect = get('driveConnect');
 const input = get('colabZip');
 const folderInput = get('colabFolder');
+const fileButton = get('colabFileButton');
+const folderButton = get('colabFolderButton');
+fileButton.onclick = () => {if (!input.disabled) input.click();};
+folderButton.onclick = () => {if (!folderInput.disabled) folderInput.click();};
+function updateImportButtons(){
+  fileButton.disabled = input.disabled;
+  folderButton.disabled = folderInput.disabled;
+}
+
 const jobs = get('colabJobs');
 const order = get('colabOrder');
 const replotButton = get('replotExisting');
@@ -66,6 +75,7 @@ async function request(url, options = {}, retry = true) {
     connectionState = null;
     token = null;
     input.disabled = folderInput.disabled = true;
+    updateImportButtons();
     throw Error('接続の有効期限が切れました。Google Driveに再接続してください。');
   }
   if (!response.ok) throw Error('Google Driveへのアクセスに失敗しました（' + response.status + '）。');
@@ -1000,6 +1010,7 @@ async function authorize(response) {
   token = response.access_token;
   root = null;
   connect.disabled = input.disabled = folderInput.disabled = replotButton.disabled = true;
+  updateImportButtons();
   try {
     status('Google Driveの計算記録を読み込んでいます…');
     await withRecordLoading(async () => {
@@ -1010,6 +1021,7 @@ async function authorize(response) {
     });
     status(cards.size + ' 件の計算記録。ZIPまたはフォルダーを追加できます。');
     input.disabled = folderInput.disabled = false;
+    updateImportButtons();
     replotButton.disabled = false;
     connect.textContent = 'Google Driveに再接続';
   } catch (error) {
