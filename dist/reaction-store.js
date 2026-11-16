@@ -138,6 +138,7 @@ const ReactionStore = (() => {
    const original=api[method];
    api[method]=async(...args)=>{
     const value=await original(...args);
+    localStorage.setItem('mol-bench-fast-sync-dirty-'+Mol.localFastScope.sub,crypto.randomUUID());
     document.dispatchEvent(new Event('mol-bench-local-mutated'));
     return value;
    };
