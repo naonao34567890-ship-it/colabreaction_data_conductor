@@ -210,34 +210,52 @@ async function outputValue(trajectory, field) {
 
 async function readZip(file) {
   status('ZIPを読み込んでいます…');
-  if (file.size > 50 * 1024 ** 2) throw Error('ZIPは50 MiB以内にしてください。');
-  const {unzipSync} = await import('https://cdn.jsdelivr.net/npm/fflate@0.8.2/esm/browser.js');
-  let total = 0, count = 0;
-  const entries = unzipSync(new Uint8Array(await file.arrayBuffer()), {filter(entry) {
-    total += entry.originalSize;
-    if (total > 100 * 1024 ** 2 || ++count > 500) throw Error('展開後は100 MiB・500項目までです。');
-    return !entry.name.endsWith('/');
-  }});
+  const {Unzip,UnzipInflate} = await import('./vendor/fflate.mjs');
   const files = new Map();
-  for (const [path, bytes] of Object.entries(entries)) {
-    const parts = path.split('/');
-    if (path.includes('\\') || parts.some(part => !part || part === '.' || part === '..')) {
-      throw Error('ZIP内に無効なファイルパスがあります。');
+  let count = 0, failure = null;
+  const unzip = new Unzip(entry => {
+    const path = entry.name, parts = path.split('/');
+    if (path.startsWith('/') || path.includes('\\') ||
+        parts.some(part => !part || part === '.' || part === '..') || files.has(path)) {
+      throw Error('ZIP内に無効または重複したファイルパスがあります。');
     }
-    files.set(path, new Blob([bytes]));
-  }
-  return files;
+    if (++count > 15000) throw Error('ZIP内の項目数が15,000件を超えています。');
+    const chunks = [];
+    entry.ondata = (error, data, final) => {
+      if (error) { failure = error; return; }
+      if (!path.endsWith('/') && data?.length) chunks.push(data);
+      if (final && !path.endsWith('/')) files.set(path, new Blob(chunks));
+    };
+    entry.start();
+  });
+  unzip.register(UnzipInflate);
+  const reader = file.stream().getReader();
+  try {
+    while (true) {
+      const {done,value} = await reader.read();
+      if (done) break;
+      unzip.push(value,false);
+      if (failure) throw failure;
+    }
+    unzip.push(new Uint8Array(0),true);
+    if (failure) throw failure;
+    return files;
+  } catch (error) {
+    await reader.cancel().catch(()=>{});
+    throw error;
+  } finally { reader.releaseLock(); }
 }
 
 function readFolder(files, relativePath) {
   const result = new Map();
-  let bytes = 0;
   for (const file of files) {
-    bytes += file.size;
-    if (bytes > 100 * 1024 ** 2 || result.size >= 500) {
-      throw Error('フォルダーは100 MiB・500ファイルまでです。');
+    if (result.size >= 15000) throw Error('フォルダー内のファイル数が15,000件を超えています。');
+    const path = relativePath(file), parts = path.split('/');
+    if (!path || path.startsWith('/') || path.includes('\\') ||
+        parts.some(part => !part || part === '.' || part === '..') || result.has(path)) {
+      throw Error('フォルダー内に無効または重複したファイルパスがあります。');
     }
-    result.set(relativePath(file), file);
+    result.set(path,file);
   }
   return result;
 }
