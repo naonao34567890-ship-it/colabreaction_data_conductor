@@ -1,0 +1,60 @@
+/* Shared interaction language for Mol Bench screens.
+   Preserve existing IDs, keyboard shortcuts, disabled states, and features. */
+:root{
+  --control-surface:#191e1e;
+  --control-subtle:#161d1d;
+  --control-border:var(--border,#34413f);
+  --control-accent:var(--accent,#62d6bf);
+  --control-danger:#eea5a5;
+}
+.tidy-group,.reaction-tidy-group,.editor-command-group,.viewer-tool-group,
+.colab-connect-group,.orca-search-group{
+  border:1px solid var(--control-border);
+  border-radius:9px;
+  background:var(--control-subtle);
+}
+.tidy-label,.reaction-tidy-label,.editor-group-label,.viewer-tool-label,
+.colab-action-label,.orca-tidy-label{
+  color:var(--muted,#a8b6b2);
+  font-size:11px;
+  font-weight:600;
+  letter-spacing:.05em;
+}
+button.primary,button.tidy-primary{
+  font-weight:700;
+}
+button:focus-visible,select:focus-visible,input:focus-visible,
+summary:focus-visible{
+  outline:2px solid var(--control-accent);
+  outline-offset:2px;
+}
+button.danger,.tidy-danger{
+  border-color:#684644;
+  color:var(--control-danger);
+}
+button.danger:disabled,.tidy-danger:disabled{opacity:.45}
+.editor-more-menu>summary,.reaction-export-menu>summary,
+.viewer-options-menu>summary,.orca-export-menu>summary,
+.colab-maintenance>summary{
+  border:1px solid var(--control-border);
+  background:var(--control-surface);
+  border-radius:7px;
+  cursor:pointer;
+}
+.editor-more-menu>summary:hover,.reaction-export-menu>summary:hover,
+.viewer-options-menu>summary:hover,.orca-export-menu>summary:hover,
+.colab-maintenance>summary:hover{
+  border-color:var(--control-accent);
+  background:#263330;
+}
+.editor-more-menu[open]>summary,.reaction-export-menu[open]>summary,
+.viewer-options-menu[open]>summary,.orca-export-menu[open]>summary,
+.colab-maintenance[open]>summary{
+  border-color:var(--control-accent);
+}
+@media(hover:none){
+  button{min-height:36px}
+  .editor-more-menu>summary,.reaction-export-menu>summary,
+  .viewer-options-menu>summary,.orca-export-menu>summary,
+  .colab-maintenance>summary{min-height:36px}
+}
