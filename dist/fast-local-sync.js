@@ -48,8 +48,8 @@ async function all(db,store){
 async function localSnapshot(sub){
   const mdb=await moleculeDB(sub),rdb=await reactionDB(sub);
   try{
-    const [metas,bodies,reactions]=await Promise.all([
-      all(mdb,'meta'),all(mdb,'body'),all(rdb,'reactions'),
+    const [metas,bodies,reactions,tags]=await Promise.all([
+      all(mdb,'meta'),all(mdb,'body'),all(rdb,'reactions'),all(mdb,'tags'),
     ]);
     const bodyMap=new Map(bodies.map(b=>[b.id,b]));
     const result=new Map();
@@ -63,6 +63,7 @@ async function localSnapshot(sub){
       id:body.id,name:body.name,createdAt:body.createdAt,
       tags:body.tags||[],classification:body.classification||null,
     },body});
+    result.tags=tags;
     return result;
   }finally{mdb.close();rdb.close();}
 }
@@ -79,6 +80,10 @@ async function fingerprint(item){
   const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(encoded));
   return [...new Uint8Array(hash)].map(b=>b.toString(16).padStart(2,'0')).join('');
 }
+async function tagFingerprint(tags){
+  const sorted=[...(tags||[])].sort((a,b)=>a.name.localeCompare(b.name));
+  return fingerprint({kind:'r',body:sorted});
+}
 async function readBaseline(sub){
   const db=await openDB(STATE_DB,1,db=>db.createObjectStore('state',{keyPath:'sub'}));
   try{return await new Promise((resolve,reject)=>{
@@ -87,26 +92,27 @@ async function readBaseline(sub){
     req.onerror=()=>reject(req.error);
   });}finally{db.close();}
 }
-async function writeBaseline(sub,entries,generation=null,dirtyToken=null){
+async function writeBaseline(sub,entries,generation=null,dirtyToken=null,tagHash=null,tagVersion=null){
   const db=await openDB(STATE_DB,1,db=>db.createObjectStore('state',{keyPath:'sub'}));
   try{
     const tx=db.transaction('state','readwrite'),done=waitTx(tx);
-    tx.objectStore('state').put({sub,entries,generation,dirtyToken,updatedAt:Date.now()});
+    tx.objectStore('state').put({sub,entries,generation,dirtyToken,tagHash,tagVersion,updatedAt:Date.now()});
     await done;
   }finally{db.close();}
 }
 // Shadow cache for DriveStore. Never switches Mol's live fast-local database.
 export const fastSyncFingerprint=fingerprint;
-export async function saveFastSyncMigrationBaseline(service,sub,hashes,startVersions){
+export async function saveFastSyncMigrationBaseline(service,sub,hashes,startVersions,startTagsVersion){
   const index=await service.syncIndex();
   const versions=new Map(index.records.map(row=>[row.key,row.version]));
+  if(index.tagsVersion!==startTagsVersion)throw Error('移行中にDriveのタグが変更されました。移行を中止します。');
   const baseline={};
   for(const [key,hash] of Object.entries(hashes)){
     if(!versions.has(key)||versions.get(key)!==startVersions.get(key))
       throw Error('移行中にDriveの分子・反応データが変更されました。移行を中止します。');
     baseline[key]={version:versions.get(key),hash};
   }
-  await writeBaseline(sub,baseline,index.generation,localStorage.getItem('mol-bench-fast-sync-dirty-'+sub));
+  await writeBaseline(sub,baseline,index.generation,localStorage.getItem('mol-bench-fast-sync-dirty-'+sub),await tagFingerprint(index.tags),index.tagsVersion);
 }
 function shadowBackend(){
   let name='mol-bench-sync-shadow-uninitialized',pending;
@@ -181,6 +187,15 @@ async function applyLocalChanges(sub,changes,original){
     }finally{db.close();}
   }
 }
+async function applyLocalTags(sub,tags){
+  const db=await moleculeDB(sub);
+  try{
+    const tx=db.transaction('tags','readwrite'),done=waitTx(tx);
+    const store=tx.objectStore('tags');store.clear();
+    for(const tag of tags)store.put(tag);
+    await done;
+  }finally{db.close();}
+}
 function showConflictDialog(count,destructive){
   return new Promise(resolve=>{
     const dialog=$('fastSyncConflict');
@@ -249,6 +264,15 @@ export function startFastLocalSync(scope){
         }
         const local=await localSnapshot(sub);
         const baseline=savedState.entries;
+        const localTagHash=await tagFingerprint(local.tags);
+        const remoteTagHash=await tagFingerprint(remote.tags);
+        const tagInitial=savedState.tagHash==null;
+        const tagLocalChanged=tagInitial?localTagHash!==remoteTagHash:localTagHash!==savedState.tagHash;
+        const tagRemoteChanged=tagInitial?localTagHash!==remoteTagHash:
+          (remote.tagsVersion||null)!==(savedState.tagVersion||null);
+        const tagConflict=tagLocalChanged&&tagRemoteChanged&&localTagHash!==remoteTagHash;
+        const pushTags=tagLocalChanged&&!tagRemoteChanged;
+        const pullTags=tagRemoteChanged&&!tagLocalChanged;
         const remoteMap=new Map(remote.records.map(r=>[r.key,r]));
         const keys=new Set([...remoteMap.keys(),...local.keys(),...Object.keys(baseline)]);
         const fingerprintCache=new Map();
@@ -295,6 +319,7 @@ export function startFastLocalSync(scope){
           }
           safe.add(key);computed.set(key,localChanged?hash:undefined);
         }
+        if(tagConflict)conflicts.push({key:'tags',hash:localTagHash,version:remote.tagsVersion||null});
         const destructive=push.some(c=>c.action==='delete')||pull.some(c=>c.action==='delete');
         const needsReview=conflicts.length>0||destructive;
         const signature=JSON.stringify([
@@ -315,17 +340,18 @@ export function startFastLocalSync(scope){
         }
         const remoteChanges=needsReview?push.filter(c=>c.action!=='delete'):push;
         const localChanges=needsReview?pull.filter(c=>c.action!=='delete'):pull;
-        if(remoteChanges.length){
+        if(remoteChanges.length||pushTags){
           status('Driveへバックアップ '+remoteChanges.length+'件…');
           await drive.syncApply(remoteChanges,remoteChanges.map(c=>[
             c.kind+':'+c.id,remoteMap.get(c.kind+':'+c.id)?.version,
-          ]));
+          ]),pushTags?local.tags:undefined,pushTags?remote.tagsVersion:undefined);
         }
-        if(localChanges.length){
+        if(localChanges.length||pullTags){
           status('Driveの更新をローカルに反映 '+localChanges.length+'件…');
           await applyLocalChanges(sub,localChanges,local);
+          if(pullTags)await applyLocalTags(sub,remote.tags);
         }
-        const newRemote=remoteChanges.length?await drive.syncIndex():remote;
+        const newRemote=remoteChanges.length||pushTags?await drive.syncIndex():remote;
         const newRemoteMap=new Map(newRemote.records.map(r=>[r.key,r]));
         const newState={...baseline};
         const pushed=new Set(remoteChanges.map(c=>c.kind+':'+c.id));
@@ -348,7 +374,9 @@ export function startFastLocalSync(scope){
         }
         // Use the token captured BEFORE the snapshot. Concurrent local edits
         // must trigger another sync, never be falsely marked as backed up.
-        await writeBaseline(sub,newState,newRemote.generation,dirtyToken);
+        await writeBaseline(sub,newState,newRemote.generation,dirtyToken,
+          tagConflict?savedState.tagHash:(pullTags?remoteTagHash:localTagHash),
+          tagConflict?savedState.tagVersion:newRemote.tagsVersion);
         if(!conflicts.length&&!destructive){
           lastConflict='';
           localStorage.removeItem(conflictKey);
@@ -356,7 +384,7 @@ export function startFastLocalSync(scope){
         status('同期済み（Driveへ '+remoteChanges.length+'件・端末へ '+localChanges.length+'件）'+
           (conflicts.length?'／競合 '+conflicts.length+'件は保留':''));
         // Local catalogue pages need a refresh after remote-origin changes.
-        if(localChanges.length){
+        if(localChanges.length||pullTags){
           document.dispatchEvent(new Event('drive-store-updated'));
           document.dispatchEvent(new CustomEvent('fast-local-synced'));
         }
