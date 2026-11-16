@@ -172,6 +172,7 @@ async function renderReactions() {
   const reactions = (await ReactionStore.list()).sort(reactionSort);
   if (revision !== renderRevision) return;
   records = reactions;
+  const count=control('reactionCount');if(count)count.textContent=reactions.length.toLocaleString()+' 反応';
   const ids = new Set(records.map(item=>item.id));
   for (const id of selected) if (!ids.has(id)) selected.delete(id);
   observer.disconnect();
