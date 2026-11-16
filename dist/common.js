@@ -758,16 +758,57 @@ Mol.VirtualGrid=class{
 // The existing UI and Worker call the same API. On Firebase only, Drive is the
 // authoritative store; the old IndexedDB is retained solely for one-time migration.
 if(typeof location!=='undefined'&&location.origin==='https://mol-bench.web.app'){
- const local={};for(const key of ['db','metadata','get','saveBatch','importMolecules','overwrite','remove','removeMany','setDatabaseName','renameMolecule'])local[key]=Mol[key];
+ const local={};for(const key of ['db','metadata','get','saveBatch','importMolecules','overwrite','remove','removeMany','setDatabaseName','renameMolecule','notify'])local[key]=Mol[key];
+ // Worker uses these functions when the parent explicitly selects fast local mode.
+ Mol.localBackend=local;
+ let fastScope;
+ if(typeof localStorage!=='undefined'){
+  try{fastScope=JSON.parse(localStorage.getItem('mol-bench-fast-local-v1')||'null');}catch{}
+ }
+ if(fastScope?.sub){
+  Mol.localFast=true;Mol.localFastScope=fastScope;
+  Mol.localReactionDatabaseName='mol-bench-fast-local-v1-reactions-'+fastScope.sub;
+  Mol.setDatabaseName('mol-bench-fast-local-v1-molecules-'+fastScope.sub);
+  Mol.cloudDatabaseNames={reactions:Mol.localReactionDatabaseName,account:fastScope};
+  if(typeof document!=='undefined'){
+   const show=()=>{
+    const nav=document.querySelector('.mode-switch');
+    if(!nav)return;
+    const label=document.createElement('span');
+    label.textContent='高速ローカル保存（Drive自動バックアップなし）';
+    label.title='普段の操作はIndexedDBだけで完結します。定期的にZIPを書き出してください。';
+    label.className='mode-link';nav.append(label);
+   };
+   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',show,{once:true});else show();
+  }
+ }else{
  let service;
  const load=()=>service||(service=import('./drive-store.js').then(module=>module.createDriveStore(local)));
+ Mol.enableFastLocalMigration=async progress=>{
+  const s=await load();
+  const {migrateToFastLocal}=await import('./fast-local-migration.js');
+  return migrateToFastLocal(s,progress);
+ };
  Mol.cloud={get ready(){return load().then(s=>s.ready);},call:(method,...args)=>load().then(s=>s[method](...args)),get reactionDatabaseName(){return Mol.cloudDatabaseNames?.reactions;}};
  for(const key of ['db','metadata','get','saveBatch','importMolecules','overwrite','removeMany','renameMolecule'])Mol[key]=(...args)=>Mol.cloud.call(key,...args);
  Mol.remove=id=>Mol.cloud.call('removeMany',[id]);
  // Drive commits notify account-scoped listeners; the old global local-DB channel is not used.
  Mol.notify=()=>{};
  if(typeof document!=='undefined'){
-  const mount=()=>{const nav=document.querySelector('.mode-switch');if(!nav)return;const link=document.createElement('a');link.href='colab.html';link.className='mode-link';link.textContent='Drive接続';link.title='分子・反応ライブラリの保存先';nav.append(link);document.addEventListener('drive-store-status',event=>{link.textContent=event.detail.error?'Drive：要確認':event.detail.text.includes('移行中')?'Drive移行中…':event.detail.text.includes('読み込み中')?'Drive読込中…':event.detail.text.includes('保存中')?'Drive保存中…':event.detail.text==='Driveに保存済み'?'Drive保存済み':'Drive接続済み';link.title=event.detail.text;const pane=document.querySelector('#notice,#reactionStatus,#colabStatus');if(pane&&(event.detail.error||event.detail.text.includes('移行中')||event.detail.text.includes('読み込み中'))){pane.textContent=event.detail.text;pane.dataset.driveMessage=event.detail.text;}else if(pane&&pane.textContent===pane.dataset.driveMessage){pane.textContent='';delete pane.dataset.driveMessage;}});};
+  const mount=()=>{const nav=document.querySelector('.mode-switch');if(!nav)return;const link=document.createElement('a');link.href='colab.html';link.className='mode-link';link.textContent='Drive接続';link.title='分子・反応ライブラリの保存先';nav.append(link);
+  const fast=document.createElement('button');fast.type='button';fast.textContent='高速ローカルへ移行';
+  fast.title='既存Driveデータをすべて端末へコピーしてから切り替える（自動バックアップは未搭載）';
+  nav.append(fast);
+  fast.onclick=async()=>{
+   if(!confirm('Driveから全分子・反応を端末へコピーして高速ローカルモードへ切り替えます。Driveデータは削除されません。切替後は自動バックアップされないため、XYZ/ZIPを定期的に保存してください。ほかのMol Benchタブを閉じてから続行してください。'))return;
+   fast.disabled=true;
+   try{
+    await Mol.enableFastLocalMigration(message=>{fast.textContent=message;});
+    location.reload();
+   }catch(error){alert('移行を中止しました。Drive正本のままです。\n'+error.message);fast.disabled=false;fast.textContent='高速ローカルへ移行';}
+  };
+  document.addEventListener('drive-store-status',event=>{link.textContent=event.detail.error?'Drive：要確認':event.detail.text.includes('移行中')?'Drive移行中…':event.detail.text.includes('読み込み中')?'Drive読込中…':event.detail.text.includes('保存中')?'Drive保存中…':event.detail.text==='Driveに保存済み'?'Drive保存済み':'Drive接続済み';link.title=event.detail.text;const pane=document.querySelector('#notice,#reactionStatus,#colabStatus');if(pane&&(event.detail.error||event.detail.text.includes('移行中')||event.detail.text.includes('読み込み中'))){pane.textContent=event.detail.text;pane.dataset.driveMessage=event.detail.text;}else if(pane&&pane.textContent===pane.dataset.driveMessage){pane.textContent='';delete pane.dataset.driveMessage;}});};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
  }
+ } // Cloud mode only.
 }

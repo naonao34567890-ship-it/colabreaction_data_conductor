@@ -250,6 +250,17 @@ async function importRecords(name, sourceLabel, readFiles) {
       if (matches.length > 1) throw Error(name + ' が複数あります。計算結果を1件ずつ取り込んでください。');
       return matches[0]?.[1];
     }
+    let sourceReaction=null;
+    const sourceMetadata=find('reaction-context.json');
+    if(sourceMetadata){
+      try{
+        const text=await sourceMetadata.text();
+        if(text.length<100000){
+          const context=JSON.parse(text);
+          if(context?.format==='mol-bench-reaction-context'&&context.version===2)sourceReaction=context;
+        }
+      }catch(error){console.warn('反応の引継ぎJSONを読めませんでした:',error);}
+    }
     const reactant = find('reactant.xyz'), product = find('product.xyz');
     const csv = find('DMF_energy.csv'), trajectory = find('DMF_final.xyz');
     if (!reactant || !product || !csv) throw Error('reactant.xyz、product.xyz、DMF_energy.csv が必要です。');
@@ -264,6 +275,9 @@ async function importRecords(name, sourceLabel, readFiles) {
       'ファイル数: ' + files.size,
       '電荷: ' + charge, 'spin（出力値）: ' + spin, '電荷・spinの取得元: DMF_final.xyz',
       '結果出力日時: ' + date + (match ? '（' + sourceLabel + '名由来・タイムゾーン不明）' : ''),
+      ...(sourceReaction?.name?['元の反応名: '+sourceReaction.name]:[]),
+      ...(sourceReaction?.sourceReactionId?['元の反応ID: '+sourceReaction.sourceReactionId]:[]),
+      ...(sourceReaction?.classification?['元の分類: '+sourceReaction.classification]:[]),
     ].join('\n');
     status('Google Driveに保存しています…');
     parent = await folder(name, root);
@@ -289,7 +303,14 @@ async function importRecords(name, sourceLabel, readFiles) {
     images.set('config.txt', await upload('config.txt', parent, new Blob([config], {type:'text/plain'})));
     // The completion marker (config.txt) remains the last upload.
     // A metadata write failure must not invalidate a successfully uploaded record.
-    await writeRecordSummary(parent, summaryProperties(config,images));
+    const properties=summaryProperties(config,images);
+    if(sourceReaction?.classification&&new TextEncoder().encode(sourceReaction.classification).length<=100)
+      properties.classification=sourceReaction.classification;
+    if(sourceReaction?.name&&new TextEncoder().encode(sourceReaction.name).length<=100)
+      properties.reactionName=sourceReaction.name;
+    if(sourceReaction?.sourceReactionId&&new TextEncoder().encode(sourceReaction.sourceReactionId).length<=100)
+      properties.sourceReactionId=sourceReaction.sourceReactionId;
+    await writeRecordSummary(parent,properties);
     parent = null;
     await refresh();
     status('計算記録を保存しました。');
@@ -455,12 +476,48 @@ async function downloadArchive(job, originals, button) {
   }
 }
 
+function serveVibrationFiles(tab, originals, channelId) {
+  const channel = new BroadcastChannel('reaction-vibrations:' + channelId);
+  let catalogPromise;
+  const catalog = async () => {
+    if (!catalogPromise) catalogPromise = (async () => {
+      const directoryIds = [originals], found = new Map();
+      while (directoryIds.length) {
+        for (const entry of await list("'" + directoryIds.pop() + "' in parents")) {
+          if (entry.mimeType === folderType) directoryIds.push(entry.id);
+          else if (/^local_maxima_\d+_vib_\d+\.xyz$/i.test(entry.name)) found.set(entry.name,entry.id);
+        }
+      }
+      return found;
+    })().catch(error=>{catalogPromise=null;throw error;});
+    return catalogPromise;
+  };
+  channel.onmessage = async ({data}) => {
+    if (data?.type === 'close') {channel.close();return;}
+    if (!data?.requestId || !['list','file'].includes(data.type)) return;
+    try {
+      if (tab.closed) {channel.close();return;}
+      const found = await catalog();
+      if (data.type === 'list') channel.postMessage({
+        requestId:data.requestId,type:'list',names:[...found.keys()].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))
+      });
+      else {
+        if (!found.has(data.name)) throw Error('指定された振動ファイルが見つかりません。');
+        const blob = await (await download(found.get(data.name))).blob();
+        channel.postMessage({requestId:data.requestId,type:'file',name:data.name,blob});
+      }
+    } catch (error) {channel.postMessage({requestId:data.requestId,type:'error',message:error.message});}
+  };
+  return channel;
+}
+
 async function openReaction(jobId, name, originals, images) {
   const tab = window.open('about:blank', '_blank');
   if (!tab) { status('反応経路ビューアのタブを開けませんでした。'); return; }
   tab.opener = null;
   tab.document.body.textContent = '反応経路を読み込み中…';
   const urls = [];
+  let vibrationChannel;
   try {
     if (!originals) throw Error('計算結果フォルダーがありません。');
     const directories = [originals];
@@ -480,11 +537,37 @@ async function openReaction(jobId, name, originals, images) {
       urls.push(url);
       params.set(key,url);
     }
+    // A v2 ColabReaction output includes a portable source-reaction context.
+    // It is metadata, not a computational input; preserve classification/tags on return.
+    const contextFiles=await list("'" + originals + "' in parents and name = 'reaction-context.json'");
+    if(contextFiles.length===1){
+      try{
+       const payload=await (await download(contextFiles[0].id)).text();
+       if(payload.length<100000){
+        const context=JSON.parse(payload);
+        if(context?.format==='mol-bench-reaction-context'&&context.version===2)
+          params.set('reactionContext',JSON.stringify(context));
+       }
+      }catch(error){console.warn('反応の引継ぎ情報を読み込めませんでした:',error);}
+    }
+    const archiveFiles=await list("'" + originals + "' in parents and name = 'source-reaction.zip'");
+    if(archiveFiles.length===1){
+      try{
+        const archiveBlob=await (await download(archiveFiles[0].id)).blob();
+        const archiveURL=URL.createObjectURL(archiveBlob);
+        urls.push(archiveURL);
+        params.set('sourceReactionArchive',archiveURL);
+      }catch(error){console.warn('元反応の完全データを取得できませんでした:',error);}
+    }
     if (tab.closed) throw Error('反応経路ビューアを閉じました。');
+    const vibrationChannelId = crypto.randomUUID();
+    vibrationChannel = serveVibrationFiles(tab, originals, vibrationChannelId);
+    params.set('vibrationChannel',vibrationChannelId);
     if (images.has('START.png') && images.has('FINAL.png')) params.set('imageSaving','1');
     connectImageSaver(params,jobId,images);
     tab.location.replace('reaction-viewer.html#' + params);
   } catch (error) {
+    vibrationChannel?.close();
     for (const url of urls) URL.revokeObjectURL(url);
     if (!tab.closed) tab.document.body.textContent = error.message;
     status(error.message);
@@ -781,6 +864,12 @@ async function renderRecord(job) {
   archive.textContent = '結果ZIPをダウンロード';
   archive.disabled = !files.has('計算結果');
   archive.onclick = () => void downloadArchive(job,files.get('計算結果'),archive);
+  if(job.appProperties?.reactionName){
+    const originalName=document.createElement('p');
+    originalName.className='muted';
+    originalName.textContent='元の反応：'+job.appProperties.reactionName;
+    card.append(originalName);
+  }
   card.append(title, images, info, notes, open, classificationButton, archive);
   const resultDate = summaryResultDate(parsed);
   cards.set(job.id,Object.assign(job,{card,title,classificationButton,resultDate}));

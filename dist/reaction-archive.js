@@ -40,13 +40,13 @@
      xyz:await add(folder+'/'+role+'.xyz',Mol.calculationOutput(structure))};
    }
    const data=await add(folder+'/record.json',new Blob([JSON.stringify(await encode(record,folder))],{type:'application/json'}));
-   reactions.push({reactionId:record.id,name:record.name,record:data,endpoints});
+   reactions.push({reactionId:record.id,name:record.name,classification:record.classification||null,tags:record.tags||[],createdAt:record.createdAt,record:data,endpoints});
    progress(reactions.length,records.length);
    await Mol.tick();
   }
-  const manifest={format,version:1,archiveId:crypto.randomUUID(),createdAt:new Date().toISOString(),source:{origin},count:reactions.length,reactions};
+  const manifest={format,version:2,archiveId:crypto.randomUUID(),createdAt:new Date().toISOString(),source:{origin},count:reactions.length,reactions};
   files.push({path:'reaction-library.json',blob:new Blob([JSON.stringify(manifest,null,2)],{type:'application/json'})});
-  files.push({path:'README.txt',blob:new Blob(['Mol Bench 反応ライブラリ / version 1\nreaction-library.json が反応IDとSTART（出発物）・FINISH（生成物）の対応を保持します。\n名前から対応を推測しないでください。nullは未作成です。\n対応表の各構造に名前・charge（電荷）・multiplicity（スピン多重度）を記録します。未指定時は電荷0・多重度1です。\nrecord.jsonはタグ・原子順・座標・元XYZなどを保持する型付きデータです。Blobは参照先の原文バイト列です。\n各参照のSHA-256は内容確認用です。ファイルを変更・削除せずZIPのまま保管してください。\nSTART.xyz / FINISH.xyzは計算用XYZです。完全な復元には対応表とrecord.jsonも必要です。\n'])});
+  files.push({path:'README.txt',blob:new Blob(['Mol Bench 反応ライブラリ / version 2\nreaction-library.json が反応IDとSTART（出発物）・FINISH（生成物）の対応を保持します。\n名前から対応を推測しないでください。nullは未作成です。\n対応表の各構造に名前・charge（電荷）・multiplicity（スピン多重度）を記録します。未指定時は電荷0・多重度1です。\nrecord.jsonはタグ・原子順・座標・元XYZなどを保持する型付きデータです。Blobは参照先の原文バイト列です。\n各参照のSHA-256は内容確認用です。ファイルを変更・削除せずZIPのまま保管してください。\nSTART.xyz / FINISH.xyzは計算用XYZです。完全な復元には対応表とrecord.jsonも必要です。\n'])});
   return {manifest,files};
  }
  async function download(records,progress) {
@@ -74,7 +74,7 @@
   const json=bytes=>JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));
   if(!Object.hasOwn(content,'reaction-library.json'))throw Error('対応情報がありません。元Sitesの「対応情報付きZIPで保存」で書き出し直してください。名前からペアを推測する取り込みは行いません。');
   const manifest=json(content['reaction-library.json']);
-  if(manifest.format!==format||manifest.version!==1||!Array.isArray(manifest.reactions)||manifest.count!==manifest.reactions.length||!manifest.count)throw Error('未対応、または不正な反応ライブラリ形式です。');
+  if(manifest.format!==format||![1,2].includes(manifest.version)||!Array.isArray(manifest.reactions)||manifest.count!==manifest.reactions.length||!manifest.count)throw Error('未対応、または不正な反応ライブラリ形式です。');
   const referenced=new Set(),ids=new Set(),records=[];
   async function load(ref) {
    if(!ref||!safePath(ref.path)||!Object.hasOwn(content,ref.path)||referenced.has(ref.path)||!/^[a-f0-9]{64}$/.test(ref.sha256)||!Number.isSafeInteger(ref.bytes))throw Error('参照先が欠落、重複、または不正です。');
@@ -123,6 +123,12 @@
     Mol.validateElectronicFields(endpoint);
     if(Object.hasOwn(endpoint,'charge'))structure.charge=endpoint.charge;
     if(Object.hasOwn(endpoint,'multiplicity'))structure.multiplicity=endpoint.multiplicity;
+   }
+   if(manifest.version===2){
+    if(item.classification!==null&&item.classification!==undefined&&(typeof item.classification!=='string'||item.classification.length>200))throw Error('分類情報が不正です。');
+    if((record.classification||null)!==(item.classification||null))throw Error('分類情報が対応表と一致しません。');
+    if(JSON.stringify(record.tags||[])!==JSON.stringify(item.tags||[]))throw Error('タグ情報が対応表と一致しません。');
+    if(record.createdAt!==item.createdAt)throw Error('作成日時が対応表と一致しません。');
    }
    records.push(record);progress(records.length,manifest.count);await Mol.tick();
   }

@@ -81,7 +81,18 @@ async function exportData(ids,format,send,cancelled,progress,withMemo=false,bodi
 root.MolJobs={ImportJob,exportData,exportFiles:(files,send,progress=()=>{})=>exportData(files.map((_,i)=>i),'zip',send,()=>false,progress,false,null,files)};
 if(typeof WorkerGlobalScope!=='undefined'&&root instanceof WorkerGlobalScope){let job=null,cancel=false,ack=null,choose=null;
  root.onmessage=async({data:m})=>{if(m.type==='cancel'){cancel=true;if(job)job.cancelled=true;if(choose){choose({action:'skip'});choose=null;}return;}if(m.type==='multiChoice'){if(choose){choose(m.choice);choose=null;}return;}if(m.type==='ack'){if(ack){ack();ack=null;}return;}
-  try{if(m.type==='start'){if(Mol.cloud){globalThis.MOL_DRIVE_SESSION=m.cloudSession;globalThis.MOL_DRIVE_SCOPE=m.cloudScope;await Mol.cloud.ready;}job=new ImportJob(v=>postMessage(v),(name,total,file)=>new Promise(resolve=>{choose=resolve;postMessage({type:'multiChoice',name,total,file});}));cancel=false;postMessage({type:'ready'});}
+  try{if(m.type==='start'){
+    if(m.fastLocalScope?.sub){
+      const scope=m.fastLocalScope,local=Mol.localBackend;
+      if(!local)throw Error('ローカル保存APIが見つかりません。');
+      local.setDatabaseName('mol-bench-fast-local-v1-molecules-'+scope.sub);
+      for(const key of ['db','metadata','get','saveBatch','importMolecules','overwrite','remove','removeMany','renameMolecule','notify'])Mol[key]=local[key];
+      Mol.cloud=null;Mol.localFast=true;Mol.localFastScope=scope;
+      Mol.localReactionDatabaseName='mol-bench-fast-local-v1-reactions-'+scope.sub;
+    }else if(Mol.cloud){
+      globalThis.MOL_DRIVE_SESSION=m.cloudSession;globalThis.MOL_DRIVE_SCOPE=m.cloudScope;
+      await Mol.cloud.ready;
+    }job=new ImportJob(v=>postMessage(v),(name,total,file)=>new Promise(resolve=>{choose=resolve;postMessage({type:'multiChoice',name,total,file});}));cancel=false;postMessage({type:'ready'});}
    else if(m.type==='files'){await job.files(m.files);postMessage({type:'ready'});}
    else if(m.type==='finish'){await job.finish();}
    else if(m.type==='export'){cancel=false;await exportData(m.ids,m.format,bytes=>new Promise(r=>{ack=r;postMessage({type:'chunk',bytes},[bytes.buffer]);}),()=>cancel,n=>postMessage({type:'exportProgress',done:n}),m.withMemo);postMessage({type:'exportDone',cancelled:cancel});}
