@@ -278,7 +278,7 @@ async function readZip(file) {
 function readFolder(files, relativePath) {
   const result = new Map();
   for (const file of files) {
-    if (result.size >= 15000) throw Error('フォルダー内のファイル数が15,000件を超えています。');
+
     const path = relativePath(file), parts = path.split('/');
     if (!path || path.startsWith('/') || path.includes('\\') ||
         parts.some(part => !part || part === '.' || part === '..') || result.has(path)) {
