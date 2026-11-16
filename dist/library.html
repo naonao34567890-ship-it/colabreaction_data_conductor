@@ -94,7 +94,7 @@ async function pasteMolecules(){
  if(!rows?.length)return; // Unrecognized clipboard content is ignored.
  const valid=rows.filter(r=>Array.isArray(r.atoms)&&r.atoms.length&&typeof r.name==='string'
   &&r.atoms.every(a=>a&&Object.hasOwn(Mol.elements,a.el)&&['x','y','z'].every(k=>Number.isFinite(a[k])))
-  &&Mol.checkElectronicState(r).valid);
+);
  if(!valid.length)return;
  const saved=await Mol.saveBatch(valid);
  applyChange({type:'added',items:saved});
