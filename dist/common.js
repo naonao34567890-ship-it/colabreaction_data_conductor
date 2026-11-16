@@ -775,7 +775,7 @@ if(typeof location!=='undefined'&&location.origin==='https://mol-bench.web.app')
       localStorage.setItem('mol-bench-fast-sync-dirty-'+fastScope.sub,crypto.randomUUID());
     document.dispatchEvent(new Event('mol-bench-local-mutated'));
   };
-  for(const method of ['saveBatch','importMolecules','overwrite','removeMany','renameMolecule']){
+  for(const method of ['saveBatch','importMolecules','overwrite','remove','removeMany','renameMolecule']){
     const original=Mol[method];
     if(typeof original!=='function')continue;
     Mol[method]=async(...args)=>{
