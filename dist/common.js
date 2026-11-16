@@ -775,9 +775,22 @@ if(typeof location!=='undefined'&&location.origin==='https://mol-bench.web.app')
     const nav=document.querySelector('.mode-switch');
     if(!nav)return;
     const label=document.createElement('span');
-    label.textContent='高速ローカル保存（Drive自動バックアップなし）';
-    label.title='普段の操作はIndexedDBだけで完結します。定期的にZIPを書き出してください。';
+    label.textContent='高速ローカル保存（Drive同期あり）';
+    label.title='操作はIndexedDB内で完結し、Google Driveと差分同期します。競合時のみ確認します。';
     label.className='mode-link';nav.append(label);
+    const syncButton=document.createElement('button');syncButton.type='button';
+    syncButton.id='fastSyncNow';syncButton.textContent='Driveと同期';
+    syncButton.onclick=()=>window.Mol.fastSyncNow?.();nav.append(syncButton);
+    const state=document.createElement('span');state.id='fastSyncStatus';
+    state.className='status';state.setAttribute('role','status');
+    state.textContent='同期準備中';nav.append(state);
+    const dialog=document.createElement('dialog');dialog.id='fastSyncConflict';
+    dialog.innerHTML='<h2>Driveとの同期に確認が必要</h2><p id="fastSyncConflictText"></p>'+
+      '<div class="dialog-actions"><button type="button" id="fastSyncCancel">今回は同期しない</button>'+
+      '<button type="button" id="fastSyncContinue" class="primary">競合を保留して他を同期</button></div>';
+    document.body.append(dialog);
+    import('./fast-local-sync.js').then(({startFastLocalSync})=>startFastLocalSync(fastScope))
+      .catch(error=>{state.textContent='同期を開始できません: '+error.message;console.error(error);});
    };
    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',show,{once:true});else show();
   }
