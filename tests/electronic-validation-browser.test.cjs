@@ -1,3 +1,4 @@
+const {clickInDisclosure}=require('./support/ui-actions.cjs');
 const {chromium}=require('playwright'),assert=require('node:assert/strict'),path=require('node:path');
 (async()=>{
  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
@@ -16,18 +17,18 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict'),path
   await page.fill('#structureMultiplicity','1');await page.locator('#structureMultiplicity').blur();await page.evaluate(()=>naming('save'));await page.fill('#name','consistent water');await page.click('#confirm');await page.waitForFunction(()=>!document.querySelector('#nameDialog').open);assert.equal(await page.getByRole('dialog',{name:'電荷・多重度の確認'}).count(),0);
   const waiting=page.evaluate(()=>Mol.confirmElectronicSave({START:{atoms:[{el:'O',x:0,y:0,z:0}],charge:0,multiplicity:1},FINISH:{atoms:[{el:'O',x:0,y:0,z:0}],charge:1,multiplicity:2}}));
   const d=page.getByRole('dialog',{name:'電荷・多重度の確認'});await d.waitFor();assert.match(await d.innerText(),/反応前後で電荷が異なります/);await d.getByRole('button',{name:'キャンセル',exact:true}).click();assert.equal(await waiting,false);
-  await page.locator('.editor-more-menu').evaluate(el=>{el.open=true});await page.click('#saveReactionStart');await page.fill('#reactionSaveName','charge transition');await page.click('#reactionSaveSubmit');await page.waitForFunction(()=>!document.querySelector('#reactionSaveDialog').open);
+  await clickInDisclosure(page,'#saveReactionStart');await page.fill('#reactionSaveName','charge transition');await page.click('#reactionSaveSubmit');await page.waitForFunction(()=>!document.querySelector('#reactionSaveDialog').open);
   const reactionId=await page.evaluate(async()=>(await ReactionStore.read()).find(r=>r.name==='charge transition').id);
   await page.fill('#structureCharge','1');await page.locator('#structureCharge').blur();await page.fill('#structureMultiplicity','2');await page.locator('#structureMultiplicity').blur();
   await page.evaluate(()=>{atoms[0].x=2;edited=true;update();});
-  await page.locator('.editor-more-menu').evaluate(el=>{el.open=true});await page.click('#saveReactionFinish');await page.click('#reactionSaveSubmit');
+  await clickInDisclosure(page,'#saveReactionFinish');await page.click('#reactionSaveSubmit');
   const transition=page.getByRole('dialog',{name:'反応前後の電荷の確認'});await transition.waitFor();assert.match(await transition.innerText(),/START: 0 \/ FINISH: 1/);
   await transition.getByRole('button',{name:'キャンセル',exact:true}).click();await page.waitForFunction(()=>!reactionSaving);
   assert.equal(await page.evaluate(async id=>!!(await ReactionStore.read(id)).FINISH,reactionId),false,'cancel charge-change save leaves reaction intact');
   await page.click('#reactionSaveSubmit');await page.getByRole('button',{name:'そのまま保存する',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('#reactionSaveDialog').open);
   assert.equal(await page.evaluate(async id=>(await ReactionStore.read(id)).FINISH.charge,reactionId),1,'charge-changing reaction can be saved intentionally');
   const oldStart=await page.evaluate(async id=>{const s=(await ReactionStore.read(id)).START;return {x:s.atoms[0].x,raw:await s.raw.text()};},reactionId);
-  await page.locator('.editor-more-menu').evaluate(el=>{el.open=true});await page.click('#saveReactionFinish');await page.click('#reactionSaveSubmit');
+  await clickInDisclosure(page,'#saveReactionFinish');await page.click('#reactionSaveSubmit');
   await page.getByRole('button',{name:'STARTにも反映して保存',exact:true}).click();
   await page.getByRole('button',{name:'上書きする',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('#reactionSaveDialog').open);
   const mirrored=await page.evaluate(async id=>{const r=await ReactionStore.read(id);return {start:{state:Mol.electronicState(r.START),x:r.START.atoms[0].x,raw:await r.START.raw.text()},finish:{state:Mol.electronicState(r.FINISH),x:r.FINISH.atoms[0].x}};},reactionId);
@@ -37,7 +38,7 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict'),path
   await page.getByRole('dialog',{name:'反映後の電荷・多重度の確認'}).waitFor();assert.match(await page.getByRole('dialog',{name:'反映後の電荷・多重度の確認'}).innerText(),/FINISH.*偶数個の電子/);
   await page.getByRole('dialog',{name:'反映後の電荷・多重度の確認'}).getByRole('button',{name:'キャンセル',exact:true}).click();assert.equal(await residual,null,'remaining mismatch requires a second confirmation');
   await page.fill('#structureCharge','0');await page.locator('#structureCharge').blur();await page.fill('#structureMultiplicity','1');await page.locator('#structureMultiplicity').blur();
-  await page.locator('.editor-more-menu').evaluate(el=>{el.open=true});await page.click('#saveReactionFinish');await page.click('#reactionSaveSubmit');await page.getByRole('button',{name:'STARTにも反映して保存',exact:true}).waitFor();
+  await clickInDisclosure(page,'#saveReactionFinish');await page.click('#reactionSaveSubmit');await page.getByRole('button',{name:'STARTにも反映して保存',exact:true}).waitFor();
   await page.evaluate(async id=>{const r=await ReactionStore.read(id);await ReactionStore.update(id,{START:{...r.START,charge:2,multiplicity:1,revision:crypto.randomUUID()}});},reactionId);
   await page.getByRole('button',{name:'STARTにも反映して保存',exact:true}).click();await page.getByRole('button',{name:'上書きする',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#reactionSaveError').textContent.includes('別のタブ'));
