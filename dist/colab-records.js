@@ -534,7 +534,23 @@ function connectImageSaver(params, jobId, images) {
 
 async function downloadArchive(job, originals, button) {
   button.disabled = true;
+  let output;
   try {
+    const filename=Mol.safeName(job.name).replace(/\.zip$/i,'')+'.zip';
+    // Chrome/Chromebook: stream directly to disk, rather than allocating a 1GB ZIP in RAM.
+    if(typeof window.showSaveFilePicker==='function'){
+      try{
+        const handle=await window.showSaveFilePicker({
+          suggestedName:filename,
+          types:[{description:'ZIP archive',accept:{'application/zip':['.zip']}}],
+        });
+        output=await handle.createWritable();
+      }catch(error){
+        if(error.name==='AbortError')return;
+        // Fallback when file-system access is unavailable to this origin.
+        if(error.name!=='SecurityError'&&error.name!=='NotAllowedError')throw error;
+      }
+    }
     button.textContent = 'ファイルを確認中…';
     const pending = [{id:originals,path:''}];
     const files = [];
@@ -547,38 +563,53 @@ async function downloadArchive(job, originals, button) {
       }
     }
     if (!files.length) throw Error('ダウンロードできる計算結果がありません。');
-    const {zipSync} = await import('https://cdn.jsdelivr.net/npm/fflate@0.8.2/esm/browser.js');
-    const contents = Object.create(null);
-    let completed = 0, bytes = 0;
-    for (let offset=0; offset<files.length; offset+=4) {
-      const group = files.slice(offset,offset+4);
-      const fetched = await Promise.allSettled(group.map(async file => {
-        const data = new Uint8Array(await (await download(file.id)).arrayBuffer());
-        button.textContent = '取得中 ' + (++completed) + '/' + files.length;
-        return data;
-      }));
-      for (const [index,result] of fetched.entries()) {
-        if (result.status === 'rejected') throw result.reason;
-        const path = group[index].path;
-        if (Object.hasOwn(contents,path)) throw Error('ZIP内のファイル名が重複しています。');
-        bytes += result.value.byteLength;
-        if (bytes > 100 * 1024 ** 2) throw Error('計算結果が100 MiBを超えています。');
-        contents[path] = result.value;
+    const {Zip,ZipPassThrough} = await import('./vendor/fflate.mjs');
+    const pieces=[],paths=new Set();
+    let write=Promise.resolve(),failure=null,finished=false;
+    const archive=new Zip((error,chunk,final)=>{
+      if(error){failure=error;return;}
+      if(output)write=write.then(()=>output.write(chunk));
+      else pieces.push(chunk);
+      if(final)finished=true;
+    });
+    for(let i=0;i<files.length;i++){
+      const file=files[i];
+      if(paths.has(file.path))throw Error('ZIP内のファイル名が重複しています。');
+      paths.add(file.path);
+      button.textContent='取得中 '+(i+1)+'/'+files.length;
+      const response=await download(file.id);
+      const item=new ZipPassThrough(file.path);
+      archive.add(item);
+      if(response.body){
+        const reader=response.body.getReader();
+        try{
+          while(true){
+            const {done,value}=await reader.read();
+            if(done)break;
+            item.push(value,false);
+            if(failure)throw failure;
+          }
+        }finally{reader.releaseLock();}
+      }else{
+        item.push(new Uint8Array(await response.arrayBuffer()),false);
       }
+      item.push(new Uint8Array(0),true);
+      if(failure)throw failure;
     }
-    button.textContent = 'ZIPを作成中…';
-    await new Promise(resolve => setTimeout(resolve,0));
-    const archive = zipSync(contents,{level:0});
-    const name = Mol.safeName(job.name).replace(/\.zip$/i,'')+'.zip';
-    Mol.downloadBlob(new Blob([archive],{type:'application/zip'}),name);
+    button.textContent='ZIPを完成中…';
+    archive.end();
+    await write;
+    if(failure||!finished)throw failure||Error('ZIPの生成が完了しませんでした。');
+    if(output){await output.close();output=null;}
+    else Mol.downloadBlob(new Blob(pieces,{type:'application/zip'}),filename);
   } catch (error) {
+    if(output)await output.abort().catch(()=>{});
     status('ZIPのダウンロードに失敗しました。' + error.message);
   } finally {
     button.disabled = false;
     button.textContent = '結果ZIPをダウンロード';
   }
 }
-
 function serveVibrationFiles(tab, originals, channelId) {
   const channel = new BroadcastChannel('reaction-vibrations:' + channelId);
   let catalogPromise;
