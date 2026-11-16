@@ -816,7 +816,7 @@ export function createDriveStore(local, options = {}) {
     if (!options.skipLegacyMigration) await migrate();
     cacheName = 'molecular-xyz-drive-cache-' + account.sub;
     reactName = 'molecular-xyz-drive-reactions-' + account.sub;
-    Mol.cloudDatabaseNames = { reactions: reactName, account };
+    if (!options.isolated) Mol.cloudDatabaseNames = { reactions: reactName, account };
     local.setDatabaseName(cacheName);
     cacheDirty = true;
     await exclusive(() => pull(true));
@@ -842,7 +842,7 @@ export function createDriveStore(local, options = {}) {
     account = saved;
     cacheName = 'molecular-xyz-drive-cache-' + account.sub;
     reactName = 'molecular-xyz-drive-reactions-' + account.sub;
-    Mol.cloudDatabaseNames = { reactions: reactName, account };
+    if (!options.isolated) Mol.cloudDatabaseNames = { reactions: reactName, account };
     local.setDatabaseName(cacheName);
     offline = true;
     initializing = false;
