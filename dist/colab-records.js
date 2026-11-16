@@ -1,4 +1,5 @@
 import {readEnergy} from './dmf-energy.js';
+import {readColabFile, pruneColabFileCache} from './colab-file-cache.js';
 import {parseConfig, summaryProperties, readSummary, displayLines, resultDate as summaryResultDate} from './colab-record-summary.mjs';
 import {standaloneDrive, beginDriveConnection, driveFetch} from './drive-connection.js?v=2';
 
@@ -75,7 +76,7 @@ async function list(query) {
   let pageToken;
   do {
     const params = new URLSearchParams({q: query + ' and trashed = false',
-      fields: 'nextPageToken,files(id,name,description,appProperties,createdTime,mimeType)', pageSize: '100'});
+      fields: 'nextPageToken,files(id,name,description,appProperties,createdTime,mimeType,modifiedTime)', pageSize: '100'});
     if (pageToken) params.set('pageToken', pageToken);
     const page = await (await request(drive + '/files?' + params)).json();
     files.push(...page.files);
@@ -107,6 +108,8 @@ async function upload(name, parent, blob) {
 }
 
 const download = id => request(drive + '/files/' + encodeURIComponent(id) + '?alt=media');
+const downloadCached = file => readColabFile(root,file,
+  async id => (await download(id)).blob());
 const canvasPng = canvas => new Promise((resolve, reject) =>
   canvas.toBlob(blob => blob ? resolve(blob) : reject(Error('画像を生成できませんでした。')), 'image/png'));
 
@@ -516,7 +519,7 @@ function serveVibrationFiles(tab, originals, channelId) {
       while (directoryIds.length) {
         for (const entry of await list("'" + directoryIds.pop() + "' in parents")) {
           if (entry.mimeType === folderType) directoryIds.push(entry.id);
-          else if (/^local_maxima_\d+_vib_\d+\.xyz$/i.test(entry.name)) found.set(entry.name,entry.id);
+          else if (/^local_maxima_\d+_vib_\d+\.xyz$/i.test(entry.name)) found.set(entry.name,entry);
         }
       }
       return found;
@@ -534,7 +537,7 @@ function serveVibrationFiles(tab, originals, channelId) {
       });
       else {
         if (!found.has(data.name)) throw Error('指定された振動ファイルが見つかりません。');
-        const blob = await (await download(found.get(data.name))).blob();
+        const blob = await downloadCached(found.get(data.name));
         channel.postMessage({requestId:data.requestId,type:'file',name:data.name,blob});
       }
     } catch (error) {channel.postMessage({requestId:data.requestId,type:'error',message:error.message});}
@@ -556,14 +559,14 @@ async function openReaction(jobId, name, originals, images) {
     while (directories.length && found.size < 2) {
       for (const file of await list("'" + directories.pop() + "' in parents")) {
         if (file.mimeType === folderType) directories.push(file.id);
-        else if (['DMF_final.xyz','DMF_energy.csv'].includes(file.name)) found.set(file.name,file.id);
+        else if (['DMF_final.xyz','DMF_energy.csv'].includes(file.name)) found.set(file.name,file);
       }
     }
     if (!found.has('DMF_final.xyz')) throw Error('DMF_final.xyz が見つかりません。');
     const params = new URLSearchParams({name, job:jobId});
     for (const [file, key] of [['DMF_final.xyz','source'], ['DMF_energy.csv','energy']]) {
       if (!found.has(file)) continue;
-      const blob = await (await download(found.get(file))).blob();
+      const blob = await downloadCached(found.get(file));
       const url = URL.createObjectURL(blob);
       urls.push(url);
       params.set(key,url);
@@ -1021,6 +1024,7 @@ async function authorize(response) {
     await withRecordLoading(async () => {
       const folders = await list("mimeType = '" + folderType + "' and appProperties has { key='xyzStudio' and value='colabRecords' }");
       root = folders[0]?.id ?? await folder('分子 XYZ スタジオ Colab計算記録', null, 'colabRecords');
+      void pruneColabFileCache();
       await loadRecords();
     });
     status(cards.size + ' 件の計算記録。ZIPまたはフォルダーを追加できます。');
