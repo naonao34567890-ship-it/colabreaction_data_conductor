@@ -106,16 +106,74 @@ async function folder(name, parent, kind) {
 }
 
 async function upload(name, parent, blob) {
+  // Google Drive resumable uploads transfer large files in bounded 8 MiB pieces.
+  // This avoids a single >1 GiB request and permits recovery after transient errors.
+  const mime = blob.type || 'application/octet-stream';
+  if (blob.size > 8 * 1024 ** 2) return uploadResumable(name,parent,blob,mime);
   const boundary = crypto.randomUUID();
   const body = new Blob([
     '--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n',
     JSON.stringify({name, parents: [parent]}),
-    '\r\n--' + boundary + '\r\nContent-Type: ' + (blob.type || 'application/octet-stream') + '\r\n\r\n',
+    '\r\n--' + boundary + '\r\nContent-Type: ' + mime + '\r\n\r\n',
     blob, '\r\n--' + boundary + '--\r\n',
   ]);
   return (await (await request('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
     method: 'POST', headers: {'Content-Type': 'multipart/related; boundary=' + boundary}, body,
   })).json()).id;
+}
+
+async function uploadResumable(name,parent,blob,mime) {
+  const session = await request('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id',{
+    method:'POST',
+    headers:{'Content-Type':'application/json; charset=UTF-8','X-Upload-Content-Type':mime,
+      'X-Upload-Content-Length':String(blob.size)},
+    body:JSON.stringify({name,parents:[parent]}),
+  });
+  const url=session.headers.get('Location');
+  if(!url || !url.startsWith('https://www.googleapis.com/'))throw Error('Driveの分割アップロードURLを取得できませんでした。');
+  const chunk=8*1024*1024;
+  let position=0,failures=0;
+  while(position<blob.size){
+    const end=Math.min(position+chunk,blob.size);
+    let response;
+    try{
+      response=await fetch(url,{
+        method:'PUT',
+        headers:{Authorization:'Bearer '+token,'Content-Type':mime,
+          'Content-Range':'bytes '+position+'-'+(end-1)+'/'+blob.size},
+        body:blob.slice(position,end),
+      });
+    }catch(error){ response=null; }
+    if(response?.ok){
+      const result=await response.json();
+      if(!result.id)throw Error('Driveはアップロードを受理しましたがファイルIDを返しませんでした。');
+      return result.id;
+    }
+    if(response?.status===308){
+      const range=response.headers.get('Range')?.match(/bytes=0-(\d+)/);
+      position=range?Number(range[1])+1:end;
+      failures=0;
+      continue;
+    }
+    if(response && ![408,429,500,502,503,504].includes(response.status)){
+      throw Error('Driveへの分割アップロードに失敗しました（HTTP '+response.status+'）。');
+    }
+    if(++failures>5)throw Error('Driveへの分割アップロードを再開できませんでした。');
+    await new Promise(resolve=>setTimeout(resolve,Math.min(1000*2**failures,12000)));
+    // Query acknowledged bytes so retries never overwrite or skip an accepted chunk.
+    const check=await fetch(url,{
+      method:'PUT',
+      headers:{Authorization:'Bearer '+token,'Content-Range':'bytes */'+blob.size,'Content-Length':'0'},
+    });
+    if(check.ok){const result=await check.json();if(result.id)return result.id;}
+    else if(check.status===308){
+      const range=check.headers.get('Range')?.match(/bytes=0-(\d+)/);
+      position=range?Number(range[1])+1:0;
+    }else if(![408,429,500,502,503,504].includes(check.status)){
+      throw Error('Driveへの分割アップロード状態を確認できません（HTTP '+check.status+'）。');
+    }
+  }
+  throw Error('Driveからアップロード完了を確認できませんでした。');
 }
 
 const download = id => request(drive + '/files/' + encodeURIComponent(id) + '?alt=media');
