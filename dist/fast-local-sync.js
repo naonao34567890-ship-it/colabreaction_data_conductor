@@ -213,7 +213,7 @@ export function startFastLocalSync(scope){
   };
   const serviceReady=async()=>{
     if(!service)service=createDriveStore(shadowBackend(),{
-      skipLegacyMigration:true,backgroundRefreshDisabled:true,
+      skipLegacyMigration:true,backgroundRefreshDisabled:true,isolated:true,
     });
     await service.ready;
     if(service.account?.sub!==sub)throw Error('Driveのログインアカウントとローカル保存アカウントが違います。同期を停止しました。');
