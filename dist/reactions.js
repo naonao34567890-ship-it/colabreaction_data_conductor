@@ -99,6 +99,7 @@ function cardFor(reaction) {
   preview.textContent='構造を読み込み中…';
   previews.set(preview,reaction);observer.observe(preview);
   card.append(header,preview);
+  if(reaction.classification){const cls=document.createElement('p');cls.className='muted';cls.textContent='分類：'+reaction.classification;card.append(cls);}
   if(reaction.tags?.length){const tags=document.createElement('p');tags.className='muted';tags.textContent=reaction.tags.join(' · ');card.append(tags);}
   return card;
  }
@@ -108,6 +109,7 @@ function cardFor(reaction) {
   observer.observe(preview);
  }
  card.append(header,preview);
+ if(reaction.classification){const cls=document.createElement('p');cls.className='muted';cls.textContent='分類：'+reaction.classification;card.append(cls);}
  if(reaction.tags?.length) {
   const tags=document.createElement('p');
   tags.className='muted';
@@ -149,11 +151,25 @@ function cardFor(reaction) {
  return card;
 }
 
+function reactionSort(a,b){
+ const order=control('reactionOrder').value;
+ if(order==='classification'){
+  const ca=a.classification||'',cb=b.classification||'';
+  if(Boolean(ca)!==Boolean(cb))return ca?-1:1;
+  return Mol.compareTagNames(ca,cb)||b.createdAt-a.createdAt;
+ }
+ if(order==='added-desc')return b.createdAt-a.createdAt;
+ if(order==='added-asc')return a.createdAt-b.createdAt;
+ if(order==='name-asc')return Mol.compareTagNames(a.name,b.name);
+ if(order==='name-desc')return Mol.compareTagNames(b.name,a.name);
+ return a.id.localeCompare(b.id);
+}
+control('reactionOrder').onchange=()=>void renderReactions();
 let renderRevision = 0;
 async function renderReactions() {
  const revision = ++renderRevision;
  try {
-  const reactions = (await ReactionStore.list()).sort((a,b)=>b.createdAt-a.createdAt);
+  const reactions = (await ReactionStore.list()).sort(reactionSort);
   if (revision !== renderRevision) return;
   records = reactions;
   const ids = new Set(records.map(item=>item.id));
@@ -162,7 +178,7 @@ async function renderReactions() {
   const content = document.createDocumentFragment();
   let previous, grid;
   for (const reaction of reactions) {
-   const day = dayKey.format(reaction.createdAt);
+   const day=control('reactionOrder').value==='classification'?(reaction.classification||'未分類'):control('reactionOrder').value.startsWith('added-')?dayKey.format(reaction.createdAt):'すべての反応';
    if (day!==previous) {
     const section = document.createElement('section');
     section.className = 'reaction-day';
@@ -197,7 +213,7 @@ function selectionUI() {
   const active=selected.has(card.dataset.id);
   card.classList.toggle('selected',active);
  }
- for(const id of ['reactionTag','reactionDelete','reactionZip','reactionArchive'])control(id).disabled=changing||!selected.size;
+ for(const id of ['reactionTag','reactionDelete','reactionZip','reactionArchive','reactionCopy','reactionClassify'])control(id).disabled=changing||!selected.size;
  control('reactionSelection').textContent=selected.size+' 件選択中';
 }
 function selectCard(id,additive) {
