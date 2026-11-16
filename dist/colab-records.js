@@ -529,6 +529,15 @@ async function openReaction(jobId, name, originals, images) {
        }
       }catch(error){console.warn('反応の引継ぎ情報を読み込めませんでした:',error);}
     }
+    const archiveFiles=await list("'" + originals + "' in parents and name = 'source-reaction.zip'");
+    if(archiveFiles.length===1){
+      try{
+        const archiveBlob=await (await download(archiveFiles[0].id)).blob();
+        const archiveURL=URL.createObjectURL(archiveBlob);
+        urls.push(archiveURL);
+        params.set('sourceReactionArchive',archiveURL);
+      }catch(error){console.warn('元反応の完全データを取得できませんでした:',error);}
+    }
     if (tab.closed) throw Error('反応経路ビューアを閉じました。');
     const vibrationChannelId = crypto.randomUUID();
     vibrationChannel = serveVibrationFiles(tab, originals, vibrationChannelId);
