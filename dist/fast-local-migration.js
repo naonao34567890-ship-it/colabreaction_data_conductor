@@ -68,7 +68,8 @@ export async function migrateToFastLocal(service,progress=()=>{}){
   activeSub=account.sub;
   progress('Google Driveから分子・反応を読み込みます。最初の一度だけ時間がかかります。');
   await service.refresh();
-  const startVersions=new Map((await service.syncIndex()).records.map(row=>[row.key,row.version]));
+  const firstIndex=await service.syncIndex();
+  const startVersions=new Map(firstIndex.records.map(row=>[row.key,row.version]));
   const fingerprints={};
   const metas=(await service.metadata()).filter(m=>!String(m.id).startsWith('builtin-'));
   const reactions=await service.reactionRead();
@@ -96,6 +97,11 @@ export async function migrateToFastLocal(service,progress=()=>{}){
       saved+=contents.length;
       progress('分子をローカルへ移行 '+saved.toLocaleString()+' / '+metas.length.toLocaleString());
     }
+    // Preserve user-created but currently unused tag names as well.
+    const tagsTx=molDB.transaction('tags','readwrite'),tagsDone=txComplete(tagsTx);
+    tagsTx.objectStore('tags').clear();
+    for(const tag of firstIndex.tags||[])tagsTx.objectStore('tags').put(tag);
+    await tagsDone;
     let copied=0;
     for(let i=0;i<reactions.length;i+=30){
       const batch=reactions.slice(i,i+30);
@@ -116,7 +122,7 @@ export async function migrateToFastLocal(service,progress=()=>{}){
     const key=m=>JSON.stringify([m.id,m.name,m.revision,m.charge,m.multiplicity,m.tags]);
     if(latest.length!==metas.length||latest.some((m,i)=>key(m)!==key(metas[i])))
       throw Error('移行中にDrive上の分子が変更されました。切替せず再実行してください。');
-    await saveFastSyncMigrationBaseline(service,account.sub,fingerprints,startVersions);
+    await saveFastSyncMigrationBaseline(service,account.sub,fingerprints,startVersions,firstIndex.tagsVersion);
     if(navigator.storage?.persist)await navigator.storage.persist().catch(()=>false);
     // This flag is committed ONLY after complete local data validation.
     localStorage.setItem(fastModeKey,JSON.stringify({sub:account.sub,email:account.email,migratedAt:new Date().toISOString()}));
