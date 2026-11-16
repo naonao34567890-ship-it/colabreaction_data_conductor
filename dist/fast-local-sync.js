@@ -203,14 +203,17 @@ function showConflictDialog(count,destructive){
     $('fastSyncConflictText').textContent=count+'件の競合'+
       (destructive?'・削除を含む変更':'')+
       'があります。競合のあるデータは一切上書きしません。競合以外の安全な変更のみ同期しますか？';
-    const cancel=$('fastSyncCancel'),continueButton=$('fastSyncContinue');
+    const cancel=$('fastSyncCancel'),continueButton=$('fastSyncContinue'),
+      deleteButton=$('fastSyncWithDeletes');
+    deleteButton.hidden=!destructive;
     const cleanup=()=>{
-      cancel.onclick=null;continueButton.onclick=null;
+      cancel.onclick=null;continueButton.onclick=null;deleteButton.onclick=null;
       dialog.oncancel=null;dialog.close();
     };
-    cancel.onclick=()=>{cleanup();resolve(false);};
-    continueButton.onclick=()=>{cleanup();resolve(true);};
-    dialog.oncancel=event=>{event.preventDefault();cleanup();resolve(false);};
+    cancel.onclick=()=>{cleanup();resolve('cancel');};
+    continueButton.onclick=()=>{cleanup();resolve('safe');};
+    deleteButton.onclick=()=>{cleanup();resolve('deletes');};
+    dialog.oncancel=event=>{event.preventDefault();cleanup();resolve('cancel');};
     dialog.showModal();
   });
 }
@@ -327,19 +330,21 @@ export function startFastLocalSync(scope){
           push.filter(c=>c.action==='delete').map(c=>c.id),
           pull.filter(c=>c.action==='delete').map(c=>c.id),
         ]);
+        let allowDeletes=false;
         if(needsReview){
           status('同期に確認が必要（競合 '+conflicts.length+'件'+(destructive?'・削除あり':'')+'）');
           if(!manual&&signature===lastConflict)return;
           lastConflict=signature;
           localStorage.setItem(conflictKey,signature);
-          if(!await showConflictDialog(conflicts.length,destructive)){
+          const decision=await showConflictDialog(conflicts.length,destructive);
+          if(decision==='cancel'){
             status('同期を保留しました（ローカルのデータは保持）');
             return;
           }
-          // Destructive changes are never applied in a partial conflict merge.
+          if(decision==='deletes')allowDeletes=true;
         }
-        const remoteChanges=needsReview?push.filter(c=>c.action!=='delete'):push;
-        const localChanges=needsReview?pull.filter(c=>c.action!=='delete'):pull;
+        const remoteChanges=allowDeletes?push:needsReview?push.filter(c=>c.action!=='delete'):push;
+        const localChanges=allowDeletes?pull:needsReview?pull.filter(c=>c.action!=='delete'):pull;
         if(remoteChanges.length||pushTags){
           status('Driveへバックアップ '+remoteChanges.length+'件…');
           await drive.syncApply(remoteChanges,remoteChanges.map(c=>[
@@ -356,7 +361,7 @@ export function startFastLocalSync(scope){
         const newState={...baseline};
         const pushed=new Set(remoteChanges.map(c=>c.kind+':'+c.id));
         const pulled=new Set(localChanges.map(c=>c.kind+':'+c.id));
-        const excluded=new Set(needsReview?
+        const excluded=new Set(needsReview&&!allowDeletes?
           [...push.filter(c=>c.action==='delete'),...pull.filter(c=>c.action==='delete')]
             .map(c=>c.kind+':'+c.id):[]);
         for(const key of safe){
