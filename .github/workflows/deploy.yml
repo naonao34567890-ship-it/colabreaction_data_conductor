@@ -4,6 +4,7 @@ run-name: "Mol Bench · ${{ (inputs.publish || github.event_name == 'push') && '
 on:
   # A deliberate workflow-file update can publish the current main revision.
   # Ordinary application commits still require manual workflow_dispatch.
+  # Release verification: Colab ZIP disk spool and large-import tests aligned.
   push:
     branches: [main]
     paths: [.github/workflows/deploy.yml]
