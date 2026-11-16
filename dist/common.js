@@ -819,7 +819,7 @@ if(typeof location!=='undefined'&&location.origin==='https://mol-bench.web.app')
     const dialog=document.createElement('dialog');dialog.id='fastSyncConflict';
     dialog.innerHTML='<h2>Driveとの同期に確認が必要</h2><p id="fastSyncConflictText"></p>'+
       '<div class="dialog-actions"><button type="button" id="fastSyncCancel">今回は同期しない</button>'+
-      '<button type="button" id="fastSyncContinue" class="primary">競合・削除を保留して他を同期</button>'+
+      '<button type="button" id="fastSyncContinue" class="primary">競合を保留して他を同期</button>'+
       '<button type="button" id="fastSyncWithDeletes" class="danger">削除も同期する</button></div>';
     document.body.append(dialog);
     import('./fast-local-sync.js').then(({startFastLocalSync})=>startFastLocalSync(fastScope))
