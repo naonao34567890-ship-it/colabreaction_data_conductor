@@ -1,0 +1,123 @@
+/* Shared non-card shell for the molecule, reaction, Colab and ORCA catalogues.
+ * Each catalogue keeps its own record cards, event handlers, IDs and actions. */
+.library-shell-header{
+  flex:0 0 auto;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  padding:0 0 8px;
+  border-bottom:1px solid var(--border);
+  min-width:0;
+}
+.library-shell-header .toolbar,
+.library-shell-header .tidy-toolbar{
+  display:flex;
+  align-items:center;
+  align-content:center;
+  flex-wrap:wrap;
+  gap:9px;
+  margin:0;
+  min-width:0;
+}
+.library-shell-header .tidy-group{
+  display:flex;
+  align-items:center;
+  align-content:center;
+  flex-wrap:wrap;
+  gap:6px;
+  padding:6px 9px;
+  min-width:0;
+  border:1px solid var(--border);
+  border-radius:9px;
+  background:#161d1d;
+}
+.library-shell-header .tidy-label,
+.library-shell-header .reaction-tidy-label,
+.library-shell-header .colab-action-label,
+.library-shell-header .orca-tidy-label{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:600;
+  letter-spacing:.05em;
+  margin-right:5px;
+  white-space:nowrap;
+}
+.library-shell-header .library-list-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:9px;
+  align-items:center;
+  margin:0;
+  min-width:0;
+}
+.library-shell-header .library-list-row h2{
+  margin:0;
+  font-size:1.06rem;
+}
+.library-shell-header .library-list-row .spacer{flex:1 1 auto}
+.library-shell-header .library-list-row label{display:inline-flex;align-items:center;gap:6px}
+.library-shell-header .library-list-row select{max-width:100%;min-width:0}
+.library-shell-heading{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:16px;
+  flex-wrap:wrap;
+  margin:6px 0 8px;
+}
+.library-shell-heading h1{margin:0}
+.library-shell-drop{
+  border:1px dashed var(--border);
+  border-radius:9px;
+  background:#141d1a;
+  padding:10px 14px;
+  margin:8px 0;
+}
+.library-shell-status{margin:6px 0 12px}
+.library-shell-status p{margin:3px 0}
+.library-shell-header .reaction-export-menu,
+.library-shell-header .colab-maintenance,
+.library-shell-header .orca-export-menu{position:relative}
+.library-shell-header .reaction-export-content,
+.library-shell-header .colab-maintenance-content,
+.library-shell-header .orca-export-options{z-index:60}
+.library-shell-header .reaction-view-actions,
+.library-shell-header .orca-search-group{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px;
+  padding:0;
+  background:transparent;
+  border:0;
+  flex:0 1 auto;
+  min-width:0;
+}
+.library-shell-header .orca-search-group #search{max-width:270px;flex:1 1 190px}
+.library-shell-header .reaction-primary-actions{flex:1 1 380px}
+.library-shell-header .reaction-organize{flex:0 1 auto}
+.library-shell-header #colabControls>.colab-connect-group{flex:0 1 auto}
+.library-shell-header .colab-connect-group{border-color:#456c61}
+#colabPage #colabPanel{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;overflow:hidden}
+#colabPage #colabScroll{flex:1 1 auto;min-height:0;overflow-y:auto;padding:8px 0 16px}
+#colabPage #colabControls>label{margin-left:0}
+#colabPage #colabDrop{padding:8px 12px;margin:4px 0 8px}
+#colabPage #colabStatus,
+#colabPage #colabQueue,
+#colabPage #colabErrors{margin:3px 0}
+#colabPage .library-shell-header{overflow:visible}
+#colabPage #colabResults{min-height:0}
+#colabPage #colabJobs{min-height:0}
+body:has(>main.main) .main{max-width:none}
+body:has(>main.main) .library-shell-header{margin:0 0 10px}
+body:has(>main.main) .library-shell-heading{margin:8px 0}
+body:has(>main.main) .library-shell-header .orca-tidy-toolbar{margin:0}
+body:has(>main.main) .library-shell-header .orca-search-group{flex:0 1 auto}
+@media(max-width:720px){
+  .library-shell-header .tidy-group{flex:1 1 100%}
+  .library-shell-header .library-list-row .spacer{display:none}
+  .library-shell-header .library-list-row h2{flex-basis:auto}
+  .library-shell-header .reaction-view-actions,
+  .library-shell-header .orca-search-group{flex:1 1 100%}
+  .library-shell-header .orca-search-group #search{max-width:none}
+}
