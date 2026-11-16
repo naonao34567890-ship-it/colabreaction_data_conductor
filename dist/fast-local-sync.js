@@ -196,7 +196,7 @@ async function applyLocalTags(sub,tags){
     await done;
   }finally{db.close();}
 }
-function showConflictDialog(count){
+function showConflictDialog(count,eligibleCount){
   return new Promise(resolve=>{
     const dialog=$('fastSyncConflict');
     if(!dialog){resolve(false);return;}
@@ -204,14 +204,26 @@ function showConflictDialog(count){
       '同じ記録を端末とDriveの両方で変更した可能性があります。'+
       '競合した記録はそのまま保護し、競合していない変更（意図した削除を含む）だけ同期できます。';
     const cancel=$('fastSyncCancel'),continueButton=$('fastSyncContinue'),
-      deleteButton=$('fastSyncWithDeletes');
+      localButton=$('fastSyncLocalWins'),deleteButton=$('fastSyncWithDeletes');
     deleteButton.hidden=true;
+    if(localButton){
+      localButton.disabled=!eligibleCount;
+      localButton.title=eligibleCount+'件のローカルに存在する競合のみDriveへ上書きします。削除やタグ競合は保留します。';
+    }
     const cleanup=()=>{
       cancel.onclick=null;continueButton.onclick=null;deleteButton.onclick=null;
+      if(localButton)localButton.onclick=null;
       dialog.oncancel=null;dialog.close();
     };
     cancel.onclick=()=>{cleanup();resolve('cancel');};
     continueButton.onclick=()=>{cleanup();resolve('safe');};
+    if(localButton)localButton.onclick=()=>{
+      if(!eligibleCount)return;
+      if(!confirm('ローカルの'+eligibleCount+'件を正本として、Drive側の対応する記録を更新します。\n'+
+        'ローカルに存在しない記録の削除や、タグ一覧の競合は解決しません。\n'+
+        'この操作を行う前に重要なデータのZIPバックアップを保存しておくことを推奨します。実行しますか？'))return;
+      cleanup();resolve('local');
+    };
     deleteButton.onclick=()=>{cleanup();resolve('deletes');};
     dialog.oncancel=event=>{event.preventDefault();cleanup();resolve('cancel');};
     dialog.showModal();
@@ -343,15 +355,35 @@ export function startFastLocalSync(scope){
           if(!manual&&signature===lastConflict)return;
           lastConflict=signature;
           localStorage.setItem(conflictKey,signature);
-          const decision=await showConflictDialog(conflicts.length);
+          const decision=await showConflictDialog(conflicts.length,conflicts.filter(c=>c.key!=='tags'&&local.has(c.key)).length);
           if(decision==='cancel'){
             status('競合の同期を保留しました（データは保持）');
             return;
           }
         }
+        // Explicit local-wins resolution only overwrites records that exist locally.
+        // It never turns an ambiguous absence into a remote deletion.
+        const localWins=needsReview&&decision==='local';
+        const resolvedConflicts=new Set(),overrides=[];
+        if(localWins){
+          const latestLocal=await localSnapshot(sub);
+          for(const conflict of conflicts){
+            if(conflict.key==='tags')continue;
+            const item=local.get(conflict.key);
+            if(!item)continue; // remote-only or ambiguous local deletion: never delete.
+            const latest=latestLocal.get(conflict.key);
+            if(await fingerprint(latest)!==conflict.hash)
+              throw Error('ローカルの記録が同期確認中に変更されました。再度実行してください: '+item.id);
+            overrides.push({...item,action:'put'});
+            resolvedConflicts.add(conflict.key);
+            safe.add(conflict.key);
+            computed.set(conflict.key,conflict.hash);
+          }
+        }
+        const remainingConflicts=conflicts.filter(c=>!resolvedConflicts.has(c.key));
         // push and pull contain only non-conflicting, single-sided changes.
-        // Deleting a record intentionally is synchronized like editing it.
-        const remoteChanges=push;
+        // Local-wins overrides are written with optimistic Drive version checks.
+        const remoteChanges=[...push,...overrides];
         const localChanges=pull;
         if(remoteChanges.length||pushTags){
           status('Driveへバックアップ '+remoteChanges.length+'件…');
@@ -392,12 +424,12 @@ export function startFastLocalSync(scope){
           if(!local.get(key)&&!newRemoteMap.has(key))
             localStorage.removeItem('mol-bench-fast-deleted-'+sub+':'+key);
         }
-        if(!conflicts.length){
+        if(!remainingConflicts.length){
           lastConflict='';
           localStorage.removeItem(conflictKey);
         }
         status('同期済み（Driveへ '+remoteChanges.length+'件・端末へ '+localChanges.length+'件）'+
-          (conflicts.length?'／競合 '+conflicts.length+'件は保留':''));
+          (remainingConflicts.length?'／競合 '+remainingConflicts.length+'件は保留':''));
         // Local catalogue pages need a refresh after remote-origin changes.
         if(localChanges.length||pullTags){
           document.dispatchEvent(new Event('drive-store-updated'));
