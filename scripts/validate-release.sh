@@ -5,6 +5,9 @@ if [[ "${RELEASE_USE_SYSTEM_BROWSER:-0}" != 1 ]]; then
   npx playwright install --with-deps chromium
   export CHROMIUM_PATH="$(node -p "require('playwright').chromium.executablePath()")"
 fi
+# Catch syntax errors in the local-first synchronization path before browser tests.
+node --check dist/common.js
+node --check dist/fast-local-sync.js
 node tests/test.cjs
 shopt -s nullglob
 for test_file in tests/*.test.mjs tests/*.test.cjs; do
