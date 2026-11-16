@@ -18,6 +18,22 @@ if(reaction){
  }catch(error){console.warn('反応メタデータを復元できません:',error);}
 }
 const $ = id => document.getElementById(id);
+let fullSourceReactionPromise;
+async function loadFullSourceReaction(){
+ if(!reaction)return null;
+ const url=new URLSearchParams(location.hash.slice(1)).get('sourceReactionArchive');
+ if(!url)return null;
+ if(!globalThis.ReactionArchive)throw Error('元反応データを読む機能がありません。');
+ if(!fullSourceReactionPromise)fullSourceReactionPromise=(async()=>{
+  const response=await fetch(url);
+  if(!response.ok)throw Error('元反応ZIPを取得できませんでした。');
+  const file=await response.blob();
+  const result=await ReactionArchive.read(file);
+  if(result.records.length!==1)throw Error('元反応の数が不正です。');
+  return result.records[0];
+ })();
+ return fullSourceReactionPromise;
+}
 const frames = [];
 let current = 0;
 let currentBlock = null;
@@ -499,14 +515,21 @@ async function saveEndpoint(finish, openEditor = false) {
         !!current.FINISH===!!target.FINISH && current.FINISH?.revision===target.FINISH?.revision && current.START?.revision===target.START?.revision);
     } else {
       if(!await Mol.confirmElectronicSave({START:structure})){tab?.close();return;}
-      const provenance=sourceReactionContext?{
-        classification:sourceReactionContext.classification||null,
-        tags:[...sourceReactionContext.tags],
-        sourceReactionId:sourceReactionContext.sourceReactionId||null,
-        sourceArchiveSHA256:sourceReactionContext.sourceArchiveSHA256||null,
-        sourceManifestEntry:sourceReactionContext.sourceEntry||null,
+      // Restore every custom record property from the original typed archive.
+      // Endpoints and ID must NOT be copied: this is a new saved reaction path.
+      const source=await loadFullSourceReaction();
+      const {id:_id,createdAt:_created,name:_name,START:_start,FINISH:_finish,
+       startPreview:_preview,_driveFileId:_drive,_summary:_summary,...rest}=source||{};
+      const provenance=sourceReactionContext||source?{
+        ...rest,
+        classification:sourceReactionContext?.classification??source?.classification??null,
+        tags:sourceReactionContext?.tags??source?.tags??[],
+        sourceReactionId:source?.id??sourceReactionContext?.sourceReactionId??null,
+        sourceCreatedAt:source?.createdAt??sourceReactionContext?.createdAt??null,
+        sourceArchiveSHA256:sourceReactionContext?.sourceArchiveSHA256??null,
+        sourceManifestEntry:sourceReactionContext?.sourceEntry??null,
       }:{};
-      saved = await ReactionStore.createReaction({START:structure,...provenance},name);
+      saved = await ReactionStore.createReaction({...provenance,START:structure},name);
     }
     lastReactionId = saved.id;
     status(saved.name+'_'+slot+' を反応ライブラリに保存しました。');
