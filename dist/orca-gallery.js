@@ -129,9 +129,22 @@ $('chooseFolder').onclick=e=>{e.stopPropagation();$('folder').click();};
 $('drop').onclick=e=>{if(e.target.closest('button'))return;$('upload').click();};
 $('drop').onkeydown=e=>{if(e.target===$('drop')&&(e.key==='Enter'||e.key===' ')){e.preventDefault();$('upload').click();}};
 for(const el of [$('upload'),$('folder')])el.onchange=async e=>{try{await importFiles([...e.target.files]);}catch(err){$('status').textContent=err.message;}finally{e.target.value='';$('progress').hidden=true;}};
-$('drop').ondragover=e=>{e.preventDefault();$('drop').classList.add('drag');};
-$('drop').ondragleave=e=>{e.preventDefault();$('drop').classList.remove('drag');};
-$('drop').ondrop=async e=>{e.preventDefault();$('drop').classList.remove('drag');try{await importFiles([...e.dataTransfer.files]);}catch(err){$('status').textContent=err.message;}finally{$('progress').hidden=true;}};
+// Match the molecular library: accept external files over the entire page.
+// Keep the existing import/validation function and its file-format restrictions.
+document.addEventListener('dragover',e=>{
+ if(!e.dataTransfer?.types.includes('Files'))return;
+ e.preventDefault();e.dataTransfer.dropEffect='copy';
+});
+document.addEventListener('drop',async e=>{
+ if(!e.dataTransfer?.types.includes('Files'))return;
+ e.preventDefault();
+ try{
+  const files=[...e.dataTransfer.files];
+  if(!files.length){$('status').textContent='ORCA計算結果のファイルまたはZIPをドロップしてください。';return;}
+  await importFiles(files);
+ }catch(err){$('status').textContent=err.message;}
+ finally{$('progress').hidden=true;}
+});
 $('order').onchange=refresh;$('search').oninput=refresh;
 $('exportIndex').onclick=()=>{const blob=new Blob([JSON.stringify({format:'mol-bench-orca-gallery-index',version:1,records:all},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='orca-gallery-index.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);};
 refresh().catch(e=>$('status').textContent=e.message);
