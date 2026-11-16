@@ -100,7 +100,8 @@ const {pathToFileURL} = require('node:url');
     };
     const context={console,fetch,URL,URLSearchParams,Blob,TextEncoder,crypto,
       document:{getElementById:get,createElement:tag=>new Element(tag),
-        createDocumentFragment:()=>new Element('fragment'),head:new Element('head')},
+        createDocumentFragment:()=>new Element('fragment'),head:new Element('head'),
+        addEventListener(type,listener){assert.ok(['dragover','drop'].includes(type));assert.equal(typeof listener,'function');}},
       window:{addEventListener(){},top:{location:{}}},location:{search:''},
       IntersectionObserver:class{observe(){}disconnect(){}unobserve(){}},
       Mol:{compareDisplayOrder:(a,b)=>a.id.localeCompare(b.id),
