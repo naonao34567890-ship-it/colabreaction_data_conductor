@@ -34,9 +34,9 @@ for(const filename of ['reactions.html','colab.html','orca.html']){
 // All catalogues use document-level file drops, not a small drop-only box.
 for(const filename of ['reactions.js','colab-records.js','orca-gallery.js']){
  const source=fs.readFileSync(path.join(root,filename),'utf8');
- assert.match(source,/document\\.addEventListener\\('dragover'/,filename+': missing page-wide dragover');
- assert.match(source,/document\\.addEventListener\\('drop'/,filename+': missing page-wide drop');
- assert.match(source,/dataTransfer\\?\\.types\\.includes\\('Files'\\)/,filename+': non-file drops should be ignored');
+ assert.ok(source.includes("document.addEventListener('dragover'"),filename+': missing page-wide dragover');
+ assert.ok(source.includes("document.addEventListener('drop'"),filename+': missing page-wide drop');
+ assert.ok(source.includes("dataTransfer?.types.includes('Files')"),filename+': non-file drops should be ignored');
 }
 const editor=fs.readFileSync(path.join(root,'editor.html'),'utf8');
 assert.match(editor,/<details class="help moiety-help"><summary>交換の使い方<\/summary>/);
