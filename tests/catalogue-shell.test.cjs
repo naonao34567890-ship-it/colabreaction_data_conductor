@@ -20,7 +20,13 @@ for(const [filename,required] of Object.entries(pages)){
   assert.match(html,/class=["'][^"']*library-shell-heading/,filename+': catalogue heading');
  }
 }
+const base=fs.readFileSync(path.join(root,'catalogue-base.css'),'utf8');
+assert.match(base, /--ink:#e8efed/, 'ORCA must share the molecule library text palette');
+assert.match(base, /--paper:#101313/, 'ORCA must share the molecule library background');
+assert.match(base, /button\.primary\{background:var\(--accent\)/, 'ORCA must share molecule library primary buttons');
 const orca=fs.readFileSync(path.join(root,'orca.html'),'utf8');
+assert.match(orca, /href="catalogue-base\.css"/, 'ORCA must load the molecule library base stylesheet');
+assert.doesNotMatch(orca, /button,select,input\{font:inherit;color:inherit\}/, 'ORCA must not override the shared controls');
 assert.match(orca,/<div class="page" id="orcaPage">/,'ORCA should use molecular library page shell');
 assert.match(orca,/<header class="library-shell-header">/,'ORCA should use fixed top actions');
 assert.match(orca,/<main class="workspace orca-workspace" id="orcaScroll">/,'ORCA should have an independent catalogue scroll region');
