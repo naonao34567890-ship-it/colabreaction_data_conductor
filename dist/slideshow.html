@@ -50,7 +50,16 @@
 <details class="viewer-options-menu"><summary>その他の保存・出力</summary><div class="viewer-options-menu-content">
 <button id="downloadFrame" disabled>この構造をダウンロード</button><button id="importAll" disabled>すべての構造を取り込み</button>
 </div></details>
-d"></p></section>
+</div>
+<p id="slideStatus" class="status" role="status">XYZを読み込み中…</p>
+</header>
+<main class="editor-main">
+<section class="viewport" id="view" aria-label="構造の3Dビュー">
+<div class="view-label">3D VIEW / Å</div><canvas id="frameNumbers" hidden aria-hidden="true"></canvas>
+<div class="view-info" id="atomCount"></div>
+</section>
+<aside class="sidebar">
+<section class="panel"><h2>現在の構造 / 全構造</h2><p id="frameCount">— / —</p><p id="frameEnergy" class="muted"></p></section>
 <section class="panel"><h2>フレーム–最初からのエネルギー変化量</h2>
 <canvas id="energyPlot" width="580" height="420" role="img" aria-label="フレーム番号とエネルギー変化量（kJ/mol）"></canvas>
 <p id="energyHint" class="muted"></p></section>
