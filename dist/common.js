@@ -770,7 +770,11 @@ if(typeof location!=='undefined'&&location.origin==='https://mol-bench.web.app')
   Mol.localReactionDatabaseName='mol-bench-fast-local-v1-reactions-'+fastScope.sub;
   Mol.setDatabaseName('mol-bench-fast-local-v1-molecules-'+fastScope.sub);
   Mol.cloudDatabaseNames={reactions:Mol.localReactionDatabaseName,account:fastScope};
-  const markChanged=()=>document.dispatchEvent(new Event('mol-bench-local-mutated'));
+  const markChanged=()=>{
+    if(typeof localStorage!=='undefined')
+      localStorage.setItem('mol-bench-fast-sync-dirty-'+fastScope.sub,crypto.randomUUID());
+    document.dispatchEvent(new Event('mol-bench-local-mutated'));
+  };
   for(const method of ['saveBatch','importMolecules','overwrite','removeMany','renameMolecule']){
     const original=Mol[method];
     if(typeof original!=='function')continue;
