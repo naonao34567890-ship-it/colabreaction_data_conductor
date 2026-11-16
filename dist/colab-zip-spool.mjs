@@ -34,7 +34,7 @@ export async function spoolColabZip(file, {
       throw Error('ZIP内に無効または重複したファイルパスがあります。');
     }
     names.add(path);
-    if (++count > 15000) throw Error('ZIP内の項目数が15,000件を超えています。');
+    count++;
     if (directory) {
       entry.ondata = error => { if (error) throw error; };
       entry.start();
