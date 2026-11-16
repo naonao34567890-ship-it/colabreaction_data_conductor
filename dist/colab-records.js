@@ -1181,11 +1181,19 @@ function folderJob(entry) {
   }};
 }
 
-const drop = get('colabDrop');
-drop.ondragover = event => event.preventDefault();
-drop.ondrop = event => {
+// Like the molecule library, allow import drops anywhere on this page.
+document.addEventListener('dragover', event => {
+  if (!event.dataTransfer?.types.includes('Files')) return;
   event.preventDefault();
-  if (input.disabled) return;
+  event.dataTransfer.dropEffect = input.disabled ? 'none' : 'copy';
+});
+document.addEventListener('drop', event => {
+  if (!event.dataTransfer?.types.includes('Files')) return;
+  event.preventDefault();
+  if (input.disabled) {
+    status('Google Driveに接続するとZIPやフォルダーを取り込めます。');
+    return;
+  }
   const {files, items} = event.dataTransfer;
   const records = [];
   const dropped = [...items].filter(item => item.kind === 'file');
@@ -1204,4 +1212,4 @@ drop.ondrop = event => {
   }
   if (records.length) enqueue(records);
   else status('計算結果のZIPまたはフォルダーをドロップしてください。');
-};
+});
