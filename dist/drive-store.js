@@ -676,6 +676,7 @@ export function createDriveStore(local) {
     name: r.name,
     createdAt: r.createdAt,
     tags: r.tags || [],
+    classification: r.classification || null,
   });
   function legacyDatabase(name, version, reaction = false) {
     return new Promise((resolve, reject) => {
