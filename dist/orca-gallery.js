@@ -1,9 +1,9 @@
 // ORCA gallery: local-first, independent from the molecular/reaction libraries.
 // TS classification is based on the result name suffix "_ts" (before extension), NOT frequencies.
-import {Unzip,UnzipInflate} from './vendor/fflate.mjs';
+import {unzipSync} from './vendor/fflate.mjs';
 const $=id=>document.getElementById(id);
 const dbName='mol-bench-orca-gallery-v1';
-// No arbitrary per-file byte cap. Browser storage quota and available memory still apply.
+const MAX=512*1024*1024;
 const supported=/\.(?:out|log|xyz|png|jpe?g|json|inp|engrad|hess|gbw|trj)$/i;
 const suffix=/\.(?:out|log|xyz|zip|json|inp|png|jpe?g|engrad|hess|gbw|trj)$/i;
 const baseName=name=>String(name).split(/[\\/]/).pop().replace(suffix,'');
@@ -35,47 +35,18 @@ function parseLog(log){
  multiplicity:mult.length?Number(mult.at(-1)[1]):null,status:success?'success':failed?'failed':'unknown'};
 }
 const decode=bytes=>new TextDecoder('utf-8').decode(bytes);
-// Stream the ZIP input and inflate entries incrementally; never allocate a
-// contiguous ArrayBuffer for the complete archive or its entire uncompressed contents.
 async function parseZip(file){
- const names=new Set(),entries=[];let count=0,failure=null;
- const unzip=new Unzip(entry=>{
-  const path=entry.name;
-  if(path.startsWith('/')||path.includes('\\')||path.split('/').some(p=>p==='..')||names.has(path)){
-   throw Error('ZIPのファイル名が不正です');
-  }
-  names.add(path);
-  if(++count>15000)throw Error('ZIP内のファイル数が15,000件を超えています');
-  const wanted=!path.endsWith('/')&&supported.test(path);
-  const chunks=[];
-  entry.ondata=(err,data,final)=>{
-   if(err){failure=err;return;}
-   if(wanted&&data?.length)chunks.push(data);
-   if(final&&wanted)entries.push({path,blob:new Blob(chunks)});
-  };
-  // Unsupported files are consumed, but their expanded content is discarded.
-  entry.start();
- });
- unzip.register(UnzipInflate);
- const reader=file.stream().getReader();
- try{
-  while(true){
-   const {done,value}=await reader.read();
-   if(done)break;
-   unzip.push(value,false);
-   if(failure)throw failure;
-  }
-  unzip.push(new Uint8Array(0),true);
-  if(failure)throw failure;
-  return entries;
- }catch(error){
-  await reader.cancel().catch(()=>{});
-  throw error;
- }finally{reader.releaseLock();}
+ const names=new Set();let size=0,count=0;
+ const unpack=unzipSync(new Uint8Array(await file.arrayBuffer()),{filter:item=>{
+  if(item.name.startsWith('/')||item.name.includes('\\')||item.name.split('/').some(p=>p==='..')||names.has(item.name))throw Error('ZIPのファイル名が不正です');
+  names.add(item.name);size+=item.originalSize;if(++count>15000||size>MAX)throw Error('ZIPの展開容量が上限を超えています');return !item.name.endsWith('/');
+ }});
+ return Object.entries(unpack).filter(([path])=>supported.test(path)).map(([path,bytes])=>({path,blob:new Blob([bytes])}));
 }
 async function readInputs(files){
  const batches=[];
  for(const file of files){
+  if(file.size>MAX)throw Error('ファイルが512 MiBを超えています: '+file.name);
   if(/\.zip$/i.test(file.name)){
    const entries=await parseZip(file);
    if(!entries.length)continue;
@@ -91,20 +62,12 @@ async function readInputs(files){
  }
  return batches;
 }
-async function readLogWindow(blob){
- const windowBytes=8*1024*1024;
- if(blob.size<=2*windowBytes)return blob.text();
- return (await blob.slice(0,windowBytes).text())+'\n…\n'+
-        (await blob.slice(-windowBytes).text());
-}
 async function importFiles(files){
  const batches=await readInputs(files);$('progress').hidden=false;$('progress').max=batches.length;$('progress').value=0;
  let saved=0;
  for(const batch of batches){
   const logFile=batch.files.find(f=>/\.out$/i.test(f.path))||batch.files.find(f=>/\.log$/i.test(f.path));
-  // Parse the beginning and end of unusually large logs instead of loading
-  // gigabytes of text into a single JavaScript string.
-  const log=logFile?await readLogWindow(logFile.blob):'';
+  const log=logFile?await logFile.blob.text():'';
   const summary=parseLog(log);
   const name=batch.name||'ORCA job';
   const id=crypto.randomUUID();
