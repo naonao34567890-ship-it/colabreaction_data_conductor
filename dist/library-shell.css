@@ -125,11 +125,13 @@ body:has(>main.main) .library-shell-header .orca-search-group{flex:0 1 auto}
 /* ORCA uses the same outer page geometry as the molecular library.
    Its cards and file-details modal intentionally keep their specialized layout. */
 #orcaPage{
+  display:flex;flex-direction:column;height:100dvh;min-height:0;min-width:0;
   --ink:#e8efed;--muted:#a8b6b2;--accent:#62d6bf;--border:#34413f;--paper:#101313;
   color:var(--ink);background:var(--paper);
   font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;
 }
 body:has(#orcaPage){margin:0;padding:0;background:#101313}
+#orcaPage, #orcaPage *{box-sizing:border-box}
 #orcaPage .mode-switch{flex:0 0 auto;margin-bottom:12px}
 #orcaPage>.library-shell-header{
   flex:0 0 auto;
