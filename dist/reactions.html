@@ -56,6 +56,7 @@
 </nav>
   <header class="library-shell-header">
     <div class="toolbar reaction-tidy-toolbar tidy-toolbar" aria-label="反応ライブラリの操作">
+      <div class="reaction-tidy-group tidy-group tidy-import"><span class="reaction-tidy-label">ファイル</span><button id="reactionImport" class="primary" type="button">＋ ZIPを選択</button><input id="reactionImportFile" type="file" accept=".zip,application/zip" hidden></div>
       <div class="reaction-tidy-group tidy-group reaction-primary-actions"><span class="reaction-tidy-label">選択・編集</span><button id="reactionAll">全選択</button><button id="reactionNone">全解除</button><button id="reactionCopy" disabled title="Ctrl+C">コピー</button><button id="reactionPaste" title="Ctrl+V">貼り付け</button></div>
       <div class="reaction-tidy-group tidy-group reaction-organize"><span class="reaction-tidy-label">整理</span><button id="reactionTag" disabled>タグ付け</button><button id="reactionClassify" disabled>分類</button><button id="reactionDelete" class="tidy-danger" disabled>削除</button></div>
       <details class="reaction-export-menu"><summary>ZIPの書き出し</summary><div class="reaction-export-content">
@@ -74,11 +75,8 @@
     <div class="heading library-shell-heading"><div><div class="eyebrow">MOLECULAR WORKSPACE / 03</div><h1>反応ライブラリ</h1></div><div class="badge">START / FINISH</div></div>
     <p class="muted">ColabReaction用のSTARTとFINISHの構造を、反応ごとにまとめる場所です。</p>
     <p class="muted">対応情報付きZIPは、出発物・生成物のペア、反応名、タグ、元データを保持します。移行用にはこちらを使い、ZIPのまま保管してください。</p>
-    <section id="reactionDrop" tabindex="0" aria-label="対応情報付き反応ZIPの取り込み" style="border:1px dashed var(--border);padding:16px;margin:12px 0;border-radius:10px">
-      対応情報付き反応ZIPをここにドロップ
-      <button id="reactionImport">ZIPを選択して取り込む</button>
-      <input id="reactionImportFile" type="file" accept=".zip,application/zip" hidden>
-      <p class="muted">ZIPを展開する必要はありません。対応表からペアを復元し、既存の同じIDは内容を確認します。</p>
+    <section id="reactionDrop" tabindex="0" aria-label="対応情報付き反応ZIPのドロップ領域" class="library-shell-drop">
+      対応情報付き反応ZIPはこの領域にドロップすることもできます。ZIPの展開は不要です。
     </section>
     <p id="reactionStatus" class="muted" role="status">読み込み中…</p>
     <div id="reactionDays"></div>
