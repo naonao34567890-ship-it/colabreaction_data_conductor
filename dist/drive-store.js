@@ -127,6 +127,7 @@ const safe = (name) =>
   String(name || 'molecule')
     .replace(/[\x00-\x1f/\\]/g, '_')
     .slice(0, 100);
+export const encodeSyncValue = encode;
 export function createDriveStore(local, options = {}) {
   let uncertain = false,
     offline = false,
