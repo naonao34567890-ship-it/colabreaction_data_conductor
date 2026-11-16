@@ -269,14 +269,16 @@ async function outputValue(trajectory, field) {
 async function readZip(file) {
   status('ZIPを読み込んでいます…');
   const {Unzip,UnzipInflate} = await import('./vendor/fflate.mjs');
-  const files = new Map();
+  const files = new Map(), names = new Set();
   let count = 0, failure = null;
   const unzip = new Unzip(entry => {
-    const path = entry.name, parts = path.split('/');
+    const path = entry.name, directory = path.endsWith('/');
+    const parts = (directory ? path.slice(0,-1) : path).split('/');
     if (path.startsWith('/') || path.includes('\\') ||
-        parts.some(part => !part || part === '.' || part === '..') || files.has(path)) {
+        parts.some(part => !part || part === '.' || part === '..') || names.has(path)) {
       throw Error('ZIP内に無効または重複したファイルパスがあります。');
     }
+    names.add(path);
     if (++count > 15000) throw Error('ZIP内の項目数が15,000件を超えています。');
     const chunks = [];
     entry.ondata = (error, data, final) => {
