@@ -516,6 +516,19 @@ async function openReaction(jobId, name, originals, images) {
       urls.push(url);
       params.set(key,url);
     }
+    // A v2 ColabReaction output includes a portable source-reaction context.
+    // It is metadata, not a computational input; preserve classification/tags on return.
+    const contextFiles=await list("'" + originals + "' in parents and name = 'reaction-context.json'");
+    if(contextFiles.length===1){
+      try{
+       const payload=await (await download(contextFiles[0].id)).text();
+       if(payload.length<100000){
+        const context=JSON.parse(payload);
+        if(context?.format==='mol-bench-reaction-context'&&context.version===2)
+          params.set('reactionContext',JSON.stringify(context));
+       }
+      }catch(error){console.warn('反応の引継ぎ情報を読み込めませんでした:',error);}
+    }
     if (tab.closed) throw Error('反応経路ビューアを閉じました。');
     const vibrationChannelId = crypto.randomUUID();
     vibrationChannel = serveVibrationFiles(tab, originals, vibrationChannelId);
