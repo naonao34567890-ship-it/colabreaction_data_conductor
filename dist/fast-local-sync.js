@@ -96,6 +96,18 @@ async function writeBaseline(sub,entries){
   }finally{db.close();}
 }
 // Shadow cache for DriveStore. Never switches Mol's live fast-local database.
+export const fastSyncFingerprint=fingerprint;
+export async function saveFastSyncMigrationBaseline(service,sub,hashes,startVersions){
+  const index=await service.syncIndex();
+  const versions=new Map(index.records.map(row=>[row.key,row.version]));
+  const baseline={};
+  for(const [key,hash] of Object.entries(hashes)){
+    if(!versions.has(key)||versions.get(key)!==startVersions.get(key))
+      throw Error('移行中にDriveの分子・反応データが変更されました。移行を中止します。');
+    baseline[key]={version:versions.get(key),hash};
+  }
+  await writeBaseline(sub,baseline);
+}
 function shadowBackend(){
   let name='mol-bench-sync-shadow-uninitialized',pending;
   const open=()=>pending??=(openDB(name,2,(db,tx)=>{
