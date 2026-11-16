@@ -279,6 +279,7 @@ export function startFastLocalSync(scope){
         const remoteMap=new Map(remote.records.map(r=>[r.key,r]));
         const keys=new Set([...remoteMap.keys(),...local.keys(),...Object.keys(baseline)]);
         const fingerprintCache=new Map();
+        const localDeleteIntent=key => localStorage.getItem('mol-bench-fast-deleted-'+sub+':'+key)!==null;
         const localHash=async key=>{
           if(!fingerprintCache.has(key))
             fingerprintCache.set(key,fingerprint(local.get(key)));
@@ -300,10 +301,20 @@ export function startFastLocalSync(scope){
               if(hash===theirHash){safe.add(key);computed.set(key,hash);continue;}
               conflicts.push({key,hash,version:cloud.version});continue;
             }
+            if(!current&&cloud&&localDeleteIntent(key)){
+              // A recorded, completed local deletion takes precedence over
+              // an old missing baseline. Never re-download it as an addition.
+              push.push({kind:key[0],id:key.slice(2),action:'delete'});
+              safe.add(key);computed.set(key,null);continue;
+            }
             localChanged=!!current;remoteChanged=!!cloud;
           }
           if(!localChanged&&!remoteChanged){safe.add(key);computed.set(key,hash);continue;}
           if(localChanged&&remoteChanged){
+            if(!current&&!cloud){
+              // Both sides deleted the same item: converged, not a conflict.
+              safe.add(key);computed.set(key,null);continue;
+            }
             if(current&&cloud){
               const theirs=await drive.syncRead(key[0],key.slice(2));
               const theirHash=await fingerprint({kind:key[0],id:key.slice(2),meta:cloud.meta,body:theirs});
@@ -375,6 +386,12 @@ export function startFastLocalSync(scope){
         await writeBaseline(sub,newState,newRemote.generation,dirtyToken,
           tagConflict?savedState.tagHash:(pullTags?remoteTagHash:localTagHash),
           tagConflict?savedState.tagVersion:newRemote.tagsVersion);
+        // Clear tombstones only after a confirmed Drive deletion and local
+        // checkpoint. Interrupted uploads leave them available for retry.
+        for(const key of safe){
+          if(!local.get(key)&&!newRemoteMap.has(key))
+            localStorage.removeItem('mol-bench-fast-deleted-'+sub+':'+key);
+        }
         if(!conflicts.length){
           lastConflict='';
           localStorage.removeItem(conflictKey);
