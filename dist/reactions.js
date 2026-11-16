@@ -271,7 +271,7 @@ async function applyClassification(ids,value){
 }
 control('reactionClassificationApply').onclick=()=>void changeSelection(async ids=>{
  const value=control('reactionClassificationName').value.trim();
- if(!value||value.length>200)throw Error('分類名は1〜200文字で指定してください。');
+ if(!value||new TextEncoder().encode(value).length>100)throw Error('分類名はUTF-8で100バイト以内にしてください。');
  await applyClassification(ids,value);
  control('reactionClassificationDialog').close();
 });
@@ -284,7 +284,7 @@ control('reactionClassificationRename').onclick=async()=>{
  const oldNames=new Set(records.filter(r=>selected.has(r.id)).map(r=>r.classification).filter(Boolean));
  const name=control('reactionClassificationName').value.trim();
  if(oldNames.size!==1){status.textContent='同一分類の反応を選んでください。';return;}
- if(!name||name.length>200){status.textContent='1〜200文字の分類名を指定してください。';return;}
+ if(!name||new TextEncoder().encode(name).length>100){status.textContent='分類名はUTF-8で100バイト以内にしてください。';return;}
  const from=[...oldNames][0];
  changing=true;selectionUI();
  try{await applyClassification(records.filter(r=>r.classification===from).map(r=>r.id),name);control('reactionClassificationDialog').close();}
