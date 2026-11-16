@@ -1,4 +1,5 @@
 import {readEnergy} from './dmf-energy.js';
+import {energyAxis, clampEnergy} from './energy-axis.js';
 import {readColabFile, pruneColabFileCache} from './colab-file-cache.js';
 import {parseConfig, summaryProperties, readSummary, displayLines, resultDate as summaryResultDate} from './colab-record-summary.mjs';
 import {standaloneDrive, beginDriveConnection, driveFetch} from './drive-connection.js?v=2';
@@ -135,40 +136,19 @@ async function thumbnail(blob) {
   throw Error('端点のXYZを読み込めませんでした。');
 }
 
-// 0 kJ/mol anchored, human-readable tick spacing. Outliers outside the
-// physical display window are clamped to its edge, never allowed to rescale it.
-function energyAxis(points) {
-  const steps = [1, 5, 10, 20, 25, 40, 50, 100];
-  const valid = points.map(([,energy]) => energy)
-    .filter(energy => Number.isFinite(energy) && energy >= -500 && energy <= 500);
-  const minimum = Math.min(0, ...valid), maximum = Math.max(0, ...valid);
-  // Pick the LARGEST spacing that would yield at least four nonzero
-  // tick marks without expanding the actual data range.
-  const step = [...steps].reverse().find(candidate =>
-    Math.ceil(-minimum / candidate) + Math.ceil(maximum / candidate) >= 4) ?? 1;
-  let negative = Math.ceil(-minimum / step), positive = Math.ceil(maximum / step);
-  // Very flat profiles still need a useful four-division scale, centered on
-  // zero when possible. Do not silently choose a 100 kJ/mol step for flat data.
-  while (negative + positive < 4) {
-    if (negative <= positive) negative++;
-    else positive++;
-  }
-  const low = -negative * step, high = positive * step;
-  return {step, low, high, negative, positive};
-}
-
 async function energyPlot(points) {
   const canvas = document.createElement('canvas');
   canvas.width = 960;
   canvas.height = 650;
   const ctx = canvas.getContext('2d');
   const xmin = points[0][0], xmax = points.at(-1)[0];
-  const {step, low, high, negative, positive} = energyAxis(points);
+  const axis = energyAxis(points.map(([, energy]) => energy));
+  const {step, low, high, negative, positive} = axis;
   const left = 190, right = 920, top = 100, bottom = 540;
   const x = value => xmin === xmax ? (left + right) / 2 :
     left + (right - left) * (value - xmin) / (xmax - xmin);
   const y = value => bottom - (bottom - top) *
-    (Math.max(low, Math.min(high, value)) - low) / (high - low);
+    (clampEnergy(value, axis) - low) / (high - low);
   ctx.fillStyle = '#101313';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = '#e8efed';
