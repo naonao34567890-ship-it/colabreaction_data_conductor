@@ -1,6 +1,7 @@
 import {readFrameEnergy} from './frame-energy.js';
 
 import {readEnergy} from './dmf-energy.js';
+import {energyAxis, clampEnergy} from './energy-axis.js';
 
 const reaction = document.body.dataset.viewer === 'reaction';
 let sourceReactionContext=null;
@@ -281,30 +282,33 @@ function drawPlot() {
   const canvas = $('energyPlot'), ctx = canvas.getContext('2d');
   const points = [];
   const referenceEnergy = frames[reference]?.energy;
-  let min = 0, max = 0;
   frames.forEach(({energy}, index) => {
     if (energy === null) return;
     const delta = energy - referenceEnergy;
-    if (!Number.isFinite(delta)) return;
-    min = Math.min(min, delta);
-    max = Math.max(max, delta);
-    points.push({index, delta});
+    if (Number.isFinite(delta)) points.push({index, delta});
   });
-  if (min === max) {min -= 1; max += 1;}
+  const axis = energyAxis(points.map(point => point.delta));
+  const {step, low, high, negative, positive} = axis;
   const left = 90, top = 24, right = 552, bottom = 348;
-  const x = index => left+(right-left)*index/Math.max(1,frames.length-1);
-  const y = energy => bottom-(bottom-top)*(energy-min)/(max-min);
+  const x = index => left + (right-left)*index/Math.max(1,frames.length-1);
+  const y = energy => bottom - (bottom-top)*(clampEnergy(energy,axis)-low)/(high-low);
   plottedPoints = points.map(point => ({index:point.index,x:x(point.index),y:y(point.delta)}));
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.font = '23px system-ui';
+  const totalTicks=negative+positive+1;
+  const fontSize=Math.min(23,Math.max(12,Math.floor((bottom-top)/totalTicks*.72)));
+  ctx.font = fontSize+'px system-ui';
   ctx.fillStyle = '#a8b6b2';
-  ctx.strokeStyle = '#34413f';
   ctx.textAlign = 'right';
-  for (let i=0;i<=4;i++) {
-    const value = min+(max-min)*i/4, py = y(value);
-    ctx.beginPath();ctx.moveTo(left,py);ctx.lineTo(right,py);ctx.stroke();
-    ctx.fillText(Number(value.toPrecision(3)).toString(),left-9,py+7);
+  for (let tick=-negative; tick<=positive; tick++) {
+    const value=tick*step, py=y(value);
+    ctx.beginPath();
+    ctx.strokeStyle=value===0?'#5c7770':'#34413f';
+    ctx.lineWidth=value===0?2:1;
+    ctx.moveTo(left,py);ctx.lineTo(right,py);ctx.stroke();
+    ctx.fillText(value===0?'0':String(value),left-9,py+fontSize*.3);
   }
+  ctx.lineWidth=1;
+  ctx.font='23px system-ui';
   ctx.textAlign = 'center';
   ctx.fillText('フレーム', (left+right)/2, 408);
   ctx.textAlign = 'left';
