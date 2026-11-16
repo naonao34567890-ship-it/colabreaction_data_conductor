@@ -382,6 +382,7 @@ function sortCards() {
     content.append(entry.card);
   }
   jobs.replaceChildren(content);
+  const count=get('colabCount');if(count)count.textContent=entries.length.toLocaleString()+' 記録';
 }
 
 async function countOriginalFiles(id) {
