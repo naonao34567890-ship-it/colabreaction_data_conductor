@@ -55,10 +55,8 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:32vh;overflow:auto;pa
 </header>
 <main class="workspace orca-workspace" id="orcaScroll">
 <div class="heading library-shell-heading"><div><div class="eyebrow">MOLECULAR WORKSPACE / 05</div><h1>ORCA計算結果</h1></div><div class="badge">ORCA / ローカル記録</div></div>
-<p class="muted">ORCA計算のログ・構造・画像をまとめて保存・閲覧します。現在はブラウザのIndexedDBへ保存し、Google Driveとの通信は行いません。</p>
 <section id="drop" tabindex="0" role="button" aria-label="ORCA計算結果のZIPまたはファイルを読み込む" class="library-shell-drop">
-<strong>ORCA計算結果のZIP、または複数のファイルをドロップ</strong>
-<p class="muted">.out / .log / .xyz / .png / .jpg / .json / .inp など。ZIPは展開せずに取り込めます。</p>
+ORCA計算ファイル・ZIP・フォルダはページ全体にドロップできます。ファイル選択は上のボタンから。
 <input id="upload" type="file" multiple hidden accept=".zip,.out,.log,.xyz,.png,.jpg,.jpeg,.json,.inp,.engrad,.hess,.gbw,.trj">
 <input id="folder" type="file" webkitdirectory multiple hidden>
 </section>
