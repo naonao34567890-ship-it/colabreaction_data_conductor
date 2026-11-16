@@ -130,43 +130,71 @@ async function thumbnail(blob) {
   throw Error('端点のXYZを読み込めませんでした。');
 }
 
+// 0 kJ/mol anchored, human-readable tick spacing. Outliers outside the
+// physical display window are clamped to its edge, never allowed to rescale it.
+function energyAxis(points) {
+  const steps = [1, 5, 10, 20, 25, 40, 50, 100];
+  const valid = points.map(([,energy]) => energy)
+    .filter(energy => Number.isFinite(energy) && energy >= -500 && energy <= 500);
+  const minimum = Math.min(0, ...valid), maximum = Math.max(0, ...valid);
+  // Pick the LARGEST spacing that would yield at least four nonzero
+  // tick marks without expanding the actual data range.
+  const step = [...steps].reverse().find(candidate =>
+    Math.ceil(-minimum / candidate) + Math.ceil(maximum / candidate) >= 4) ?? 1;
+  let negative = Math.ceil(-minimum / step), positive = Math.ceil(maximum / step);
+  // Very flat profiles still need a useful four-division scale, centered on
+  // zero when possible. Do not silently choose a 100 kJ/mol step for flat data.
+  while (negative + positive < 4) {
+    if (negative <= positive) negative++;
+    else positive++;
+  }
+  const low = -negative * step, high = positive * step;
+  return {step, low, high, negative, positive};
+}
+
 async function energyPlot(points) {
   const canvas = document.createElement('canvas');
   canvas.width = 960;
   canvas.height = 650;
   const ctx = canvas.getContext('2d');
   const xmin = points[0][0], xmax = points.at(-1)[0];
-  const values = points.map(p => p[1]);
-  const ymin = Math.min(...values), ymax = Math.max(...values);
-  const low = ymin === ymax ? ymin - 0.5 : ymin;
-  const high = ymin === ymax ? ymax + 0.5 : ymax;
-  const left = 350, right = 920, top = 155, bottom = 515;
+  const {step, low, high, negative, positive} = energyAxis(points);
+  const left = 190, right = 920, top = 100, bottom = 540;
   const x = value => xmin === xmax ? (left + right) / 2 :
     left + (right - left) * (value - xmin) / (xmax - xmin);
-  const y = value => bottom - (bottom - top) * (value - low) / (high - low);
+  const y = value => bottom - (bottom - top) *
+    (Math.max(low, Math.min(high, value)) - low) / (high - low);
   ctx.fillStyle = '#101313';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = '#e8efed';
-  ctx.font = 'bold 90px sans-serif';
-  ctx.fillText('ΔE (kJ/mol)', 20, 95);
-  ctx.font = 'bold 100px sans-serif';
+  // Half-size title and labels (roughly one quarter the original glyph area).
+  ctx.font = 'bold 45px sans-serif';
+  ctx.fillText('ΔE (kJ/mol)', 14, 62);
+  const tickCount = negative + positive + 1;
+  const labelSize = Math.max(23, Math.min(50, Math.floor((bottom - top) / tickCount * 0.8)));
+  ctx.font = 'bold ' + labelSize + 'px sans-serif';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
-  for (let tick = 0; tick <= 3; tick++) {
-    const energy = low + (high - low) * tick / 3;
-    const yy = y(energy);
-    ctx.fillText(energy.toFixed(1), left - 18, yy, left - 28);
-    ctx.fillStyle = '#34413f';
-    ctx.fillRect(left, yy, right - left, 2);
+  for (let tick = -negative; tick <= positive; tick++) {
+    const energy = tick * step, yy = y(energy);
+    const text = energy === 0 ? '0' : String(energy);
     ctx.fillStyle = '#e8efed';
+    ctx.fillText(text, left - 12, yy, left - 30);
+    ctx.fillStyle = energy === 0 ? '#5c7770' : '#34413f';
+    ctx.fillRect(left, yy, right - left, energy === 0 ? 3 : 2);
   }
-  ctx.font = 'bold 84px sans-serif';
+  ctx.font = 'bold 42px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(String(xmin), left, 600, 160);
-  if (xmax !== xmin) ctx.fillText(String(xmax), right - 38, 600, 160);
-  ctx.fillText('フレーム', (left + right) / 2, 600, 335);
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#e8efed';
+  ctx.fillText(String(xmin), left, 617, 105);
+  if (xmax !== xmin) ctx.fillText(String(xmax), right - 28, 617, 105);
+  ctx.fillText('フレーム', (left + right) / 2, 617, 180);
   ctx.fillStyle = '#62d6bf';
   for (const [frame, energy] of points) {
+    if (!Number.isFinite(energy)) continue;
+    // Values outside [-500, 500], or outside the selected rounded axis,
+    // are shown at the nearest vertical boundary rather than disappearing.
     ctx.beginPath();
     ctx.arc(x(frame), y(energy), 4, 0, 2 * Math.PI);
     ctx.fill();
