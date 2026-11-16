@@ -854,22 +854,24 @@ export function createDriveStore(local, options = {}) {
     async syncIndex() {
       await ready;
       await exclusive(() => pull(true));
-      return {generation:head.generation,records:[...records.entries()].map(([key,ref])=>({key,version:ref.version,meta:clone(ref.meta)})),tags:clone(head.tags)};
+      return {generation:head.generation,records:[...records.entries()].map(([key,ref])=>({key,version:ref.version,meta:clone(ref.meta)})),tags:clone(head.tags),tagsVersion:head.tagsVersion};
     },
     async syncRead(kind,id) {
       await ready;
       await exclusive(() => pull());
       return readRecord(kind,id);
     },
-    async syncApply(changes,expected) {
+    async syncApply(changes,expected,tagCatalog,tagVersion) {
       await ready;
       const targets=changes.map(change=>change.kind+':'+change.id);
       const expectedVersions=new Map(expected);
       return commit(targets,async()=>({
         puts:changes.filter(change=>change.action==='put').map(change=>({kind:change.kind,meta:change.meta,body:change.body})),
         deletes:changes.filter(change=>change.action==='delete').map(change=>change.kind+':'+change.id),
-        ...(changes.some(change=>change.kind==='m'&&change.action==='put')?{tags:[...new Map([...head.tags,...changes.filter(change=>change.kind==='m'&&change.action==='put').flatMap(change=>(change.meta.tags||[]).map(name=>({name})))].map(tag=>[tag.name,tag])).values()]}:{})
-      }),{expectedVersions});
+        ...(tagCatalog!==undefined?{tags:tagCatalog}:
+          changes.some(change=>change.kind==='m'&&change.action==='put')?
+          {tags:[...new Map([...head.tags,...changes.filter(change=>change.kind==='m'&&change.action==='put').flatMap(change=>(change.meta.tags||[]).map(name=>({name})))].map(tag=>[tag.name,tag])).values()]}:{})
+      }),{expectedVersions,...(tagCatalog!==undefined?{expectedTags:tagVersion}:{})});
     },
     get reactionDatabaseName() {
       return reactName;
