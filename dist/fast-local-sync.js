@@ -196,16 +196,16 @@ async function applyLocalTags(sub,tags){
     await done;
   }finally{db.close();}
 }
-function showConflictDialog(count,destructive){
+function showConflictDialog(count){
   return new Promise(resolve=>{
     const dialog=$('fastSyncConflict');
     if(!dialog){resolve(false);return;}
-    $('fastSyncConflictText').textContent=count+'件の競合'+
-      (destructive?'・削除を含む変更':'')+
-      'があります。競合のあるデータは一切上書きしません。競合以外の安全な変更のみ同期しますか？';
+    $('fastSyncConflictText').textContent=count+'件の競合が見つかりました。'+
+      '同じ記録を端末とDriveの両方で変更した可能性があります。'+
+      '競合した記録はそのまま保護し、競合していない変更（意図した削除を含む）だけ同期できます。';
     const cancel=$('fastSyncCancel'),continueButton=$('fastSyncContinue'),
       deleteButton=$('fastSyncWithDeletes');
-    deleteButton.hidden=!destructive;
+    deleteButton.hidden=true;
     const cleanup=()=>{
       cancel.onclick=null;continueButton.onclick=null;deleteButton.onclick=null;
       dialog.oncancel=null;dialog.close();
@@ -221,7 +221,7 @@ export function startFastLocalSync(scope){
   if(!scope?.sub)return;
   const sub=scope.sub;
   let service,running=false,lastStatus='',timer;
-  const conflictKey='mol-bench-fast-sync-dismissed-'+sub;
+  const conflictKey='mol-bench-fast-sync-dismissed-v2-'+sub;
   const dirtyKey='mol-bench-fast-sync-dirty-'+sub;
   let lastConflict=localStorage.getItem(conflictKey)||'';
   const status=(message)=>{
@@ -323,28 +323,25 @@ export function startFastLocalSync(scope){
           safe.add(key);computed.set(key,localChanged?hash:undefined);
         }
         if(tagConflict)conflicts.push({key:'tags',hash:localTagHash,version:remote.tagsVersion||null});
-        const destructive=push.some(c=>c.action==='delete')||pull.some(c=>c.action==='delete');
-        const needsReview=conflicts.length>0||destructive;
-        const signature=JSON.stringify([
-          conflicts.map(c=>[c.key,c.hash,c.version]).sort(),
-          push.filter(c=>c.action==='delete').map(c=>c.id),
-          pull.filter(c=>c.action==='delete').map(c=>c.id),
-        ]);
-        let allowDeletes=false;
+        // An ordinary single-sided edit or deletion is NOT a conflict.
+        // Only simultaneous divergent edits require confirmation.
+        const needsReview=conflicts.length>0;
+        const signature=JSON.stringify(conflicts.map(c=>[c.key,c.hash,c.version]).sort());
         if(needsReview){
-          status('同期に確認が必要（競合 '+conflicts.length+'件'+(destructive?'・削除あり':'')+'）');
+          status('同期に確認が必要（競合 '+conflicts.length+'件）');
           if(!manual&&signature===lastConflict)return;
           lastConflict=signature;
           localStorage.setItem(conflictKey,signature);
-          const decision=await showConflictDialog(conflicts.length,destructive);
+          const decision=await showConflictDialog(conflicts.length);
           if(decision==='cancel'){
-            status('同期を保留しました（ローカルのデータは保持）');
+            status('競合の同期を保留しました（データは保持）');
             return;
           }
-          if(decision==='deletes')allowDeletes=true;
         }
-        const remoteChanges=allowDeletes?push:needsReview?push.filter(c=>c.action!=='delete'):push;
-        const localChanges=allowDeletes?pull:needsReview?pull.filter(c=>c.action!=='delete'):pull;
+        // push and pull contain only non-conflicting, single-sided changes.
+        // Deleting a record intentionally is synchronized like editing it.
+        const remoteChanges=push;
+        const localChanges=pull;
         if(remoteChanges.length||pushTags){
           status('Driveへバックアップ '+remoteChanges.length+'件…');
           await drive.syncApply(remoteChanges,remoteChanges.map(c=>[
@@ -361,11 +358,7 @@ export function startFastLocalSync(scope){
         const newState={...baseline};
         const pushed=new Set(remoteChanges.map(c=>c.kind+':'+c.id));
         const pulled=new Set(localChanges.map(c=>c.kind+':'+c.id));
-        const excluded=new Set(needsReview&&!allowDeletes?
-          [...push.filter(c=>c.action==='delete'),...pull.filter(c=>c.action==='delete')]
-            .map(c=>c.kind+':'+c.id):[]);
         for(const key of safe){
-          if(excluded.has(key))continue;
           const cloud=newRemoteMap.get(key);
           const pushedItem=remoteChanges.find(c=>c.kind+':'+c.id===key);
           const pulledItem=localChanges.find(c=>c.kind+':'+c.id===key);
@@ -382,7 +375,7 @@ export function startFastLocalSync(scope){
         await writeBaseline(sub,newState,newRemote.generation,dirtyToken,
           tagConflict?savedState.tagHash:(pullTags?remoteTagHash:localTagHash),
           tagConflict?savedState.tagVersion:newRemote.tagsVersion);
-        if(!conflicts.length&&!destructive){
+        if(!conflicts.length){
           lastConflict='';
           localStorage.removeItem(conflictKey);
         }
