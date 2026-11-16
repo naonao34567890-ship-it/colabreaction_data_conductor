@@ -122,55 +122,54 @@ body:has(>main.main) .library-shell-header .orca-search-group{flex:0 1 auto}
   .library-shell-header .orca-search-group #search{max-width:none}
 }
 
-/* The ORCA gallery predates the shared common.js base stylesheet.
-   Normalize its page chrome without touching its result cards or detail view. */
-body:has(>main.main){
-  margin:0;
-  padding:0;
-  background:#101313;
-  color:#e8efed;
-  font:14px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif;
-  --ink:#e8efed;
-  --muted:#a8b6b2;
-  --border:#34413f;
-  --accent:#62d6bf;
+/* ORCA uses the same outer page geometry as the molecular library.
+   Its cards and file-details modal intentionally keep their specialized layout. */
+#orcaPage{
+  --ink:#e8efed;--muted:#a8b6b2;--accent:#62d6bf;--border:#34413f;--paper:#101313;
+  color:var(--ink);background:var(--paper);
+  font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;
 }
-body:has(>main.main) .mode-switch{padding:12px 28px 0;margin-bottom:12px}
-body:has(>main.main) .main>.library-shell-header{
+body:has(#orcaPage){margin:0;padding:0;background:#101313}
+#orcaPage .mode-switch{flex:0 0 auto;margin-bottom:12px}
+#orcaPage>.library-shell-header{
+  flex:0 0 auto;
   padding:19px 28px 12px;
   background:#191e1e;
   border-bottom:1px solid var(--border);
 }
-body:has(>main.main) .main>.library-shell-heading,
-body:has(>main.main) .main>#drop,
-body:has(>main.main) .main>#status,
-body:has(>main.main) .main>#progress,
-body:has(>main.main) .main>#cards,
-body:has(>main.main) .main>#fileInfo,
-body:has(>main.main) .main>p.muted{
-  margin-left:28px;
-  margin-right:28px;
+#orcaPage .library-shell-header button,
+#orcaPage .library-shell-header select,
+#orcaPage .library-shell-header input{font:inherit}
+#orcaPage .library-shell-header button{padding:9px 14px;white-space:nowrap}
+#orcaPage .library-shell-header button.tidy-primary{
+  font-weight:700;background:var(--accent);color:#10201c;border-color:var(--accent);
 }
-body:has(>main.main) .main>.library-shell-heading h1{font-size:22px;letter-spacing:-.6px}
-body:has(>main.main) .main>.library-shell-heading .eyebrow{font-size:10px}
-body:has(>main.main) .main>#cards{margin-top:12px}
-body:has(>main.main) .main .library-shell-header button{padding:9px 14px;white-space:nowrap}
-body:has(>main.main) .main .library-shell-header button.tidy-primary{
-  background:var(--accent);
-  color:#10201c;
-  border-color:var(--accent);
+#orcaPage .library-shell-header h2{font-size:16px;margin:0}
+#orcaPage .library-shell-header .orca-tidy-toolbar{margin:0}
+#orcaPage .library-shell-header .orca-search-group{
+  background:transparent;border:0;padding:0;flex:0 1 auto;
 }
+#orcaPage .library-shell-header .orca-search-group #search{flex:1 1 190px;max-width:270px}
+#orcaPage .orca-workspace{
+  display:block;flex:1 1 0;min-height:0;overflow-y:auto;
+  padding:22px 28px 16px;
+  overscroll-behavior:contain;
+}
+#orcaPage .orca-workspace>.heading{margin-bottom:4px}
+#orcaPage .orca-workspace h1{font-size:22px;letter-spacing:-.6px;margin:0}
+#orcaPage .orca-workspace .eyebrow{font-size:10px;font-weight:700;letter-spacing:2px;color:var(--accent)}
+#orcaPage .orca-workspace .badge{
+  font-size:12px;border:1px solid var(--border);border-radius:30px;padding:5px 12px;
+}
+#orcaPage .orca-workspace #drop{margin:8px 0;padding:8px 12px;text-align:left}
+#orcaPage .orca-workspace #drop strong{font-size:13px}
+#orcaPage .orca-workspace #drop p{font-size:12px}
+#orcaPage .orca-workspace #status{margin:6px 0}
+#orcaPage .orca-workspace #cards{margin:8px 0 14px}
+#orcaPage .orca-workspace #fileInfo{margin:8px 0}
+#orcaPage #detail{margin:auto}
 @media(max-width:720px){
-  body:has(>main.main) .mode-switch{padding:10px 14px 0}
-  body:has(>main.main) .main>.library-shell-header{padding:12px 14px}
-  body:has(>main.main) .main>.library-shell-heading,
-  body:has(>main.main) .main>#drop,
-  body:has(>main.main) .main>#status,
-  body:has(>main.main) .main>#progress,
-  body:has(>main.main) .main>#cards,
-  body:has(>main.main) .main>#fileInfo,
-  body:has(>main.main) .main>p.muted{
-    margin-left:14px;
-    margin-right:14px;
-  }
+  #orcaPage>.library-shell-header{padding:12px 14px}
+  #orcaPage .orca-workspace{padding:14px}
+  #orcaPage .library-shell-header .orca-search-group{flex:1 1 100%}
 }
