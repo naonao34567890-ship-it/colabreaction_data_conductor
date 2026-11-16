@@ -138,7 +138,15 @@ const ReactionStore = (() => {
    const original=api[method];
    api[method]=async(...args)=>{
     const value=await original(...args);
-    localStorage.setItem('mol-bench-fast-sync-dirty-'+Mol.localFastScope.sub,crypto.randomUUID());
+    const sub=Mol.localFastScope.sub;
+    if(method==='remove'){
+      for(const id of args[0]||[])
+        localStorage.setItem('mol-bench-fast-deleted-'+sub+':r:'+id,String(Date.now()));
+    }else if(method==='importRecords'){
+      for(const item of args[0]||[])
+        if(item?.id)localStorage.removeItem('mol-bench-fast-deleted-'+sub+':r:'+item.id);
+    }
+    localStorage.setItem('mol-bench-fast-sync-dirty-'+sub,crypto.randomUUID());
     document.dispatchEvent(new Event('mol-bench-local-mutated'));
     return value;
    };
