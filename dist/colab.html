@@ -60,6 +60,12 @@
 <section id="colabPanel" aria-labelledby="colabTitle">
 <header class="library-shell-header">
   <div id="colabControls" class="toolbar tidy-toolbar" aria-label="Colab計算記録の操作">
+    <div class="tidy-group tidy-import colab-import-actions"><span class="tidy-label">ファイル</span>
+      <button id="colabFileButton" type="button" class="primary" disabled>＋ ZIPを選択</button>
+      <button id="colabFolderButton" type="button" disabled>フォルダを選択</button>
+      <input id="colabZip" type="file" multiple accept=".zip,application/zip" hidden disabled>
+      <input id="colabFolder" type="file" webkitdirectory multiple hidden disabled>
+    </div>
     <div class="colab-connect-group tidy-group"><span class="colab-action-label">Google Drive</span>
       <button id="driveConnect" type="button" class="primary">Google Driveに接続</button>
       <button id="driveTemporary" type="button">一時接続</button>
@@ -82,12 +88,7 @@
 </header>
 <div id="colabScroll" role="region" aria-label="Colab計算記録の操作・ログ・一覧" tabindex="0">
 <div class="heading library-shell-heading"><div><div class="eyebrow">MOLECULAR WORKSPACE / 04</div><h1 id="colabTitle">Colab計算記録</h1></div><div class="badge">Google Drive / Colab</div></div>
-<div id="colabDrop" class="library-shell-drop">
-  <label>計算結果のZIPまたはフォルダーをドロップ
-    <input id="colabZip" type="file" multiple accept=".zip,application/zip" disabled>
-  </label>
-  <label>フォルダーを選択 <input id="colabFolder" type="file" webkitdirectory multiple disabled></label>
-</div>
+<div id="colabDrop" class="library-shell-drop" aria-label="Colab計算結果ドロップ領域">計算結果のZIPまたはフォルダーは、この領域にドラッグ＆ドロップすることもできます。</div>
 <form id="driveSetup" hidden>
   <label>Googleクライアントシークレット<input id="driveSecret" type="password" autocomplete="new-password" required></label>
   <button type="submit">設定を保存</button>
