@@ -1,5 +1,17 @@
 <!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Colab計算記録</title><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script><script src="atomic-weights.js"></script>
 <script src="common.js"></script><script src="worker.js"></script><link rel="stylesheet" href="library-nav.css"><style>#colabPage { height: 100dvh; overflow: hidden; }
+#colabControls{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+#colabControls>.colab-connect-group{display:flex;align-items:center;flex-wrap:wrap;gap:7px;padding:6px 9px;border:1px solid #36594f;border-radius:9px;background:#161d1d}
+.colab-action-label{font-size:11px;color:var(--muted)}
+#colabControls>.colab-maintenance{position:relative;margin:0}
+.colab-maintenance>summary{cursor:pointer;list-style:none;border:1px solid var(--border);border-radius:7px;padding:8px 10px;font-size:.9em}
+.colab-maintenance>summary::-webkit-details-marker{display:none}
+.colab-maintenance>summary::after{content:" ▾";color:var(--muted)}
+.colab-maintenance-content{position:absolute;top:calc(100% + 5px);left:0;z-index:30;display:grid;gap:6px;min-width:270px;padding:10px;border:1px solid var(--border);border-radius:8px;background:#192222;box-shadow:0 8px 24px #0008}
+#colabControls>#driveSetup{flex-basis:100%}
+#colabControls>#colabStatus,#colabControls>#colabQueue,#colabControls>#colabErrors{flex-basis:100%;margin:2px 0}
+#colabControls>label{margin-left:auto}
+@media(max-width:600px){#colabControls>label{margin-left:0}.colab-connect-group{width:100%}}
 #colabPage > .mode-switch { flex-shrink: 0; margin-bottom: 0; }
 #colabPanel { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; }
 #colabDrop { flex: 0 0 auto; }
@@ -54,9 +66,12 @@
 <div id="colabScroll" role="region" aria-label="Colab計算記録の操作・ログ・一覧" tabindex="0">
 <h1 id="colabTitle">Colab計算記録</h1>
 <div id="colabControls">
+<div class="colab-connect-group"><span class="colab-action-label">Google Drive</span>
 <button id="driveConnect" type="button" class="primary">Google Driveに接続</button>
-<button id="driveTemporary" type="button">一時接続</button>
+<button id="driveTemporary" type="button">一時接続</button></div>
+<details class="colab-maintenance"><summary>記録の管理・メンテナンス</summary><div class="colab-maintenance-content">
 <button id="replotExisting" type="button" disabled title="保存済みのDMF_energy.csvから全Energy.pngを新しい目盛り仕様で再生成します">既存のエネルギー画像を更新</button>
+</div></details>
 <form id="driveSetup" hidden>
 <label>Googleクライアントシークレット
 <input id="driveSecret" type="password" autocomplete="new-password" required>
