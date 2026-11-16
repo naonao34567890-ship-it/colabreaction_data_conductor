@@ -395,40 +395,64 @@ control('reactionZip').onclick=()=>void changeSelection(async ids=>{
  Mol.downloadBlob(new Blob(chunks,{type:'application/zip'}),'reactions.zip');
 });
 
+/* Marquee coordinates remain anchored to the reaction list during scrolling. */
+days.style.position='relative';
+const reactionScroll=document.querySelector('.reaction-workspace');
+let reactionMarquee=null;
+function drawReactionMarquee(){
+ const m=reactionMarquee;if(!m?.active)return;
+ const bounds=days.getBoundingClientRect();
+ const x=m.clientX-bounds.left,y=m.clientY-bounds.top;
+ const left=Math.min(m.x,x),top=Math.min(m.y,y);
+ const right=Math.max(m.x,x),bottom=Math.max(m.y,y);
+ Object.assign(m.box.style,{left:left+'px',top:top+'px',width:right-left+'px',height:bottom-top+'px'});
+ selected.clear();
+ if(m.add)for(const id of m.original)selected.add(id);
+ for(const card of days.querySelectorAll('.reaction-card')){
+  const rect=card.getBoundingClientRect(),id=card.dataset.id;
+  const l=rect.left-bounds.left,t=rect.top-bounds.top;
+  if(l>right||l+rect.width<left||t>bottom||t+rect.height<top)continue;
+  if(m.toggle&&m.original.has(id))selected.delete(id);else selected.add(id);
+ }
+ selectionUI();
+}
+function autoScrollReactionMarquee(){
+ const m=reactionMarquee;if(!m?.active)return;
+ const rect=reactionScroll.getBoundingClientRect(),edge=36;
+ const dy=m.clientY<rect.top+edge?-Math.min(24,Math.ceil((rect.top+edge-m.clientY)/2)):
+          m.clientY>rect.bottom-edge?Math.min(24,Math.ceil((m.clientY-rect.bottom+edge)/2)):0;
+ if(dy){reactionScroll.scrollTop+=dy;drawReactionMarquee();}
+ m.frame=requestAnimationFrame(autoScrollReactionMarquee);
+}
 days.addEventListener('pointerdown',event=>{
  if(event.button!==0||event.target.closest('button,input,.structure-name,h3'))return;
- const x=event.clientX,y=event.clientY;
- const before=new Set(selected);
- const box=document.createElement('div');
+ const rect=days.getBoundingClientRect(),box=document.createElement('div');
  box.className='reaction-selection-box';
- const move=pointer=>{
-  if(!box.isConnected&&Math.hypot(pointer.clientX-x,pointer.clientY-y)<6)return;
-  if(!box.isConnected)document.body.append(box);
-  const left=Math.min(x,pointer.clientX),right=Math.max(x,pointer.clientX);
-  const top=Math.min(y,pointer.clientY),bottom=Math.max(y,pointer.clientY);
-  Object.assign(box.style,{left:left+'px',top:top+'px',width:right-left+'px',height:bottom-top+'px'});
-  selected.clear();
-  if(pointer.shiftKey||pointer.ctrlKey||pointer.metaKey)for(const id of before)selected.add(id);
-  for(const card of days.querySelectorAll('.reaction-card')) {
-   const rect=card.getBoundingClientRect(), id=card.dataset.id;
-   if(rect.right<left||rect.left>right||rect.bottom<top||rect.top>bottom)continue;
-   if(pointer.shiftKey&&before.has(id))selected.delete(id);else selected.add(id);
-  }
-  selectionUI();
- };
- const stop=pointer=>{
-  window.removeEventListener('pointermove',move);
-  window.removeEventListener('pointerup',stop);
-  window.removeEventListener('pointercancel',stop);
-  if(!box.isConnected)return;
-  box.remove();
-  if(pointer.type==='pointerup'){
-   const suppress=click=>click.stopPropagation();
-   window.addEventListener('click',suppress,{capture:true,once:true});
-   setTimeout(()=>window.removeEventListener('click',suppress,true),0);
-  }
- };
- window.addEventListener('pointermove',move);
- window.addEventListener('pointerup',stop);
- window.addEventListener('pointercancel',stop);
+ reactionMarquee={pointerId:event.pointerId,startX:event.clientX,startY:event.clientY,
+  clientX:event.clientX,clientY:event.clientY,x:event.clientX-rect.left,y:event.clientY-rect.top,
+  original:new Set(selected),add:event.shiftKey||event.ctrlKey||event.metaKey,
+  toggle:event.ctrlKey||event.metaKey,box,active:false};
 });
+window.addEventListener('pointermove',event=>{
+ const m=reactionMarquee;if(!m||m.pointerId!==event.pointerId)return;
+ m.clientX=event.clientX;m.clientY=event.clientY;
+ if(!m.active){
+  if(Math.hypot(event.clientX-m.startX,event.clientY-m.startY)<6)return;
+  m.active=true;days.append(m.box);m.frame=requestAnimationFrame(autoScrollReactionMarquee);
+ }
+ drawReactionMarquee();
+});
+reactionScroll.addEventListener('scroll',()=>drawReactionMarquee());
+function finishReactionMarquee(event){
+ const m=reactionMarquee;if(!m||m.pointerId!==event.pointerId)return;
+ reactionMarquee=null;
+ if(m.frame)cancelAnimationFrame(m.frame);m.box.remove();
+ if(event.type==='pointercancel'){selected.clear();for(const id of m.original)selected.add(id);selectionUI();}
+ else if(m.active){
+  const suppress=e=>e.stopPropagation();
+  window.addEventListener('click',suppress,{capture:true,once:true});
+  setTimeout(()=>window.removeEventListener('click',suppress,true),0);
+ }
+}
+window.addEventListener('pointerup',finishReactionMarquee);
+window.addEventListener('pointercancel',finishReactionMarquee);
