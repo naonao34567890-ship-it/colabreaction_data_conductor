@@ -349,14 +349,22 @@ async function importReactionZip(file) {
 }
 control('reactionImport').onclick=()=>control('reactionImportFile').click();
 control('reactionImportFile').onchange=event=>void importReactionZip(event.target.files[0]);
-control('reactionDrop').addEventListener('dragover',event=>{event.preventDefault();event.dataTransfer.dropEffect=changing?'none':'copy';});
-control('reactionDrop').addEventListener('drop',event=>{
+// The entire catalogue accepts external file drops; the drop hint is not a target boundary.
+document.addEventListener('dragover',event=>{
+ if(!event.dataTransfer?.types.includes('Files'))return;
  event.preventDefault();
- if(event.dataTransfer.files.length!==1){status.textContent='対応情報付きZIPを1つずつドロップしてください。';return;}
- void importReactionZip(event.dataTransfer.files[0]);
+ event.dataTransfer.dropEffect=changing?'none':'copy';
 });
-window.addEventListener('dragover',event=>{if(event.dataTransfer.types.includes('Files'))event.preventDefault();});
-window.addEventListener('drop',event=>{if(event.dataTransfer.types.includes('Files'))event.preventDefault();});
+document.addEventListener('drop',event=>{
+ if(!event.dataTransfer?.types.includes('Files'))return;
+ event.preventDefault();
+ if(changing)return;
+ const files=[...event.dataTransfer.files];
+ if(files.length!==1||!/\\.zip$/i.test(files[0].name)){
+  status.textContent='対応情報付き反応ZIPを1つずつドロップしてください。';return;
+ }
+ void importReactionZip(files[0]);
+});
 window.addEventListener('beforeunload',event=>{if(changing){event.preventDefault();event.returnValue='';}});
 async function downloadReactionArchive(ids) {
  const chosen=new Set(ids);
