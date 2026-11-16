@@ -127,7 +127,7 @@ const safe = (name) =>
   String(name || 'molecule')
     .replace(/[\x00-\x1f/\\]/g, '_')
     .slice(0, 100);
-export function createDriveStore(local) {
+export function createDriveStore(local, options = {}) {
   let uncertain = false,
     offline = false,
     cacheDirty = false;
@@ -812,7 +812,7 @@ export function createDriveStore(local) {
       broadcast = new BroadcastChannel('mol-bench-drive-updates:' + account.sub);
       broadcast.onmessage = () => service.refresh().catch((error) => status(error.message, true));
     }
-    await migrate();
+    if (!options.skipLegacyMigration) await migrate();
     cacheName = 'molecular-xyz-drive-cache-' + account.sub;
     reactName = 'molecular-xyz-drive-reactions-' + account.sub;
     Mol.cloudDatabaseNames = { reactions: reactName, account };
@@ -850,6 +850,26 @@ export function createDriveStore(local) {
   ready.catch((error) => status(error.message, true));
   const service = {
     ready,
+    async syncIndex() {
+      await ready;
+      await exclusive(() => pull(true));
+      return {generation:head.generation,records:[...records.entries()].map(([key,ref])=>({key,version:ref.version,meta:clone(ref.meta)})),tags:clone(head.tags)};
+    },
+    async syncRead(kind,id) {
+      await ready;
+      await exclusive(() => pull());
+      return readRecord(kind,id);
+    },
+    async syncApply(changes,expected) {
+      await ready;
+      const targets=changes.map(change=>change.kind+':'+change.id);
+      const expectedVersions=new Map(expected);
+      return commit(targets,async()=>({
+        puts:changes.filter(change=>change.action==='put').map(change=>({kind:change.kind,meta:change.meta,body:change.body})),
+        deletes:changes.filter(change=>change.action==='delete').map(change=>change.kind+':'+change.id),
+        ...(changes.some(change=>change.kind==='m'&&change.action==='put')?{tags:[...new Map([...head.tags,...changes.filter(change=>change.kind==='m'&&change.action==='put').flatMap(change=>(change.meta.tags||[]).map(name=>({name})))].map(tag=>[tag.name,tag])).values()]}:{})
+      }),{expectedVersions});
+    },
     get reactionDatabaseName() {
       return reactName;
     },
@@ -1198,7 +1218,7 @@ export function createDriveStore(local) {
       });
     },
   };
-  if (typeof document !== 'undefined') {
+  if (typeof document !== 'undefined' && !options.backgroundRefreshDisabled) {
     window.addEventListener('beforeunload', (event) => {
       if (pendingWrites || migrating) {
         event.preventDefault();
