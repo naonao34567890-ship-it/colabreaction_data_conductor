@@ -409,6 +409,7 @@ export function startFastLocalSync(scope){
   window.Mol.fastSyncNow=()=>check(true);
   window.addEventListener('focus',()=>void check());
   window.addEventListener('storage',event=>{
+    if(event.key===conflictKey)lastConflict=event.newValue||'';
     if(event.key===dirtyKey||event.key===conflictKey)void check();
   });
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)void check();});
