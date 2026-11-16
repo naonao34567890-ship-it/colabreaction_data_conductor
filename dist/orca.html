@@ -10,6 +10,20 @@ h1{font-size:1.6rem;margin:12px 0 5px}h2{font-size:1.1rem;margin:8px 0}.muted{co
 #cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px;margin:15px 0}.card{padding:14px;background:#17201d;border:1px solid var(--border);border-radius:12px;min-width:0}.card h2{overflow-wrap:anywhere}.meta{font-size:.89rem;color:var(--muted);display:grid;gap:2px}.status-chip{display:inline-block;border-radius:12px;padding:2px 9px;font-size:.78rem;background:#46544e;color:#eef5f2}.ok{background:#1c5744}.fail{background:#70383a}.preview{height:150px;background:#0b1311;border-radius:8px;display:flex;align-items:center;justify-content:center;margin:12px 0}.preview img{max-height:100%;max-width:100%;object-fit:contain}.card-actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px}.card-actions button{padding:6px 9px;font-size:.85rem}
 #detail{border:1px solid var(--border);border-radius:12px;background:#121d19;color:var(--ink);width:min(1050px,95vw);max-height:92vh;padding:18px}#detail::backdrop{background:#000b}#detail header{display:flex;align-items:center;justify-content:space-between;gap:12px}#detail header h2{margin:0}#detailFiles{display:flex;gap:7px;flex-wrap:wrap}#detailImages{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:14px 0}#detailImages figure{margin:0}#detailImages img{max-width:100%;max-height:300px}#detailImages figcaption{font-size:.85rem;color:var(--muted);overflow-wrap:anywhere}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:32vh;overflow:auto;padding:12px;background:#07110e;border-radius:7px;font-size:.78rem}.progress{accent-color:var(--accent);width:min(390px,95%)}#fileInfo{font-size:.85rem;color:var(--muted)}
+.orca-tidy-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:9px}
+.orca-search-group{display:flex;align-items:center;gap:9px;flex-wrap:wrap;flex:1 1 480px;padding:8px 10px;border:1px solid #426a60;background:#16201d;border-radius:9px}
+.orca-tidy-label{font-size:11px;color:var(--muted)}
+.orca-search-group #search{flex:1 1 190px;max-width:none;min-width:130px}
+.orca-export-menu{position:relative;margin:0}
+.orca-export-menu>summary{list-style:none;cursor:pointer;padding:8px 11px;border-radius:7px;border:1px solid var(--border);white-space:nowrap}
+.orca-export-menu>summary::-webkit-details-marker{display:none}
+.orca-export-menu>summary::after{content:" ▾";color:var(--muted)}
+.orca-export-options{position:absolute;top:calc(100% + 5px);right:0;z-index:20;min-width:225px;display:grid;gap:6px;padding:10px;border:1px solid var(--border);background:#192521;border-radius:9px;box-shadow:0 8px 24px #0008}
+.orca-export-options button{white-space:normal;text-align:left}
+#drop{padding:16px 18px}
+#drop strong{font-size:1rem}
+#drop button:first-of-type{border-color:#548b78;font-weight:700}
+@media(max-width:650px){.orca-search-group{flex-basis:100%}.orca-export-options{right:auto;left:0}}
 @media(max-width:650px){body{padding:10px}#cards{grid-template-columns:1fr}.toolbar{align-items:stretch}.toolbar>*{max-width:100%}}
 </style></head>
 <body><main class="main">
@@ -30,10 +44,11 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:32vh;overflow:auto;pa
 <input id="upload" type="file" multiple hidden accept=".zip,.out,.log,.xyz,.png,.jpg,.jpeg,.json,.inp,.engrad,.hess,.gbw,.trj">
 <input id="folder" type="file" webkitdirectory multiple hidden>
 </section>
-<div class="toolbar">
-<label>並べ替え <select id="order"><option value="newest">登録日時・新しい順</option><option value="oldest">登録日時・古い順</option><option value="name">名前順</option><option value="energy">最終エネルギー順</option><option value="status">終了状態順</option></select></label>
+<div class="toolbar orca-tidy-toolbar" aria-label="ORCAギャラリーの操作">
+<div class="orca-search-group"><span class="orca-tidy-label">検索と表示</span>
 <input id="search" type="search" placeholder="計算名・分類・備考を検索" aria-label="ギャラリーを検索">
-<button id="exportIndex" type="button">一覧JSONを書き出す</button>
+<label>並べ替え <select id="order"><option value="newest">登録日時・新しい順</option><option value="oldest">登録日時・古い順</option><option value="name">名前順</option><option value="energy">最終エネルギー順</option><option value="status">終了状態順</option></select></label></div>
+<details class="orca-export-menu"><summary>データの出力</summary><div class="orca-export-options"><button id="exportIndex" type="button">一覧JSONを書き出す</button></div></details>
 <span id="count" class="muted"></span>
 </div>
 <p id="status" role="status"></p><progress id="progress" class="progress" hidden></progress>
