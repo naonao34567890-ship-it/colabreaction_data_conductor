@@ -250,6 +250,17 @@ async function importRecords(name, sourceLabel, readFiles) {
       if (matches.length > 1) throw Error(name + ' が複数あります。計算結果を1件ずつ取り込んでください。');
       return matches[0]?.[1];
     }
+    let sourceReaction=null;
+    const sourceMetadata=find('reaction-context.json');
+    if(sourceMetadata){
+      try{
+        const text=await sourceMetadata.text();
+        if(text.length<100000){
+          const context=JSON.parse(text);
+          if(context?.format==='mol-bench-reaction-context'&&context.version===2)sourceReaction=context;
+        }
+      }catch(error){console.warn('反応の引継ぎJSONを読めませんでした:',error);}
+    }
     const reactant = find('reactant.xyz'), product = find('product.xyz');
     const csv = find('DMF_energy.csv'), trajectory = find('DMF_final.xyz');
     if (!reactant || !product || !csv) throw Error('reactant.xyz、product.xyz、DMF_energy.csv が必要です。');
@@ -264,6 +275,9 @@ async function importRecords(name, sourceLabel, readFiles) {
       'ファイル数: ' + files.size,
       '電荷: ' + charge, 'spin（出力値）: ' + spin, '電荷・spinの取得元: DMF_final.xyz',
       '結果出力日時: ' + date + (match ? '（' + sourceLabel + '名由来・タイムゾーン不明）' : ''),
+      ...(sourceReaction?.name?['元の反応名: '+sourceReaction.name]:[]),
+      ...(sourceReaction?.sourceReactionId?['元の反応ID: '+sourceReaction.sourceReactionId]:[]),
+      ...(sourceReaction?.classification?['元の分類: '+sourceReaction.classification]:[]),
     ].join('\n');
     status('Google Driveに保存しています…');
     parent = await folder(name, root);
@@ -289,7 +303,14 @@ async function importRecords(name, sourceLabel, readFiles) {
     images.set('config.txt', await upload('config.txt', parent, new Blob([config], {type:'text/plain'})));
     // The completion marker (config.txt) remains the last upload.
     // A metadata write failure must not invalidate a successfully uploaded record.
-    await writeRecordSummary(parent, summaryProperties(config,images));
+    const properties=summaryProperties(config,images);
+    if(sourceReaction?.classification&&new TextEncoder().encode(sourceReaction.classification).length<=100)
+      properties.classification=sourceReaction.classification;
+    if(sourceReaction?.name&&new TextEncoder().encode(sourceReaction.name).length<=100)
+      properties.reactionName=sourceReaction.name;
+    if(sourceReaction?.sourceReactionId&&new TextEncoder().encode(sourceReaction.sourceReactionId).length<=100)
+      properties.sourceReactionId=sourceReaction.sourceReactionId;
+    await writeRecordSummary(parent,properties);
     parent = null;
     await refresh();
     status('計算記録を保存しました。');
