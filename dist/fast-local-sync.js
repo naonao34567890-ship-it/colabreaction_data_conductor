@@ -83,15 +83,15 @@ async function readBaseline(sub){
   const db=await openDB(STATE_DB,1,db=>db.createObjectStore('state',{keyPath:'sub'}));
   try{return await new Promise((resolve,reject)=>{
     const req=db.transaction('state').objectStore('state').get(sub);
-    req.onsuccess=()=>resolve(req.result?.entries||{});
+    req.onsuccess=()=>resolve(req.result||{sub,entries:{},generation:null,dirtyToken:null});
     req.onerror=()=>reject(req.error);
   });}finally{db.close();}
 }
-async function writeBaseline(sub,entries){
+async function writeBaseline(sub,entries,generation=null,dirtyToken=null){
   const db=await openDB(STATE_DB,1,db=>db.createObjectStore('state',{keyPath:'sub'}));
   try{
     const tx=db.transaction('state','readwrite'),done=waitTx(tx);
-    tx.objectStore('state').put({sub,entries,updatedAt:Date.now()});
+    tx.objectStore('state').put({sub,entries,generation,dirtyToken,updatedAt:Date.now()});
     await done;
   }finally{db.close();}
 }
@@ -106,7 +106,7 @@ export async function saveFastSyncMigrationBaseline(service,sub,hashes,startVers
       throw Error('移行中にDriveの分子・反応データが変更されました。移行を中止します。');
     baseline[key]={version:versions.get(key),hash};
   }
-  await writeBaseline(sub,baseline);
+  await writeBaseline(sub,baseline,index.generation,localStorage.getItem('mol-bench-fast-sync-dirty-'+sub));
 }
 function shadowBackend(){
   let name='mol-bench-sync-shadow-uninitialized',pending;
@@ -203,7 +203,9 @@ export function startFastLocalSync(scope){
   if(!scope?.sub)return;
   const sub=scope.sub;
   let service,running=false,lastStatus='',timer;
-  let lastConflict='';
+  const conflictKey='mol-bench-fast-sync-dismissed-'+sub;
+  const dirtyKey='mol-bench-fast-sync-dirty-'+sub;
+  let lastConflict=localStorage.getItem(conflictKey)||'';
   const status=(message)=>{
     lastStatus=message;
     const label=$('fastSyncStatus');if(label)label.textContent=message;
@@ -226,9 +228,16 @@ export function startFastLocalSync(scope){
       try{
         const drive=await serviceReady();
         status('同期差分を確認中…');
-        const [remote,local,baseline]=await Promise.all([
-          drive.syncIndex(),localSnapshot(sub),readBaseline(sub),
+        const [remote,savedState]=await Promise.all([
+          drive.syncIndex(),readBaseline(sub),
         ]);
+        const dirtyToken=localStorage.getItem(dirtyKey);
+        if(!manual&&savedState.generation===remote.generation&&savedState.dirtyToken===dirtyToken){
+          if(!lastStatus.startsWith('同期済み'))status('同期済み（変更なし）');
+          return;
+        }
+        const local=await localSnapshot(sub);
+        const baseline=savedState.entries;
         const remoteMap=new Map(remote.records.map(r=>[r.key,r]));
         const keys=new Set([...remoteMap.keys(),...local.keys(),...Object.keys(baseline)]);
         const fingerprintCache=new Map();
@@ -286,6 +295,7 @@ export function startFastLocalSync(scope){
           status('同期に確認が必要（競合 '+conflicts.length+'件'+(destructive?'・削除あり':'')+'）');
           if(!manual&&signature===lastConflict)return;
           lastConflict=signature;
+          localStorage.setItem(conflictKey,signature);
           if(!await showConflictDialog(conflicts.length,destructive)){
             status('同期を保留しました（ローカルのデータは保持）');
             return;
@@ -325,11 +335,18 @@ export function startFastLocalSync(scope){
           if(!cloud&&!hash)delete newState[key];
           else newState[key]={version:cloud?.version||null,hash:hash??null};
         }
-        await writeBaseline(sub,newState);
+        await writeBaseline(sub,newState,newRemote.generation,localStorage.getItem(dirtyKey));
+        if(!conflicts.length&&!destructive){
+          lastConflict='';
+          localStorage.removeItem(conflictKey);
+        }
         status('同期済み（Driveへ '+remoteChanges.length+'件・端末へ '+localChanges.length+'件）'+
           (conflicts.length?'／競合 '+conflicts.length+'件は保留':''));
         // Local catalogue pages need a refresh after remote-origin changes.
-        if(localChanges.length)document.dispatchEvent(new CustomEvent('fast-local-synced'));
+        if(localChanges.length){
+          document.dispatchEvent(new Event('drive-store-updated'));
+          document.dispatchEvent(new CustomEvent('fast-local-synced'));
+        }
       }catch(error){
         status('同期停止：'+(error.message||error));
         console.error('Fast local sync:',error);
@@ -345,10 +362,17 @@ export function startFastLocalSync(scope){
   };
   window.Mol.fastSyncNow=()=>check(true);
   window.addEventListener('focus',()=>void check());
+  window.addEventListener('storage',event=>{
+    if(event.key===dirtyKey||event.key===conflictKey)void check();
+  });
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)void check();});
-  document.addEventListener('mol-bench-local-mutated',()=>void check());
+  let editTimer;
+  document.addEventListener('mol-bench-local-mutated',()=>{
+    clearTimeout(editTimer);
+    editTimer=setTimeout(()=>void check(),2500);
+  });
   timer=setInterval(()=>void check(),IDLE_MS);
   status('高速ローカル保存・Drive同期を確認します');
   void check();
-  return ()=>{clearInterval(timer);};
+  return ()=>{clearInterval(timer);clearTimeout(editTimer);};
 }
