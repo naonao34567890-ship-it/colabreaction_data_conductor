@@ -115,7 +115,7 @@ async function selectVibration() {
     for await (const block of Mol.parseFile(file)) {
       if (block.error) throw Error('振動XYZに解析できないフレームがあります。');
       loaded.push({
-        raw:new Blob(block.rawParts),energy:null,
+        raw:new Blob(block.rawParts),energy:null,parsed:block,
         electronic:Mol.electronicState({...reactionFrames[0].electronic,...Mol.electronicComment(block.comment)}),
       });
     }
@@ -126,7 +126,8 @@ async function selectVibration() {
     vibrationActive = true;
     setVibrationLayout(true);
     await showFrame(0);
-    status(fileName+' · '+loaded.length+'フレーム。再生ボタンでループします。');
+    status(fileName+' · '+loaded.length+'フレーム。自動でループ再生します。');
+    startPlayback();
   } catch(error) {
     status('振動アニメーションを読み込めません。'+error.message);
     if (!vibrationActive) {
@@ -179,7 +180,7 @@ async function playbackTick() {
   if (!playing || document.hidden) {stopPlayback();return;}
   const atEnd = current >= frames.length-1;
   if (atEnd && !vibrationActive) {stopPlayback();return;}
-  const ok = await showFrame(atEnd ? 0 : current+1);
+  const ok = await showFrame(atEnd ? 0 : current+1, true);
   if (!ok || !playing) {stopPlayback();return;}
   playbackTimer = setTimeout(playbackTick, 1000/Number($('playbackSpeed').value));
 }
@@ -189,7 +190,7 @@ function startPlayback() {
   $('autoPlay').setAttribute('aria-pressed','true');
   $('autoPlay').textContent = 'Ⅱ 一時停止';
   if (!vibrationActive && current === frames.length-1) {
-    void showFrame(0).then(ok => {
+    void showFrame(0, true).then(ok => {
       if (ok && playing) playbackTimer = setTimeout(playbackTick,1000/Number($('playbackSpeed').value));
     });
   } else playbackTimer = setTimeout(playbackTick,1000/Number($('playbackSpeed').value));
@@ -268,7 +269,9 @@ function syncButtons() {
 }
 
 async function readBlock(index) {
-  for await (const block of Mol.parseFile(frames[index].raw)) {
+  const frame=frames[index];
+  if (frame.parsed) return {...frame.parsed,...frame.electronic};
+  for await (const block of Mol.parseFile(frame.raw)) {
     if (!block.error) return {...block,...frames[index].electronic};
   }
   throw Error('フレーム '+(index+1)+' を読み込めません。');
@@ -340,9 +343,9 @@ if (reaction) $('energyPlot').addEventListener('click',event => {
   if (nearest) {stopPlayback();void showFrame(nearest.index);}
 });
 
-async function showFrame(index) {
+async function showFrame(index, playbackFrame = false) {
   busy = true;
-  syncButtons();
+  if (!playbackFrame) syncButtons();
   try {
     currentBlock = await readBlock(index);
     current = index;
@@ -354,16 +357,16 @@ async function showFrame(index) {
       : energy === null
       ? '2行目に読み取れるエネルギーがありません。'
       : '基準から '+(energy-frames[reference].energy).toFixed(3)+' kJ/mol';
-    drawPlot();
+    if (!vibrationActive) drawPlot();
     drawStructure(true);
-    status('');
+    if (!playbackFrame) status('');
     return true;
   } catch (error) {
     status(error.message);
     return false;
   } finally {
     busy = false;
-    syncButtons();
+    if (!playbackFrame) syncButtons();
   }
 }
 
@@ -379,12 +382,65 @@ async function setupView() {
   const controls = new OrbitControls(camera,renderer.domElement);
   controls.mouseButtons = {LEFT:T.MOUSE.ROTATE,MIDDLE:T.MOUSE.PAN,RIGHT:null};
   const projected = new T.Vector3();
+  // Vibration has the same atoms in every frame. Reuse InstancedMeshes instead of
+  // disposing / rebuilding the whole scene up to 48 times each second.
+  const atomMatrix = new T.Matrix4(), atomPosition = new T.Vector3(),
+    atomRotation = new T.Quaternion(), atomScale = new T.Vector3();
+  const dummy = new T.Object3D(), up = new T.Vector3(0,1,0),
+    bondA = new T.Vector3(), bondB = new T.Vector3(), bondDirection = new T.Vector3();
   let model;
+  function updateVibrationModel(atoms, mode) {
+    if (!vibrationActive || !model?.userData.vibrationReusable || mode==='polyhedra'
+        || model.userData.vibrationMode!==mode
+        || model.userData.vibrationElements!==atoms.map(atom=>atom.el).join(',')) return false;
+    const spheres = model.userData.spheres, sticks = model.userData.sticks;
+    if (!spheres || spheres.count!==atoms.length) return false;
+    const pairs = model.userData.bondPairs || [];
+    if (mode!=='space' && (!sticks || sticks.count!==pairs.length*2)) return false;
+    for (let i=0;i<atoms.length;i++) {
+      const atom=atoms[i];
+      spheres.getMatrixAt(i,atomMatrix);
+      atomMatrix.decompose(atomPosition,atomRotation,atomScale);
+      atomPosition.set(atom.x,atom.y,atom.z);
+      atomMatrix.compose(atomPosition,atomRotation,atomScale);
+      spheres.setMatrixAt(i,atomMatrix);
+    }
+    spheres.instanceMatrix.needsUpdate=true;
+    spheres.computeBoundingSphere();
+    if (sticks) {
+      pairs.forEach(([i,j],k)=>{
+        const a=atoms[i], b=atoms[j];
+        bondA.set(a.x,a.y,a.z);bondB.set(b.x,b.y,b.z);
+        bondDirection.subVectors(bondB,bondA);
+        const length=bondDirection.length();
+        if (length>1e-8) dummy.quaternion.setFromUnitVectors(up,bondDirection.multiplyScalar(1/length));
+        else dummy.quaternion.identity();
+        dummy.scale.set(1,length/2,1);
+        for (let half=0;half<2;half++) {
+          dummy.position.copy(bondA).lerp(bondB,half?.75:.25);
+          dummy.updateMatrix();
+          sticks.setMatrixAt(k*2+half,dummy.matrix);
+        }
+      });
+      sticks.instanceMatrix.needsUpdate=true;
+      sticks.computeBoundingSphere();
+    }
+    return true;
+  }
   drawStructure = rebuild => {
     if (rebuild && currentBlock) {
-      if (model) {scene.remove(model);graphics.dispose(model);}
-      model = graphics.model(currentBlock.atoms,undefined,undefined,undefined,$('displayMode').value);
-      scene.add(model);
+      const atoms=currentBlock.atoms, mode=$('displayMode').value;
+      if (!updateVibrationModel(atoms,mode)) {
+        const nextModel=graphics.model(atoms,undefined,undefined,undefined,mode);
+        if (vibrationActive && mode!=='polyhedra') {
+          nextModel.userData.vibrationReusable=true;
+          nextModel.userData.vibrationElements=atoms.map(atom=>atom.el).join(',');
+          nextModel.userData.vibrationMode=mode;
+        }
+        scene.add(nextModel);
+        if (model) {scene.remove(model);graphics.dispose(model);}
+        model=nextModel;
+      }
     }
     renderer.render(scene,camera);
     if (!showNumbers || !currentBlock) return;
