@@ -29,6 +29,19 @@
 .reaction-slot span { min-width: 0; overflow-wrap: anywhere; }
 .reaction-slot.openable { cursor: pointer; }
 .reaction-slot .structure-name { margin-right: auto; cursor: text; }
+.reaction-tidy-toolbar {display:flex;flex-wrap:wrap;gap:9px;align-items:center}
+.reaction-tidy-group{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:7px 9px;border:1px solid var(--border);background:#161d1d;border-radius:10px;min-width:0}
+.reaction-primary-actions{flex:2 1 420px;border-color:#36594f}
+.reaction-view-actions{flex:1 1 245px}
+.reaction-tidy-label{font-size:11px;color:var(--muted);letter-spacing:.05em;margin-right:5px}
+#reactionDelete{color:#eb9a9a;border-color:#654343}
+.reaction-export-menu{position:relative;margin:0}
+.reaction-export-menu>summary{cursor:pointer;list-style:none;border:1px solid var(--border);border-radius:7px;padding:8px 10px;white-space:nowrap;font-size:.9em}
+.reaction-export-menu>summary::-webkit-details-marker{display:none}
+.reaction-export-menu>summary::after{content:" ▾";color:var(--muted)}
+.reaction-export-content{display:grid;gap:6px;position:absolute;right:0;top:calc(100% + 5px);z-index:40;padding:10px;min-width:275px;border:1px solid var(--border);border-radius:9px;background:#192222;box-shadow:0 8px 24px #0008}
+.reaction-export-content button{white-space:normal;text-align:left}
+@media(max-width:700px){.reaction-tidy-group{flex:1 1 100%}}
 </style>
 </head>
 <body>
@@ -43,19 +56,18 @@
   <main class="workspace reaction-workspace">
     <h1>反応ライブラリ</h1>
     <p class="muted">ColabReaction用のSTARTとFINISHの構造を、反応ごとにまとめる場所です。</p>
-    <div class="toolbar">
-      <button id="reactionCopy" disabled title="Ctrl+C">コピー</button><button id="reactionPaste" title="Ctrl+V">貼り付け</button>
-      <select id="thumbnailMode" aria-label="サムネイルの表示形式"></select>
-      <label>並べ替え<select id="reactionOrder">
+    <div class="toolbar reaction-tidy-toolbar" aria-label="反応ライブラリの操作">
+      <div class="reaction-tidy-group reaction-primary-actions"><span class="reaction-tidy-label">反応の操作</span><button id="reactionCopy" disabled title="Ctrl+C">コピー</button><button id="reactionPaste" title="Ctrl+V">貼り付け</button><button id="reactionAll">全選択</button><button id="reactionNone">全解除</button><button id="reactionTag" disabled>タグ付け</button><button id="reactionClassify" disabled>分類</button><button id="reactionDelete" disabled>削除</button><span id="reactionSelection" class="muted"></span></div>
+      <div class="reaction-tidy-group reaction-view-actions"><span class="reaction-tidy-label">表示</span><select id="thumbnailMode" aria-label="サムネイルの表示形式"></select><label>並べ替え<select id="reactionOrder">
        <option value="classification" selected>分類の名前順</option>
        <option value="added-desc">追加時間降順</option><option value="added-asc">追加時間昇順</option>
        <option value="name-asc">名前順</option><option value="name-desc">名前逆順</option><option value="id">内部ID順</option>
-      </select></label>
-      <button id="reactionAll">全選択</button><button id="reactionNone">全解除</button>
-      <button id="reactionTag" disabled>タグ付け</button><button id="reactionClassify" disabled>分類</button><button id="reactionDelete" disabled>削除</button>
-      <button id="reactionArchive" disabled>選択分を対応情報付きZIPで保存</button>
-      <button id="reactionArchiveAll" disabled>全件を対応情報付きZIPで保存</button>
-      <button id="reactionZip" disabled>選択分をXYZのみのZIPで保存</button><span id="reactionSelection" class="muted"></span>
+      </select></label></div>
+      <details class="reaction-export-menu"><summary>ZIPの書き出し</summary><div class="reaction-export-content">
+       <button id="reactionArchive" disabled>選択分を対応情報付きZIPで保存</button>
+       <button id="reactionArchiveAll" disabled>全件を対応情報付きZIPで保存</button>
+       <button id="reactionZip" disabled>選択分をXYZのみのZIPで保存</button>
+      </div></details>
     </div>
     <p class="muted">対応情報付きZIPは、出発物・生成物のペア、反応名、タグ、元データを保持します。移行用にはこちらを使い、ZIPのまま保管してください。</p>
     <section id="reactionDrop" tabindex="0" aria-label="対応情報付き反応ZIPの取り込み" style="border:1px dashed var(--border);padding:16px;margin:12px 0;border-radius:10px">
