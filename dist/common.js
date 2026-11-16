@@ -758,7 +758,7 @@ Mol.VirtualGrid=class{
 // The existing UI and Worker call the same API. On Firebase only, Drive is the
 // authoritative store; the old IndexedDB is retained solely for one-time migration.
 if(typeof location!=='undefined'&&location.origin==='https://mol-bench.web.app'){
- const local={};for(const key of ['db','metadata','get','saveBatch','importMolecules','overwrite','remove','removeMany','setDatabaseName','renameMolecule'])local[key]=Mol[key];
+ const local={};for(const key of ['db','metadata','get','saveBatch','importMolecules','overwrite','remove','removeMany','setDatabaseName','renameMolecule','notify'])local[key]=Mol[key];
  // Worker uses these functions when the parent explicitly selects fast local mode.
  Mol.localBackend=local;
  let fastScope;
