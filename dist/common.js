@@ -792,17 +792,19 @@ if(typeof location!=='undefined'&&location.origin==='https://mol-bench.web.app')
   if(typeof document!=='undefined'){
    const show=()=>{
     const nav=document.querySelector('.mode-switch');
-    if(!nav)return;
+    const host=nav||document.body;
     const label=document.createElement('span');
     label.textContent='高速ローカル保存（Drive同期あり）';
     label.title='操作はIndexedDB内で完結し、Google Driveと差分同期します。競合時のみ確認します。';
-    label.className='mode-link';nav.append(label);
+    label.className='mode-link';if(nav)nav.append(label);
     const syncButton=document.createElement('button');syncButton.type='button';
     syncButton.id='fastSyncNow';syncButton.textContent='Driveと同期';
-    syncButton.onclick=()=>window.Mol.fastSyncNow?.();nav.append(syncButton);
+    syncButton.onclick=()=>window.Mol.fastSyncNow?.();host.append(syncButton);
+    if(!nav)syncButton.hidden=true;
     const state=document.createElement('span');state.id='fastSyncStatus';
     state.className='status';state.setAttribute('role','status');
-    state.textContent='同期準備中';nav.append(state);
+    state.textContent='同期準備中';host.append(state);
+    if(!nav)state.hidden=true;
     const dialog=document.createElement('dialog');dialog.id='fastSyncConflict';
     dialog.innerHTML='<h2>Driveとの同期に確認が必要</h2><p id="fastSyncConflictText"></p>'+
       '<div class="dialog-actions"><button type="button" id="fastSyncCancel">今回は同期しない</button>'+
