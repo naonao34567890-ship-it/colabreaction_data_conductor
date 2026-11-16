@@ -1,7 +1,7 @@
 import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
 
-export async function checkDeployment(target, commit, {fetcher=fetch, wait=ms=>new Promise(r=>setTimeout(r,ms)), attempts=6}={}) {
+export async function checkDeployment(target, commit, {fetcher=fetch, wait=ms=>new Promise(r=>setTimeout(r,ms)), attempts=24}={}) {
   if(!['worker','hosting'].includes(target))throw Error('Choose worker or hosting.');
   if(target==='hosting'&&!commit)throw Error('Hosting verification requires a commit.');
   const base=target==='worker'?'https://mol-bench-drive.naonao34567890.workers.dev/':'https://mol-bench.web.app/deployment.json';
@@ -13,10 +13,10 @@ export async function checkDeployment(target, commit, {fetcher=fetch, wait=ms=>n
       const state=await r.json();
       if(target==='worker'&&(!state.configured||!state.libraryConfigured))throw Error('Worker bindings or secrets are incomplete.');
       const actual=target==='worker'?state.deploymentCommit:state.commit;
-      if(commit&&actual!==commit)throw Error('Expected source revision is not visible yet.');
+      if(commit&&actual!==commit)throw Error('Expected source revision '+commit+' is not visible yet; observed '+(typeof actual==='string'?actual:'<missing>')+'.');
       return state;
     }catch(error){failure=error;}
-    if(attempt+1<attempts)await wait(2000);
+    if(attempt+1<attempts)await wait(3000);
   }
   throw Error(target+' deployment was not verified: '+failure.message);
 }
