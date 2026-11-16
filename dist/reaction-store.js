@@ -5,7 +5,7 @@ const ReactionStore = (() => {
  async function connection(){
   if(Mol.cloud)await Mol.cloud.ready;
   if(!connectionPromise)connectionPromise=new Promise((resolve,reject)=>{
-  const request = indexedDB.open(Mol.cloud?.reactionDatabaseName||'molecular-xyz-reactions',1);
+  const request = indexedDB.open(Mol.localReactionDatabaseName||Mol.cloud?.reactionDatabaseName||'molecular-xyz-reactions',1);
   request.onupgradeneeded = () => request.result.createObjectStore('reactions',{keyPath:'id'});
   request.onsuccess = () => resolve(request.result);
   request.onerror = () => reject(request.error);
