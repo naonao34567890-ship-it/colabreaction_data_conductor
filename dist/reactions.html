@@ -43,6 +43,7 @@
 .reaction-export-content button{white-space:normal;text-align:left}
 @media(max-width:700px){.reaction-tidy-group{flex:1 1 100%}}
 </style>
+<link rel="stylesheet" href="ui-controls.css">
 </head>
 <body>
 <div class="page">
@@ -57,7 +58,7 @@
     <h1>反応ライブラリ</h1>
     <p class="muted">ColabReaction用のSTARTとFINISHの構造を、反応ごとにまとめる場所です。</p>
     <div class="toolbar reaction-tidy-toolbar" aria-label="反応ライブラリの操作">
-      <div class="reaction-tidy-group reaction-primary-actions"><span class="reaction-tidy-label">反応の操作</span><button id="reactionCopy" disabled title="Ctrl+C">コピー</button><button id="reactionPaste" title="Ctrl+V">貼り付け</button><button id="reactionAll">全選択</button><button id="reactionNone">全解除</button><button id="reactionTag" disabled>タグ付け</button><button id="reactionClassify" disabled>分類</button><button id="reactionDelete" disabled>削除</button><span id="reactionSelection" class="muted"></span></div>
+      <div class="reaction-tidy-group reaction-primary-actions"><span class="reaction-tidy-label">選択・編集</span><button id="reactionAll">全選択</button><button id="reactionNone">全解除</button><button id="reactionCopy" disabled title="Ctrl+C">コピー</button><button id="reactionPaste" title="Ctrl+V">貼り付け</button><button id="reactionTag" disabled>タグ付け</button><button id="reactionClassify" disabled>分類</button><button id="reactionDelete" class="tidy-danger" disabled>削除</button><span id="reactionSelection" class="muted"></span></div>
       <div class="reaction-tidy-group reaction-view-actions"><span class="reaction-tidy-label">表示</span><select id="thumbnailMode" aria-label="サムネイルの表示形式"></select><label>並べ替え<select id="reactionOrder">
        <option value="classification" selected>分類の名前順</option>
        <option value="added-desc">追加時間降順</option><option value="added-asc">追加時間昇順</option>
