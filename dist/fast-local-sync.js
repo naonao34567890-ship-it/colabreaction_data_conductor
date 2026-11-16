@@ -335,7 +335,9 @@ export function startFastLocalSync(scope){
           if(!cloud&&!hash)delete newState[key];
           else newState[key]={version:cloud?.version||null,hash:hash??null};
         }
-        await writeBaseline(sub,newState,newRemote.generation,localStorage.getItem(dirtyKey));
+        // Use the token captured BEFORE the snapshot. Concurrent local edits
+        // must trigger another sync, never be falsely marked as backed up.
+        await writeBaseline(sub,newState,newRemote.generation,dirtyToken);
         if(!conflicts.length&&!destructive){
           lastConflict='';
           localStorage.removeItem(conflictKey);
