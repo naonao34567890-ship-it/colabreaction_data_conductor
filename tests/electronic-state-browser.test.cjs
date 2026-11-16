@@ -1,3 +1,4 @@
+const {clickInDisclosure}=require('./support/ui-actions.cjs');
 const {chromium}=require('playwright'),assert=require('node:assert/strict'),path=require('node:path');
 (async()=>{
  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
@@ -23,8 +24,7 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict'),path
   await page.reload();await page.waitForFunction(()=>molecule?.name==='legacy');assert.equal(await page.inputValue('#structureMultiplicity'),'3');
   // The START/FINISH actions now live inside the 'other save/export' disclosure.
   // Open it as a real user would before clicking the formerly always-visible button.
-  await page.locator('.editor-more-menu > summary').click();
-  await page.click('#saveReactionStart');await page.fill('#reactionSaveName','state reaction');await page.click('#reactionSaveSubmit');await page.waitForFunction(()=>!document.querySelector('#reactionSaveDialog').open);
+  await clickInDisclosure(page,'#saveReactionStart');await page.fill('#reactionSaveName','state reaction');await page.click('#reactionSaveSubmit');await page.waitForFunction(()=>!document.querySelector('#reactionSaveDialog').open);
   const r=await page.evaluate(async()=>{const r=(await ReactionStore.read()).find(r=>r.name==='state reaction');return {id:r.id,state:Mol.electronicState(r.START)};});assert.deepEqual(r.state,{charge:-2,multiplicity:3});
   await page.goto('https://state.test/editor.html?reaction='+r.id+'&slot=START');await page.waitForFunction(()=>molecule?.name==='state reaction_START');assert.equal(await page.inputValue('#structureCharge'),'-2');
   await page.goto('https://state.test/seed');
