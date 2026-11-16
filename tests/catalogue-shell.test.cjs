@@ -20,6 +20,17 @@ for(const [filename,required] of Object.entries(pages)){
   assert.match(html,/class=["'][^"']*library-shell-heading/,filename+': catalogue heading');
  }
 }
+const orca=fs.readFileSync(path.join(root,'orca.html'),'utf8');
+assert.match(orca,/<div class="page" id="orcaPage">/,'ORCA should use molecular library page shell');
+assert.match(orca,/<header class="library-shell-header">/,'ORCA should use fixed top actions');
+assert.match(orca,/<main class="workspace orca-workspace" id="orcaScroll">/,'ORCA should have an independent catalogue scroll region');
+assert.doesNotMatch(orca,/class="main"/,'ORCA should not retain the former standalone centered frame');
+const shell=fs.readFileSync(path.join(root,'library-shell.css'),'utf8');
+assert.match(shell,/#orcaPage\\s*\\{[\\s\\S]*?height:100dvh/,'ORCA shell should fill the viewport');
+for(const filename of ['reactions.html','colab.html','orca.html']){
+ const html=fs.readFileSync(path.join(root,filename),'utf8');
+ assert.match(html, /class="[^"]*tidy-import[^"]*"/,filename+': missing top file import toolbar');
+}
 const editor=fs.readFileSync(path.join(root,'editor.html'),'utf8');
 assert.match(editor,/<details class="help moiety-help"><summary>交換の使い方<\/summary>/);
 assert.match(editor,/<button id="swap"[^>]*>/);
