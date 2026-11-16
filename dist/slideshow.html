@@ -25,7 +25,7 @@
 <div class="page">
 <header>
 <div class="heading"><div><div class="eyebrow">MOLECULAR WORKSPACE / 03</div><h1 id="title">構造のスライドショー</h1></div><span class="badge">XYZ · フレーム表示</span></div>
-<div class="toolbar">
+<div class="toolbar viewer-toolbar">
 <!-- The playback strip stays first in both viewers, regardless of vibration mode. -->
 <div class="playback-strip" role="group" aria-label="フレーム再生操作">
 <button id="prevTen" aria-label="10枚前" title="10枚前" disabled>◀◀</button>
@@ -34,10 +34,8 @@
 <button id="next" aria-label="1枚先" title="1枚先" disabled>▶</button>
 <button id="nextTen" aria-label="10枚先" title="10枚先" disabled>▶▶</button>
 <label class="playback-control">速度 <select id="playbackSpeed" aria-label="自動送り速度"><option value="1">1 枚/秒</option><option value="2">2 枚/秒</option><option value="4" selected>4 枚/秒</option><option value="8">8 枚/秒</option><option value="12">12 枚/秒</option><option value="24">24 枚/秒</option><option value="48">48 枚/秒</option></select></label>
-</div>
-<select id="displayMode" aria-label="分子の表示形式"></select>
-<button id="numbers" aria-pressed="false" disabled>原子番号を表示</button>
-
+</div><div class="viewer-tool-group" aria-label="表示設定"><span class="viewer-tool-label">表示</span><select id="displayMode" aria-label="分子の表示形式"></select><button id="numbers" aria-pressed="false" disabled>原子番号を表示</button></div>
+<div class="viewer-tool-group viewer-save-group" aria-label="構造の保存"><span class="viewer-tool-label">構造の保存</span>
 <div class="frame-import-actions">
 <button id="importStart" class="primary" disabled>反応ライブラリに出発物として保存</button>
 <div class="frame-import-options">
@@ -47,19 +45,12 @@
 <button id="importFrameEdit" disabled>反応ライブラリに出発物として保存してエディタを開く</button>
 </div>
 </div>
-<button id="downloadFrame" disabled>この構造をダウンロード</button>
-<button id="importAll" disabled>すべての構造を取り込み</button>
 <button id="importMany" disabled>構造を複数選んで取り込み</button>
 </div>
-<p id="slideStatus" class="status" role="status">XYZを読み込み中…</p>
-</header>
-<main class="editor-main">
-<section class="viewport" id="view" aria-label="構造の3Dビュー">
-<div class="view-label">3D VIEW / Å</div><canvas id="frameNumbers" hidden aria-hidden="true"></canvas>
-<div class="view-info" id="atomCount"></div>
-</section>
-<aside class="sidebar">
-<section class="panel"><h2>現在の構造 / 全構造</h2><p id="frameCount">— / —</p><p id="frameEnergy" class="muted"></p></section>
+<details class="viewer-options-menu"><summary>その他の保存・出力</summary><div class="viewer-options-menu-content">
+<button id="downloadFrame" disabled>この構造をダウンロード</button><button id="importAll" disabled>すべての構造を取り込み</button>
+</div></details>
+d"></p></section>
 <section class="panel"><h2>フレーム–最初からのエネルギー変化量</h2>
 <canvas id="energyPlot" width="580" height="420" role="img" aria-label="フレーム番号とエネルギー変化量（kJ/mol）"></canvas>
 <p id="energyHint" class="muted"></p></section>
