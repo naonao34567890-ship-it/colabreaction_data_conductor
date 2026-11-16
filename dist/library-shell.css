@@ -121,3 +121,56 @@ body:has(>main.main) .library-shell-header .orca-search-group{flex:0 1 auto}
   .library-shell-header .orca-search-group{flex:1 1 100%}
   .library-shell-header .orca-search-group #search{max-width:none}
 }
+
+/* The ORCA gallery predates the shared common.js base stylesheet.
+   Normalize its page chrome without touching its result cards or detail view. */
+body:has(>main.main){
+  margin:0;
+  padding:0;
+  background:#101313;
+  color:#e8efed;
+  font:14px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif;
+  --ink:#e8efed;
+  --muted:#a8b6b2;
+  --border:#34413f;
+  --accent:#62d6bf;
+}
+body:has(>main.main) .mode-switch{padding:12px 28px 0;margin-bottom:12px}
+body:has(>main.main) .main>.library-shell-header{
+  padding:19px 28px 12px;
+  background:#191e1e;
+  border-bottom:1px solid var(--border);
+}
+body:has(>main.main) .main>.library-shell-heading,
+body:has(>main.main) .main>#drop,
+body:has(>main.main) .main>#status,
+body:has(>main.main) .main>#progress,
+body:has(>main.main) .main>#cards,
+body:has(>main.main) .main>#fileInfo,
+body:has(>main.main) .main>p.muted{
+  margin-left:28px;
+  margin-right:28px;
+}
+body:has(>main.main) .main>.library-shell-heading h1{font-size:22px;letter-spacing:-.6px}
+body:has(>main.main) .main>.library-shell-heading .eyebrow{font-size:10px}
+body:has(>main.main) .main>#cards{margin-top:12px}
+body:has(>main.main) .main .library-shell-header button{padding:9px 14px;white-space:nowrap}
+body:has(>main.main) .main .library-shell-header button.tidy-primary{
+  background:var(--accent);
+  color:#10201c;
+  border-color:var(--accent);
+}
+@media(max-width:720px){
+  body:has(>main.main) .mode-switch{padding:10px 14px 0}
+  body:has(>main.main) .main>.library-shell-header{padding:12px 14px}
+  body:has(>main.main) .main>.library-shell-heading,
+  body:has(>main.main) .main>#drop,
+  body:has(>main.main) .main>#status,
+  body:has(>main.main) .main>#progress,
+  body:has(>main.main) .main>#cards,
+  body:has(>main.main) .main>#fileInfo,
+  body:has(>main.main) .main>p.muted{
+    margin-left:14px;
+    margin-right:14px;
+  }
+}
