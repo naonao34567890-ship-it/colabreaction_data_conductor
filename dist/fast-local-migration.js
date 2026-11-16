@@ -1,6 +1,7 @@
 // One-time, opt-in migration from the Drive-authoritative library to independent
 // browser-local IndexedDB databases. Never deletes or modifies Drive data.
 // Do not enable local mode until both complete datasets are verified.
+import {fastSyncFingerprint,saveFastSyncMigrationBaseline} from './fast-local-sync.js';
 const PREFIX='mol-bench-fast-local-v1';
 export const localMoleculeDB=sub=>PREFIX+'-molecules-'+sub;
 export const localReactionDB=sub=>PREFIX+'-reactions-'+sub;
@@ -67,6 +68,8 @@ export async function migrateToFastLocal(service,progress=()=>{}){
   activeSub=account.sub;
   progress('Google Driveから分子・反応を読み込みます。最初の一度だけ時間がかかります。');
   await service.refresh();
+  const startVersions=new Map((await service.syncIndex()).records.map(row=>[row.key,row.version]));
+  const fingerprints={};
   const metas=(await service.metadata()).filter(m=>!String(m.id).startsWith('builtin-'));
   const reactions=await service.reactionRead();
   const molDB=await initializeMolecules(),reactionDB=await initializeReactions();
@@ -81,6 +84,7 @@ export async function migrateToFastLocal(service,progress=()=>{}){
         if(!body?.atoms||body.id!==meta.id)
           throw Error('Driveの分子データが不足しています: '+meta.name);
         contents.push({meta,body});
+        fingerprints['m:'+meta.id]=await fastSyncFingerprint({kind:'m',meta,body});
       }
       const tx=molDB.transaction(['meta','body','tags'],'readwrite');
       for(const {meta,body}of contents){
@@ -94,8 +98,11 @@ export async function migrateToFastLocal(service,progress=()=>{}){
     }
     let copied=0;
     for(let i=0;i<reactions.length;i+=30){
+      const batch=reactions.slice(i,i+30);
+      for(const reaction of batch)
+        fingerprints['r:'+reaction.id]=await fastSyncFingerprint({kind:'r',body:reaction});
       const tx=reactionDB.transaction('reactions','readwrite');
-      for(const reaction of reactions.slice(i,i+30))tx.objectStore('reactions').put(reaction);
+      for(const reaction of batch)tx.objectStore('reactions').put(reaction);
       await txComplete(tx);
       copied=Math.min(i+30,reactions.length);
       progress('反応をローカルへ移行 '+copied.toLocaleString()+' / '+reactions.length.toLocaleString());
@@ -109,6 +116,7 @@ export async function migrateToFastLocal(service,progress=()=>{}){
     const key=m=>JSON.stringify([m.id,m.name,m.revision,m.charge,m.multiplicity,m.tags]);
     if(latest.length!==metas.length||latest.some((m,i)=>key(m)!==key(metas[i])))
       throw Error('移行中にDrive上の分子が変更されました。切替せず再実行してください。');
+    await saveFastSyncMigrationBaseline(service,account.sub,fingerprints,startVersions);
     if(navigator.storage?.persist)await navigator.storage.persist().catch(()=>false);
     // This flag is committed ONLY after complete local data validation.
     localStorage.setItem(fastModeKey,JSON.stringify({sub:account.sub,email:account.email,migratedAt:new Date().toISOString()}));
