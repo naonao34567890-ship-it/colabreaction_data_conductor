@@ -210,6 +210,17 @@ export function startFastLocalSync(scope){
     lastStatus=message;
     const label=$('fastSyncStatus');if(label)label.textContent=message;
     const action=$('fastSyncNow');if(action)action.title=message;
+    // The editor has no top navigation. Show its compact controls only
+    // when an unresolved sync issue actually requires attention.
+    if(label?.parentElement===document.body){
+      const attention=/同期停止|確認が必要|同期を保留/.test(message);
+      label.hidden=!attention;
+      if(action)action.hidden=!attention;
+      if(attention){
+        label.style.cssText='position:fixed;bottom:12px;right:125px;z-index:110;background:#191e1e;color:#ffbd9d;padding:8px;border:1px solid #614b42;border-radius:6px;max-width:50vw';
+        if(action)action.style.cssText='position:fixed;bottom:12px;right:12px;z-index:110';
+      }
+    }
   };
   const serviceReady=async()=>{
     if(!service)service=createDriveStore(shadowBackend(),{
