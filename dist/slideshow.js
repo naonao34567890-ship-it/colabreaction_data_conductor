@@ -3,6 +3,20 @@ import {readFrameEnergy} from './frame-energy.js';
 import {readEnergy} from './dmf-energy.js';
 
 const reaction = document.body.dataset.viewer === 'reaction';
+let sourceReactionContext=null;
+if(reaction){
+ try{
+  const raw=new URLSearchParams(location.hash.slice(1)).get('reactionContext');
+  if(raw && raw.length<100000){
+   const context=JSON.parse(raw);
+   if(context?.format==='mol-bench-reaction-context'&&context.version===2
+    &&typeof context.name==='string'&&context.name.length<=200
+    &&(context.classification==null||typeof context.classification==='string')
+    &&Array.isArray(context.tags)&&context.tags.every(t=>typeof t==='string'))
+      sourceReactionContext=context;
+  }
+ }catch(error){console.warn('反応メタデータを復元できません:',error);}
+}
 const $ = id => document.getElementById(id);
 const frames = [];
 let current = 0;
@@ -466,7 +480,7 @@ async function saveEndpoint(finish, openEditor = false) {
   busy = true;
   syncButtons();
   try {
-    const name = Mol.safeName(baseName.replace(/[_＿](?:START|FINISH)$/i,''));
+    const name = Mol.safeName((sourceReactionContext?.name||baseName).replace(/[_＿](?:START|FINISH)$/i,''));
     const slot = finish ? 'FINISH' : 'START';
     const structure = endpointRecord(currentBlock,name,slot);
     let saved;
@@ -485,7 +499,14 @@ async function saveEndpoint(finish, openEditor = false) {
         !!current.FINISH===!!target.FINISH && current.FINISH?.revision===target.FINISH?.revision && current.START?.revision===target.START?.revision);
     } else {
       if(!await Mol.confirmElectronicSave({START:structure})){tab?.close();return;}
-      saved = await ReactionStore.create('START',structure,name);
+      const provenance=sourceReactionContext?{
+        classification:sourceReactionContext.classification||null,
+        tags:[...sourceReactionContext.tags],
+        sourceReactionId:sourceReactionContext.sourceReactionId||null,
+        sourceArchiveSHA256:sourceReactionContext.sourceArchiveSHA256||null,
+        sourceManifestEntry:sourceReactionContext.sourceEntry||null,
+      }:{};
+      saved = await ReactionStore.createReaction({START:structure,...provenance},name);
     }
     lastReactionId = saved.id;
     status(saved.name+'_'+slot+' を反応ライブラリに保存しました。');
