@@ -25,7 +25,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:32vh;overflow:auto;pa
 #drop button:first-of-type{border-color:#548b78;font-weight:700}
 @media(max-width:650px){.orca-search-group{flex-basis:100%}.orca-export-options{right:auto;left:0}}
 @media(max-width:650px){body{padding:10px}#cards{grid-template-columns:1fr}.toolbar{align-items:stretch}.toolbar>*{max-width:100%}}
-</style><link rel="stylesheet" href="ui-controls.css">
+</style><link rel="stylesheet" href="ui-controls.css"><link rel="stylesheet" href="library-shell.css">
 </head>
 <body><main class="main">
 <nav class="mode-switch" aria-label="ナビゲーション">
@@ -35,23 +35,32 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:32vh;overflow:auto;pa
 <a class="mode-link" href="colab.html">Colab計算記録</a>
 <a class="mode-link" href="orca.html" aria-current="page">ORCA計算結果</a>
 </nav>
-<h1>ORCA計算結果ギャラリー</h1>
+<header class="library-shell-header">
+  <div class="toolbar tidy-toolbar orca-tidy-toolbar" aria-label="ORCAギャラリーの操作">
+    <div class="tidy-group orca-import-actions"><span class="tidy-label">ファイル</span>
+      <button id="choose" type="button" class="tidy-primary">ファイル・ZIPを選択</button>
+      <button id="chooseFolder" type="button">フォルダーを選択</button>
+    </div>
+    <div class="tidy-group orca-export-actions"><span class="tidy-label">出力</span>
+      <details class="orca-export-menu"><summary>データの出力</summary><div class="orca-export-options"><button id="exportIndex" type="button">一覧JSONを書き出す</button></div></details>
+    </div>
+  </div>
+  <div class="row library-list-row">
+    <h2>すべての計算結果</h2><span id="count" class="muted"></span><span class="spacer"></span>
+    <div class="orca-search-group"><span class="orca-tidy-label">検索と表示</span>
+      <input id="search" type="search" placeholder="計算名・分類・備考を検索" aria-label="ギャラリーを検索">
+      <label>並べ替え <select id="order"><option value="newest">登録日時・新しい順</option><option value="oldest">登録日時・古い順</option><option value="name">名前順</option><option value="energy">最終エネルギー順</option><option value="status">終了状態順</option></select></label>
+    </div>
+  </div>
+</header>
+<div class="heading library-shell-heading"><div><div class="eyebrow">MOLECULAR WORKSPACE / 05</div><h1>ORCA計算結果ギャラリー</h1></div><div class="badge">ORCA / ローカル記録</div></div>
 <p class="muted">ORCA計算のログ・構造・画像をまとめて保存・閲覧します。現在はブラウザのIndexedDBへ保存し、Google Driveとの通信は行いません。</p>
-<section id="drop" tabindex="0" role="button" aria-label="ORCA計算結果のZIPまたはファイルを読み込む">
+<section id="drop" tabindex="0" role="button" aria-label="ORCA計算結果のZIPまたはファイルを読み込む" class="library-shell-drop">
 <strong>ORCA計算結果のZIP、または複数のファイルをドロップ</strong>
 <p class="muted">.out / .log / .xyz / .png / .jpg / .json / .inp など。ZIPは展開せずに取り込めます。</p>
-<button id="choose" type="button">ファイル・ZIPを選択</button>
-<button id="chooseFolder" type="button">フォルダーを選択</button>
 <input id="upload" type="file" multiple hidden accept=".zip,.out,.log,.xyz,.png,.jpg,.jpeg,.json,.inp,.engrad,.hess,.gbw,.trj">
 <input id="folder" type="file" webkitdirectory multiple hidden>
 </section>
-<div class="toolbar orca-tidy-toolbar" aria-label="ORCAギャラリーの操作">
-<div class="orca-search-group"><span class="orca-tidy-label">検索と表示</span>
-<input id="search" type="search" placeholder="計算名・分類・備考を検索" aria-label="ギャラリーを検索">
-<label>並べ替え <select id="order"><option value="newest">登録日時・新しい順</option><option value="oldest">登録日時・古い順</option><option value="name">名前順</option><option value="energy">最終エネルギー順</option><option value="status">終了状態順</option></select></label></div>
-<details class="orca-export-menu"><summary>データの出力</summary><div class="orca-export-options"><button id="exportIndex" type="button">一覧JSONを書き出す</button></div></details>
-<span id="count" class="muted"></span>
-</div>
 <p id="status" role="status"></p><progress id="progress" class="progress" hidden></progress>
 <div id="cards"></div>
 <dialog id="detail"><header><h2 id="detailTitle"></h2><button id="closeDetail" type="button">閉じる</button></header>
