@@ -780,6 +780,17 @@ if(typeof location!=='undefined'&&location.origin==='https://mol-bench.web.app')
     if(typeof original!=='function')continue;
     Mol[method]=async(...args)=>{
       const result=await original(...args);
+      if(method==='remove'||method==='removeMany'){
+        const ids=method==='remove'?[args[0]]:args[0];
+        for(const id of ids||[]){
+          if(typeof id==='string')localStorage.setItem(
+            'mol-bench-fast-deleted-'+fastScope.sub+':m:'+id,
+            String(Date.now()));
+        }
+      }else if(method==='importMolecules'){
+        for(const item of args[0]||[])
+          if(item?.id)localStorage.removeItem('mol-bench-fast-deleted-'+fastScope.sub+':m:'+item.id);
+      }
       if(typeof document!=='undefined')markChanged();
       return result;
     };
