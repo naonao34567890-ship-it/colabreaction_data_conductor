@@ -23,4 +23,9 @@ for(const [filename,required] of Object.entries(pages)){
 const editor=fs.readFileSync(path.join(root,'editor.html'),'utf8');
 assert.match(editor,/<details class="help moiety-help"><summary>交換の使い方<\/summary>/);
 assert.match(editor,/<button id="swap"[^>]*>/);
+assert.match(editor,/<div class="heading editor-heading">[\s\S]*?<section class="editor-electronic-panel"[\s\S]*?<input id="structureCharge"/);
+assert.match(editor,/<input id="structureMultiplicity"/);
+assert.equal((editor.match(/id="structureCharge"/g)||[]).length,1);
+assert.equal((editor.match(/id="structureMultiplicity"/g)||[]).length,1);
+assert.match(editor,/\$\('electronicCheck'\)\.hidden=check\.valid/);
 console.log('PASS: catalogue shell preserves critical controls and editor swap help is collapsible');
