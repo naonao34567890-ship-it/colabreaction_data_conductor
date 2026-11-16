@@ -267,43 +267,12 @@ async function outputValue(trajectory, field) {
 }
 
 async function readZip(file) {
-  status('ZIPを読み込んでいます…');
-  const {Unzip,UnzipInflate} = await import('./vendor/fflate.mjs');
-  const files = new Map(), names = new Set();
-  let count = 0, failure = null;
-  const unzip = new Unzip(entry => {
-    const path = entry.name, directory = path.endsWith('/');
-    const parts = (directory ? path.slice(0,-1) : path).split('/');
-    if (path.startsWith('/') || path.includes('\\') ||
-        parts.some(part => !part || part === '.' || part === '..') || names.has(path)) {
-      throw Error('ZIP内に無効または重複したファイルパスがあります。');
-    }
-    names.add(path);
-    if (++count > 15000) throw Error('ZIP内の項目数が15,000件を超えています。');
-    const chunks = [];
-    entry.ondata = (error, data, final) => {
-      if (error) { failure = error; return; }
-      if (!path.endsWith('/') && data?.length) chunks.push(data);
-      if (final && !path.endsWith('/')) files.set(path, new Blob(chunks));
-    };
-    entry.start();
-  });
-  unzip.register(UnzipInflate);
-  const reader = file.stream().getReader();
-  try {
-    while (true) {
-      const {done,value} = await reader.read();
-      if (done) break;
-      unzip.push(value,false);
-      if (failure) throw failure;
-    }
-    unzip.push(new Uint8Array(0),true);
-    if (failure) throw failure;
-    return files;
-  } catch (error) {
-    await reader.cancel().catch(()=>{});
-    throw error;
-  } finally { reader.releaseLock(); }
+  status('ZIPを一時ディスクに展開しています…');
+  const {spoolColabZip} = await import('./colab-zip-spool.mjs');
+  return spoolColabZip(file, {onProgress: (read, total) => {
+    const percent=total ? Math.floor(read / total * 100) : 100;
+    status('ZIPを一時ディスクに展開しています… '+percent+'%');
+  }});
 }
 
 function readFolder(files, relativePath) {
@@ -339,13 +308,15 @@ async function alreadyRegistered(name) {
 }
 
 async function importRecords(name, sourceLabel, readFiles) {
-  let parent;
+  let parent, temporary;
   try {
     if (await alreadyRegistered(name)) {
       status('登録済みのためスキップしました。' + name);
       return;
     }
-    const files = await readFiles();
+    const source = await readFiles();
+    temporary = source?.cleanup ? source : null;
+    const files = temporary ? source.files : source;
     function find(name) {
       const matches = [...files].filter(([path]) => path.split('/').at(-1) === name);
       if (matches.length > 1) throw Error(name + ' が複数あります。計算結果を1件ずつ取り込んでください。');
@@ -428,6 +399,11 @@ async function importRecords(name, sourceLabel, readFiles) {
     message.textContent = name + ' — ' + error.message + partial;
     get('colabErrors').append(message);
     status(error.message + partial);
+  } finally {
+    if (temporary) {
+      try { await temporary.cleanup(); }
+      catch (error) { console.warn('ZIP一時ファイルの削除に失敗しました:',error); }
+    }
   }
 }
 
