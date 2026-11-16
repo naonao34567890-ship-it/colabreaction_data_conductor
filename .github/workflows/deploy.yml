@@ -2,8 +2,8 @@ name: Publish Mol Bench
 run-name: "Mol Bench · ${{ (inputs.publish || github.event_name == 'push') && 'Publish' || 'Verify' }} (${{ inputs.target || 'both' }}) · ${{ github.sha }}"
 
 on:
-  # A deliberate workflow-file update can publish the current main revision.
-  # Ordinary application commits still require manual workflow_dispatch.
+  # A workflow-file update dispatches the approved manual-event release.
+  # Google WIF credentials remain restricted to workflow_dispatch events.
   # Release verification: Colab ZIP disk spool and large-import tests aligned.
   push:
     branches: [main]
@@ -34,8 +34,22 @@ env:
   FIREBASE_PROJECT: mol-bench
 
 jobs:
+  dispatch-on-workflow-update:
+    name: Start an approved workflow_dispatch publication
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Launch the trusted manual-event deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy.yml --repo "${{ github.repository }}" --ref main -f publish=true -f target=both
+
   validate:
     name: Check configuration and code
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     outputs:
       cloudflare_account_id: ${{ steps.deployment.outputs.cloudflare_account_id }}
@@ -53,7 +67,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       - name: Check deployment credentials before changing either service
         id: deployment
-        if: inputs.publish || github.event_name == 'push'
+        if: inputs.publish
         env:
           TARGET: ${{ inputs.target || 'both' }}
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -74,7 +88,7 @@ jobs:
   worker:
     name: Publish Drive Worker
     needs: validate
-    if: inputs.publish || github.event_name == 'push' && (inputs.target == 'both' || inputs.target == 'worker')
+    if: inputs.publish && (inputs.target == 'both' || inputs.target == 'worker')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -98,9 +112,9 @@ jobs:
     name: Publish Firebase Hosting
     needs: [validate, worker]
     if: >-
-      always() && (inputs.publish || github.event_name == 'push') && needs.validate.result == 'success' &&
+      always() && github.event_name == 'workflow_dispatch' && inputs.publish && needs.validate.result == 'success' &&
       (needs.worker.result == 'success' || needs.worker.result == 'skipped') &&
-      (inputs.target == 'both' || inputs.target == 'hosting' || github.event_name == 'push')
+      (inputs.target == 'both' || inputs.target == 'hosting')
     runs-on: ubuntu-24.04
     permissions:
       contents: read
