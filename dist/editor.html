@@ -40,12 +40,12 @@
 .editor-title h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .editor-heading-tools{display:flex;align-items:center;gap:10px;flex:0 0 auto;min-width:0;flex-wrap:nowrap}
 .editor-heading-tools #displayMode{width:205px;max-width:205px;flex:0 0 auto}
-.editor-electronic-panel{display:flex;align-items:center;gap:6px 10px;min-width:0;flex-wrap:nowrap}
-.editor-electronic-panel .editor-electronic-fields{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
-.editor-electronic-panel .editor-electronic-fields>label{display:flex;align-items:center;gap:5px;margin:0;min-width:0;font-size:12px;font-weight:600;white-space:nowrap;color:var(--muted)}
-.editor-electronic-panel .editor-electronic-fields input{width:70px;min-width:60px;margin:0;padding:6px 7px;font-size:13px;color:var(--ink);font-variant-numeric:tabular-nums}
-.editor-electronic-panel #structureMultiplicity{width:66px}
-.editor-electronic-panel #electronicCheck:not([hidden]),.editor-electronic-panel #electronicError:not(:empty){flex-basis:100%;max-width:520px;margin:0;font-size:11px;line-height:1.35;color:#ffb3a7}
+.editor-electronic-panel{position:relative;display:flex;align-items:center;gap:6px 10px;min-width:0;flex-wrap:nowrap}
+.editor-electronic-panel .editor-electronic-fields{display:flex;align-items:center;flex-wrap:nowrap;gap:10px;white-space:nowrap}
+.editor-electronic-panel .editor-electronic-fields>label{display:inline-flex;flex-direction:row;align-items:center;gap:5px;margin:0;min-width:0;font-size:12px;font-weight:600;white-space:nowrap;color:var(--muted)}
+.editor-electronic-panel .editor-electronic-fields input{display:inline-block;flex:0 0 58px;width:58px;min-width:58px;margin:0;padding:5px 6px;font-size:13px;color:var(--ink);font-variant-numeric:tabular-nums}
+.editor-electronic-panel #structureMultiplicity{width:58px}
+.editor-electronic-panel #electronicCheck:not([hidden]),.editor-electronic-panel #electronicError:not(:empty){position:absolute;top:100%;right:205px;z-index:15;max-width:520px;margin:0;padding:4px 8px;background:#24201e;border:1px solid #684644;border-radius:6px;font-size:11px;line-height:1.35;color:#ffb3a7}
 .editor-electronic-panel #electronicCheck[hidden]{display:none}
 @media(max-width:880px){
  .editor-heading{flex-wrap:wrap}
