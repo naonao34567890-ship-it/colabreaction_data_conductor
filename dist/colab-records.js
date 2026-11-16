@@ -864,6 +864,12 @@ async function renderRecord(job) {
   archive.textContent = '結果ZIPをダウンロード';
   archive.disabled = !files.has('計算結果');
   archive.onclick = () => void downloadArchive(job,files.get('計算結果'),archive);
+  if(job.appProperties?.reactionName){
+    const originalName=document.createElement('p');
+    originalName.className='muted';
+    originalName.textContent='元の反応：'+job.appProperties.reactionName;
+    card.append(originalName);
+  }
   card.append(title, images, info, notes, open, classificationButton, archive);
   const resultDate = summaryResultDate(parsed);
   cards.set(job.id,Object.assign(job,{card,title,classificationButton,resultDate}));
