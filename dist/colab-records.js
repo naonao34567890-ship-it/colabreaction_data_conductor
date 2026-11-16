@@ -8,6 +8,8 @@ const input = get('colabZip');
 const folderInput = get('colabFolder');
 const jobs = get('colabJobs');
 const order = get('colabOrder');
+const replotButton = get('replotExisting');
+let replotRunning = false;
 const cards = new Map();
 order.value = 'classification';
 order.onchange = sortCards;
@@ -332,6 +334,7 @@ async function importRecords(name, sourceLabel, readFiles) {
     // The completion marker (config.txt) remains the last upload.
     // A metadata write failure must not invalidate a successfully uploaded record.
     const properties=summaryProperties(config,images);
+    properties.energyPlotVersion='2';
     if(sourceReaction?.classification&&new TextEncoder().encode(sourceReaction.classification).length<=100)
       properties.classification=sourceReaction.classification;
     if(sourceReaction?.name&&new TextEncoder().encode(sourceReaction.name).length<=100)
@@ -900,7 +903,7 @@ async function renderRecord(job) {
   }
   card.append(title, images, info, notes, open, classificationButton, archive);
   const resultDate = summaryResultDate(parsed);
-  cards.set(job.id,Object.assign(job,{card,title,classificationButton,resultDate}));
+  cards.set(job.id,Object.assign(job,{card,title,classificationButton,resultDate,recordFiles:files}));
   jobs.append(card);
   let counted;
   if (savedCount === undefined && files.has('計算結果') && (!summary || summary.count !== '?')) {
@@ -923,6 +926,87 @@ async function renderRecord(job) {
   }
 }
 
+
+async function locateEnergyCSV(originalsId) {
+  const folders = [originalsId];
+  while (folders.length) {
+    const children = await list("'" + folders.pop() + "' in parents");
+    const csv = children.find(file => file.name === 'DMF_energy.csv' && file.mimeType !== folderType);
+    if (csv) return csv.id;
+    for (const file of children) if (file.mimeType === folderType) folders.push(file.id);
+  }
+  return null;
+}
+
+async function updateEnergyImage(job) {
+  const files = job.recordFiles;
+  const current = files?.get('Energy.png');
+  const originals = files?.get('計算結果');
+  if (!current || !originals) return 'skipped';
+  if (job.appProperties?.energyPlotVersion === '2') return 'unchanged';
+  const csvId = await locateEnergyCSV(originals);
+  if (!csvId) return 'skipped';
+  const csvText = await (await download(csvId)).text();
+  const points = readEnergy(csvText);
+  if (!points?.length) throw Error('DMF_energy.csvにプロット可能な点がありません。');
+  const plot = await energyPlot(points);
+  // Replace the same Drive file ID so all existing references keep working.
+  await request('https://www.googleapis.com/upload/drive/v3/files/' +
+    encodeURIComponent(current) + '?uploadType=media', {
+      method:'PATCH', headers:{'Content-Type':'image/png'}, body:plot,
+    });
+  // Mark only after a confirmed media update. An unsuccessful marker patch will
+  // merely allow a harmless retry on the next bulk run.
+  await request(drive + '/files/' + encodeURIComponent(job.id) + '?fields=id', {
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({appProperties:{energyPlotVersion:'2'}}),
+  });
+  job.appProperties = {...job.appProperties,energyPlotVersion:'2'};
+  const preview = job.card?.querySelector('img[alt="エネルギープロファイル"]');
+  if (preview?.isConnected) {
+    const url = URL.createObjectURL(plot);
+    imageUrls.add(url);
+    if (preview.src?.startsWith('blob:')) {
+      URL.revokeObjectURL(preview.src);
+      imageUrls.delete(preview.src);
+    }
+    imageObserver.unobserve(preview);
+    preview.src=url;
+  }
+  return 'updated';
+}
+
+replotButton.onclick = async () => {
+  if (replotRunning || active || pending.length || connecting || !token || !root) return;
+  replotRunning=true;
+  replotButton.disabled=true;
+  let updated=0,unchanged=0,skipped=0,failed=0;
+  const records=[...cards.values()];
+  try {
+    for (let i=0;i<records.length;i++) {
+      const job=records[i];
+      status('既存のEnergy.pngを再生成中 ' + (i+1) + '/' + records.length +
+        '（更新 ' + updated + '・対象外 ' + skipped + '・失敗 ' + failed + '）');
+      try {
+        const outcome=await updateEnergyImage(job);
+        if (outcome==='updated') updated++;
+        else if (outcome==='unchanged') unchanged++;
+        else skipped++;
+      } catch (error) {
+        failed++;
+        const message=document.createElement('p');
+        message.textContent=job.name+': Energy.pngの再生成に失敗しました。'+error.message;
+        get('colabErrors').append(message);
+      }
+    }
+    status('Energy.pngの更新完了：更新 '+updated+'件・既に新版 '+unchanged+
+      '件・対象外 '+skipped+'件・失敗 '+failed+'件');
+  } finally {
+    replotRunning=false;
+    replotButton.disabled=!token || !root;
+  }
+};
+
 async function authorize(response) {
   if (!response.access_token) {
     status('Google Driveへの接続が完了しませんでした。');
@@ -931,7 +1015,7 @@ async function authorize(response) {
   connecting = true;
   token = response.access_token;
   root = null;
-  connect.disabled = input.disabled = folderInput.disabled = true;
+  connect.disabled = input.disabled = folderInput.disabled = replotButton.disabled = true;
   try {
     status('Google Driveの計算記録を読み込んでいます…');
     await withRecordLoading(async () => {
@@ -941,6 +1025,7 @@ async function authorize(response) {
     });
     status(cards.size + ' 件の計算記録。ZIPまたはフォルダーを追加できます。');
     input.disabled = folderInput.disabled = false;
+    replotButton.disabled = false;
     connect.textContent = 'Google Driveに再接続';
   } catch (error) {
     status(error.message);
