@@ -240,7 +240,7 @@ async function pasteReactions(){
   for(const item of items){
    if(typeof item.name!=='string'||!item.name||
       !['START','FINISH'].some(slot=>Array.isArray(item[slot]?.atoms)&&item[slot].atoms.length))continue;
-   if(['START','FINISH'].some(slot=>item[slot]&&!Mol.checkElectronicState(item[slot]).valid))continue;
+   // Preserve even scientifically questionable but structurally valid saved metadata.
    const {id,createdAt,name,startPreview,_driveFileId,...rest}=item;
    await ReactionStore.createReaction(rest,name);
    copied++;
