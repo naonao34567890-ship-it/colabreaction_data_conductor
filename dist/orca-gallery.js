@@ -94,7 +94,7 @@ async function readInputs(files){
 async function readLogWindow(blob){
  const windowBytes=8*1024*1024;
  if(blob.size<=2*windowBytes)return blob.text();
- return (await blob.slice(0,windowBytes).text())+'\\n…\\n'+
+ return (await blob.slice(0,windowBytes).text())+'\n…\n'+
         (await blob.slice(-windowBytes).text());
 }
 async function importFiles(files){
