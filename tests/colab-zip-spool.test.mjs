@@ -87,4 +87,9 @@ assert.match(app,/import\('\.\/colab-zip-spool\.mjs'\)/);
 assert.match(app,/temporary = source\?\.cleanup \? source : null/);
 assert.match(app,/await temporary\.cleanup\(\)/);
 assert.match(app,/blob\.slice\(position,end\)/); // Drive upload remains chunked.
+const zipSource=readFileSync(new URL('../dist/colab-zip-spool.mjs',import.meta.url),'utf8');
+assert.doesNotMatch(zipSource,/file\.size\s*[><=]/,'ZIP must not have a byte-size cap');
+assert.doesNotMatch(zipSource,/count\s*>\s*\d+/,'ZIP must not have a fixed file-count cap');
+assert.doesNotMatch(app,/result\.size\s*>=\s*\d+/,'folder imports must not have a fixed file-count cap');
+assert.doesNotMatch(app,/files\.size\s*>\s*\d+/,'Colab record imports must not have a fixed byte cap');
 console.log('PASS Colab ZIP disk spool, content integrity, cleanup, quota failure, and Drive upload integration');
