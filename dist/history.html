@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Mol Benchの開発史。2026年11月のGPT Sites初版から、GitHub移行と個別改訂の履歴を時系列でたどれます。">
+<title>開発の歴史 | Mol Bench</title><link rel="stylesheet" href="home.css">
+<style>
+.history-hero{padding-top:64px;padding-bottom:36px}.history-hero h1{font-size:clamp(29px,4vw,46px);margin:10px 0 18px}.history-hero .lead{max-width:860px;margin-bottom:18px}
+.pill{display:inline-flex;border:1px solid #567254;border-radius:50px;padding:5px 12px;font:11px ui-monospace,monospace;color:var(--accent)}
+.history-links{display:flex;flex-wrap:wrap;gap:16px;margin:24px 0 8px}.history-links a{color:var(--accent);font-size:13px;text-decoration:underline;text-underline-offset:4px}
+.warning{padding:17px 20px;border:1px solid var(--line);border-radius:7px;color:var(--muted);font-size:12px;line-height:1.9;background:#17251e}
+.milestones{padding-block:35px 42px}.milestones h2,.timeline h2{font-size:23px}
+.story{display:grid;grid-template-columns:140px 1fr;gap:18px;padding:23px 0;border-top:1px solid var(--line)}.story time{font:12px ui-monospace,monospace;color:var(--accent);padding-top:5px}.story h3{margin:0 0 8px;font-size:17px}.story p{margin:0;color:var(--muted);font-size:13px}.story .facts{margin:10px 0 0;padding-left:20px;font-size:12px;color:#c0cdc4;line-height:1.9}.source{display:inline-block;margin-top:12px;color:var(--accent);text-decoration:underline;text-underline-offset:3px;font-size:12px}
+.filters{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:25px 0 10px}.filters label{font-size:12px;color:var(--muted)}.filters input,.filters select{background:#192b23;color:var(--ink);border:1px solid #536950;border-radius:5px;padding:11px 12px;font:13px system-ui;max-width:100%}.filters input{flex:1;min-width:160px}.filters button{background:#2b4032;border:1px solid #536950;color:var(--ink);border-radius:5px;padding:11px;font:12px system-ui;cursor:pointer}
+.timeline{padding-block:20px 70px}.count{color:var(--muted);font-size:12px}.day{margin:32px 0 8px;border-bottom:1px solid #496047;padding-bottom:8px;color:var(--accent);font-size:17px}.entry{display:grid;grid-template-columns:110px 1fr;gap:14px;padding:13px 0;border-bottom:1px solid #293c31}.entry code{font-size:11px;color:#8ba895}.entry a{color:#edf1e8;text-decoration:underline;text-decoration-color:#536950;text-underline-offset:4px;font-size:13px}.entry a:hover{color:var(--accent)}.entry small{display:block;color:var(--muted);font-size:11px;margin-top:3px;overflow-wrap:anywhere}
+.missing{font-size:13px;color:var(--muted)}.footnote{padding:30px 0 64px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+@media(max-width:620px){.history-hero{padding-top:35px}.story{grid-template-columns:1fr;gap:5px}.entry{grid-template-columns:86px 1fr;gap:8px}.filters{align-items:stretch}.filters input{flex-basis:100%}.history-links{gap:12px}.wrap{padding-inline:20px}}
+</style></head>
+<body>
+<a class="skip" href="#main">本文へ移動</a>
+<header class="site-header wrap"><a class="brand" href="./" aria-label="Mol Bench ホーム"><svg class="brand-mark" viewBox="0 0 36 36" aria-hidden="true"><path d="M8 26L18 9L29 25" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="18" cy="9" r="4.5" fill="currentColor"/><circle cx="8" cy="26" r="4" fill="currentColor"/><circle cx="29" cy="25" r="4" fill="currentColor"/></svg>Mol Bench</a><nav aria-label="ナビゲーション"><a href="./">ホーム</a><a href="library.html">分子ライブラリ</a></nav></header>
+<main id="main">
+<section class="history-hero wrap"><span class="pill">PROJECT HISTORY · 2026—</span>
+<h1>Mol Benchの歴史</h1>
+<p class="lead">最初は「分子XYZライブラリ」と「分子エディタ」の2画面構成だった。GPT Sitesで試作を重ね、GitHubと独立した公開基盤へ移り、計算記録・反応ライブラリ・Drive連携へ発展していった。その改訂を、初期の依頼から順番に記録する。</p>
+<div class="history-links"><a href="#origins">GPT Sites時代</a><a href="#commits">GitHubの個別改訂</a><a href="https://github.com/naonao34567890-ship-it/colabreaction_data_conductor/commits/main/" rel="noopener noreferrer" target="_blank">GitHubの全履歴 ↗</a></div>
+<p class="warning"><strong>記録の出典について：</strong>GPT Sites時代は当時の改修依頼を基に再構成した履歴であり、すべての保存済みバージョンを直接照合したものではありません。GitHub移行後は確認できた個々のコミットを日付・ID・原文とともに掲載しています。要求された機能と、実機で検証できた機能は同一ではありません。タイムゾーンの異なるコミット日付は日本時間に変換して表示します。</p>
+</section>
+<section id="origins" class="milestones wrap"><p class="eyebrow">CHAPTER 01</p><h2>GPT Sitesでの出発と改訂</h2>
+<div id="siteHistory"></div>
+<p class="warning">GPT Sitesには保存済みバージョンを確認する機能があります。今後その一覧を取得できれば、ここに各バージョン番号・正確な保存日時・差分を追加できます。現状、Sites時代の項目は依頼・会話記録から復元した開発史です。</p>
+</section>
+<section id="commits" class="timeline wrap"><p class="eyebrow">CHAPTER 02</p><h2>GitHub移行後の改訂ログ</h2>
+<p class="missing">一つひとつの変更を、個別のGitHubコミットへリンクした形で掲載しています。英語は当時のコミットメッセージ原文です。収録後の変更はGitHubの全履歴から確認できます。</p>
+<div class="filters"><label for="historySearch">履歴を検索</label><input id="historySearch" type="search" autocomplete="off" placeholder="例：Drive、vibration、分類、backup"><select id="historyDay" aria-label="日付で絞り込み"><option value="">すべての日付</option></select><button type="button" id="resetHistory">絞り込み解除</button></div>
+<p id="historyCount" class="count" aria-live="polite"></p>
+<div id="commitHistory"></div>
+</section>
+<section class="wrap footnote">このページの記録は開発資料です。GitHubコミットは実装の変更履歴を示しますが、公開済みバージョンや実機動作の保証を意味するものではありません。<a class="source" href="https://github.com/naonao34567890-ship-it/colabreaction_data_conductor" target="_blank" rel="noopener noreferrer">ソースコードを見る ↗</a></section>
+</main>
+<footer class="wrap"><a class="brand" href="./">Mol Bench</a><p>最初のXYZスタジオから現在まで</p><a href="./">ホームに戻る ↗</a></footer>
+<script src="history-commits.js"></script>
+<script src="history.js"></script>
+</body></html>
