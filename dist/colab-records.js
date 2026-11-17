@@ -322,6 +322,30 @@ async function importRecords(name, sourceLabel, readFiles) {
       if (matches.length > 1) throw Error(name + ' が複数あります。計算結果を1件ずつ取り込んでください。');
       return matches[0]?.[1];
     }
+    // Batch-mode ColabReaction exports are an outer ZIP containing one ZIP per
+    // reaction plus batch_status.json. The outer archive is NOT a single DMF job.
+    // Expand each member independently, preserving its reaction-context.json.
+    const batchManifest=files.get('batch_status.json');
+    if(batchManifest){
+      let batch;
+      try{
+        if(batchManifest.size<=5*1024*1024)
+          batch=JSON.parse(await batchManifest.text());
+      }catch(error){
+        throw Error('batch_status.json を解析できませんでした: '+error.message);
+      }
+      if(batch?.format==='mol-bench-colabreaction-batch'){
+        const members=[...files].filter(([path])=>/^[^/]+\\.zip$/i.test(path));
+        if(!members.length)throw Error('一括結果ZIPの中に個別計算結果ZIPがありません。');
+        let index=0;
+        for(const [memberName, memberFile] of members){
+          status('一括計算結果を取り込み中 '+(++index)+'/'+members.length+': '+memberName);
+          await importRecords(memberName,'ZIP',()=>readZip(memberFile));
+        }
+        status('一括計算結果ZIPの処理が完了しました（'+members.length+'件）。失敗した項目はエラー欄を確認してください。');
+        return;
+      }
+    }
     let sourceReaction=null;
     const sourceMetadata=find('reaction-context.json');
     if(sourceMetadata){
