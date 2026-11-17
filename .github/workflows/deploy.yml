@@ -19,6 +19,7 @@ on:
   # Release after expanded ID, cross-tab numbering and renamed-run regression tests.
   # Final publication: numbered reaction defaults, cross-client naming, ZIP archives and new tests.
   # Re-run publication after updating preexisting legacy suffix assertion.
+  # Publish hardening for immutable IDs in local/cloud reaction update APIs.
   push:
     branches: [main]
     paths: [.github/workflows/deploy.yml]
