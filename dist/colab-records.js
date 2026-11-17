@@ -325,26 +325,30 @@ async function importRecords(name, sourceLabel, readFiles) {
     // Batch-mode ColabReaction exports are an outer ZIP containing one ZIP per
     // reaction plus batch_status.json. The outer archive is NOT a single DMF job.
     // Expand each member independently, preserving its reaction-context.json.
-    const batchManifest=files.get('batch_status.json');
-    if(batchManifest){
-      let batch;
-      try{
-        if(batchManifest.size<=5*1024*1024)
-          batch=JSON.parse(await batchManifest.text());
-      }catch(error){
-        throw Error('batch_status.json を解析できませんでした: '+error.message);
+    const entries=[...files];
+    const baseName=path=>path.split('/').at(-1);
+    const resultZipEntries=entries.filter(([path]) =>
+      /\\.zip$/i.test(baseName(path)) && !/^source-reaction\\.zip$/i.test(baseName(path)));
+    const batchManifestEntry=entries.find(([path])=>baseName(path)==='batch_status.json');
+    const hasDirectResultFiles=['reactant.xyz','product.xyz','DMF_energy.csv']
+      .every(name=>entries.some(([path])=>baseName(path)===name));
+    // A batch may have a nested manifest, a different format value, or
+    // per-reaction archives stored in subfolders. Do not misidentify the
+    // portable source-reaction.zip contained by an ordinary result ZIP.
+    if (!hasDirectResultFiles && resultZipEntries.length &&
+        (batchManifestEntry || resultZipEntries.length>1 ||
+         resultZipEntries.some(([path]) => /(?:result|output|job|reaction|calc)/i.test(path)))) {
+      let index=0;
+      for (const [memberPath, memberFile] of resultZipEntries) {
+        status('一括計算結果を取り込み中 '+(++index)+'/'+resultZipEntries.length+': '+memberPath);
+        await importRecords(baseName(memberPath),'ZIP',()=>readZip(memberFile));
       }
-      if(batch?.format==='mol-bench-colabreaction-batch'){
-        const members=[...files].filter(([path])=>!path.includes('/') && path.toLowerCase().endsWith('.zip'));
-        if(!members.length)throw Error('一括結果ZIPの中に個別計算結果ZIPがありません。');
-        let index=0;
-        for(const [memberName, memberFile] of members){
-          status('一括計算結果を取り込み中 '+(++index)+'/'+members.length+': '+memberName);
-          await importRecords(memberName,'ZIP',()=>readZip(memberFile));
-        }
-        status('一括計算結果ZIPの処理が完了しました（'+members.length+'件）。失敗した項目はエラー欄を確認してください。');
-        return;
-      }
+      status('一括計算結果ZIPの処理が完了しました（'+resultZipEntries.length+
+        '件）。失敗した項目はエラー欄を確認してください。');
+      return;
+    }
+    if(!hasDirectResultFiles && batchManifestEntry && !resultZipEntries.length) {
+      throw Error('batch_status.json は見つかりましたが、個別結果ZIPが見つかりません。ZIP内のファイル構成を確認してください。');
     }
     let sourceReaction=null;
     const sourceMetadata=find('reaction-context.json');
