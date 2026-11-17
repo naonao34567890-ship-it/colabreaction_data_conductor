@@ -119,9 +119,9 @@ async function pasteMolecules(){
 // Reserve the lowest unused numeric suffix for each original name, including
 // duplicates of previously duplicated entries ("example (1)" -> "example (2)").
 function nextDuplicateName(name,used) {
- const base=name.replace(/ \\(\\d+\\)$/,'');
+ const base=name.replace(/ \(\d+\)$/,'');
  let index=1,candidate;
- do {candidate=base+' ('+index+++')';} while(used.has(candidate));
+ do {candidate=base+' ('+(index++)+')';} while(used.has(candidate));
  used.add(candidate);
  return candidate;
 }
