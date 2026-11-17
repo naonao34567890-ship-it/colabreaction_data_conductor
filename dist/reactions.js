@@ -67,7 +67,7 @@ function cardFor(reaction) {
  card.className = 'reaction-card';
  card.dataset.id = reaction.id;
  card.tabIndex = 0;
- card.setAttribute('aria-label',reaction.name);
+ card.setAttribute('aria-label',reaction._displayName||reaction.name);
  card.onclick = event=>{
   if(event.target.closest('button,input,.structure-name,h3'))return;
   selectCard(reaction.id,event.ctrlKey||event.metaKey);
@@ -80,7 +80,7 @@ function cardFor(reaction) {
  const header = document.createElement('div');
  header.className = 'row';
  const title = document.createElement('h3');
- title.textContent = reaction.name;
+ title.textContent = reaction._displayName||reaction.name;
  const rename = document.createElement('button');
  rename.textContent = '✎';
  rename.setAttribute('aria-label','反応名を変更');
@@ -122,7 +122,7 @@ function cardFor(reaction) {
   const name = document.createElement('span');
   const structure = reaction[slot];
   name.className = 'structure-name';
-  name.textContent = reaction.name+'_'+slot;
+  name.textContent = (reaction._displayName||reaction.name)+'_'+slot;
   Mol.editName(name,async value=>{
    const base = value.replace(new RegExp('[_＿]'+slot+'$','i'),'').trim();
    if (!base) throw Error('反応名を入力してください。');
@@ -171,6 +171,13 @@ async function renderReactions() {
  try {
   const reactions = (await ReactionStore.list()).sort(reactionSort);
   if (revision !== renderRevision) return;
+  // Imports and cross-device sync preserve original names. Ambiguous labels in
+  // the catalogue receive display-only suffixes; the stable IDs are untouched.
+  const visible=new Set(),reserved=new Set(reactions.map(item=>item.name));
+  for(const item of [...reactions].sort((a,b)=>(a.createdAt||0)-(b.createdAt||0)||a.id.localeCompare(b.id))){
+    item._displayName=visible.has(item.name)?Mol.nextDuplicateName(item.name,reserved):item.name;
+    visible.add(item._displayName);
+  }
   records = reactions;
   const count=control('reactionCount');if(count)count.textContent=reactions.length.toLocaleString()+' 反応';
   const ids = new Set(records.map(item=>item.id));
