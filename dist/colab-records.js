@@ -397,6 +397,7 @@ async function importRecords(name, sourceLabel, readFiles, batchJob = null) {
           (typeof batchJob.classification==='string'?batchJob.classification:null),
         tags: sourceReaction?.tags ?? (Array.isArray(batchJob.tags)?batchJob.tags:[]),
         runId: sourceReaction?.runId ?? batchJob.run_id ?? null,
+        runOwnerSub: sourceReaction?.runOwnerSub ?? batchJob.run_owner_sub ?? null,
         runNumber: sourceReaction?.runNumber ?? batchJob.run_number ?? null,
         method: sourceReaction?.method ?? batchJob.method ?? 'DMF',
         displayPath: sourceReaction?.displayPath ?? batchJob.display_path ?? null,
@@ -523,12 +524,15 @@ async function reserveReactionRun(source){
       occupied.size?Math.max(...occupied)+1:1);
     const reserved=await driveFetch('runs',{body:JSON.stringify({
       action:'reserveRun',runId,reactionId,method,reactionName:proposedName,
+      expectedAccountSub:source.runOwnerSub||null,
       minimumRunNumber:minimum,
     })});
     const payload=await reserved.json();
     if(!reserved.ok||payload.state!=='reserved'||!payload.run)
       throw Error('共通の実行番号台帳から番号を取得できませんでした（'+(payload.state||reserved.status)+'）。計算を別番号で保存せず中止します。');
     const official=payload.run;
+    if(source.runOwnerSub&&payload.account?.sub!==source.runOwnerSub)
+      throw Error('ColabとMol BenchでGoogleアカウントが異なります。正しいアカウントで接続してください。');
     if(official.reactionId!==reactionId||official.runId.toLowerCase()!==runId.toLowerCase()||official.method!==method)
       throw Error('実行番号台帳が異なる計算IDを返しました。');
     const number=official.runNumber,leaf=method+'('+number+')';
