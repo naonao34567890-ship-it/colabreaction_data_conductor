@@ -10,6 +10,7 @@ on:
   # Publication requested for verified canonical 9-job Colab bundle layout.
   # Publication requested for classification metadata import merge (2026-11-17).
   # Publication requested for molecule and reaction library duplicate actions (2026-11-17).
+  # Retry publication after updating catalogue-shell assertions for duplicate controls.
   push:
     branches: [main]
     paths: [.github/workflows/deploy.yml]
