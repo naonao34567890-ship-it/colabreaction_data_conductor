@@ -21,6 +21,7 @@ on:
   # Re-run publication after updating preexisting legacy suffix assertion.
   # Publish hardening for immutable IDs in local/cloud reaction update APIs.
   # Publish shared run ledger, ID-based slideshow matching and readable bundle naming.
+  # Release finalized owner-bound run numbering and audited low-traffic UI naming paths.
   push:
     branches: [main]
     paths: [.github/workflows/deploy.yml]
