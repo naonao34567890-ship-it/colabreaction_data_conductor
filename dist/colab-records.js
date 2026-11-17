@@ -351,7 +351,7 @@ async function importRecords(name, sourceLabel, readFiles, batchJob = null) {
       let index=0;
       for (const [memberPath, memberFile] of resultZipEntries) {
         const basename=baseName(memberPath);
-        const indexMatch=basename.match(/^(\\d+)_/);
+        const indexMatch=basename.match(/^(\d+)_/);
         const jobNumber=indexMatch?Number(indexMatch[1]):null;
         const job=jobs.find(item=>item.number===jobNumber) ??
           jobs.find(item=>item.reaction_id && basename.includes(String(item.reaction_id).slice(0,8))) ?? null;
