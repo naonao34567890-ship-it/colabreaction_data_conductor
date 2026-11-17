@@ -307,7 +307,7 @@ async function alreadyRegistered(name) {
   return false;
 }
 
-async function importRecords(name, sourceLabel, readFiles) {
+async function importRecords(name, sourceLabel, readFiles, batchJob = null) {
   let parent, temporary;
   try {
     if (await alreadyRegistered(name)) {
@@ -338,10 +338,25 @@ async function importRecords(name, sourceLabel, readFiles) {
     if (!hasDirectResultFiles && resultZipEntries.length &&
         (batchManifestEntry || resultZipEntries.length>1 ||
          resultZipEntries.some(([path]) => /(?:result|output|job|reaction|calc)/i.test(path)))) {
+      let manifest=null;
+      if(batchManifestEntry) {
+        try {
+          if(batchManifestEntry[1].size<=5*1024*1024)
+            manifest=JSON.parse(await batchManifestEntry[1].text());
+        }catch(error){
+          console.warn('一括結果の一覧JSONを解析できませんでした:',error);
+        }
+      }
+      const jobs=Array.isArray(manifest?.jobs)?manifest.jobs:[];
       let index=0;
       for (const [memberPath, memberFile] of resultZipEntries) {
+        const basename=baseName(memberPath);
+        const indexMatch=basename.match(/^(\\d+)_/);
+        const jobNumber=indexMatch?Number(indexMatch[1]):null;
+        const job=jobs.find(item=>item.number===jobNumber) ??
+          jobs.find(item=>item.reaction_id && basename.includes(String(item.reaction_id).slice(0,8))) ?? null;
         status('一括計算結果を取り込み中 '+(++index)+'/'+resultZipEntries.length+': '+memberPath);
-        await importRecords(baseName(memberPath),'ZIP',()=>readZip(memberFile));
+        await importRecords(basename,'ZIP',()=>readZip(memberFile),job);
       }
       status('一括計算結果ZIPの処理が完了しました（'+resultZipEntries.length+
         '件）。失敗した項目はエラー欄を確認してください。');
@@ -360,6 +375,15 @@ async function importRecords(name, sourceLabel, readFiles) {
           if(context?.format==='mol-bench-reaction-context'&&context.version===2)sourceReaction=context;
         }
       }catch(error){console.warn('反応の引継ぎJSONを読めませんでした:',error);}
+    }
+    // The source Colab bundle can omit reaction-context.json. Recover known
+    // identity fields from batch_status.json without inventing classification.
+    if(!sourceReaction && batchJob) {
+      sourceReaction={
+        name:typeof batchJob.name==='string'?batchJob.name:null,
+        sourceReactionId:typeof batchJob.reaction_id==='string'?batchJob.reaction_id:null,
+        classification:typeof batchJob.classification==='string'?batchJob.classification:null,
+      };
     }
     const reactant = find('reactant.xyz'), product = find('product.xyz');
     const csv = find('DMF_energy.csv'), trajectory = find('DMF_final.xyz');
