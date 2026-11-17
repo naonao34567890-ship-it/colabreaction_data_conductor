@@ -252,8 +252,8 @@ async function importMolecules(items){
   let i=0;function next(){if(i===items.length)return;const item=items[i++],r=meta.get(item.id);r.onsuccess=()=>{
    if(JSON.stringify(r.result)!==JSON.stringify(expected.get(item.id))){fail();return;}
    if(r.result||builtins.has(item.id)){skipped++;next();return;}
-   const record={...item,...electronicState(item)},base=item.name;let n=1;
-   function add(){const q=meta.index('name').getKey(record.name);q.onsuccess=()=>{if(q.result!==undefined){record.name=base+' ('+(++n)+')';add();return;}
+   const record={...item,...electronicState(item)},base=item.name,used=new Set();
+   function add(){const q=meta.index('name').getKey(record.name);q.onsuccess=()=>{if(q.result!==undefined){used.add(record.name);record.name=nextDuplicateName(base,used);add();return;}
     const m={id:record.id,name:record.name,count:record.atoms.length,mass:Mass.calculate(record.atoms),...electronicState(record),thumb:false,bytes:record.raw?.size||standard(record).length,tags:record.tags||[],addedAt:Date.now(),batchPosition:i};
     meta.add(m);body.add(record);for(const name of m.tags)tx.objectStore('tags').put({name});added++;next();};}add();
   };}next();
