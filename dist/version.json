@@ -1,0 +1,7 @@
+{
+  "name": "Mol Bench",
+  "version": "v0.99-beta",
+  "channel": "beta",
+  "status": "release-candidate",
+  "releaseNotes": "Naming and stable-ID consistency baseline; v1.0 acceptance tests pending."
+}
