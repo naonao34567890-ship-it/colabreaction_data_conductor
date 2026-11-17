@@ -1309,7 +1309,8 @@ async function legacyCandidates() {
     for(const job of children) {
       const p=job.appProperties||{};
       if(p.legacyMigrationVersion==='1')continue;
-      if(!legacyUUID.test(p.runId||'') || !legacyNumber(String(p.runNumber||''),'') ||
+      if(!legacyUUID.test(p.runId||'') ||
+         !Number.isSafeInteger(Number(p.runNumber)) || Number(p.runNumber)<1 ||
          !legacyNumber(job.name,p.method||'DMF'))entries.push({job,group});
     }
   }
