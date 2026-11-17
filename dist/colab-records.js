@@ -404,6 +404,9 @@ async function importRecords(name, sourceLabel, readFiles, batchJob = null) {
     }
     if(sourceReaction?.runId&&batchJob?.run_id&&sourceReaction.runId!==batchJob.run_id)
       throw Error('個別ZIPとバッチ一覧のrunIdが一致しません。');
+    if(sourceReaction?.sourceReactionId&&batchJob?.reaction_id&&
+       sourceReaction.sourceReactionId!==batchJob.reaction_id)
+      throw Error('個別ZIPとバッチ一覧の反応IDが一致しません。');
     const runId=sourceReaction?.runId||null;
     if(await alreadyRegistered(name,runId)){status('登録済みの計算をスキップ: '+name);return;}
     const reactant = find('reactant.xyz'), product = find('product.xyz');
@@ -508,9 +511,14 @@ async function reserveReactionRun(source){
       const created=await (await request(drive+'/files?fields=id,name,appProperties',{
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({name:groupName,mimeType:folderType,parents:[root],
-          appProperties:{xyzStudio:'colabReactionGroup',sourceReactionId:reactionId}}),
+          appProperties:{xyzStudio:'colabReactionGroup',sourceReactionId:reactionId,nextRunNumber:'1'}}),
       })).json();
       group=created;
+    }
+    if(runId){
+      const duplicate=await list("mimeType = '"+folderType+
+        "' and appProperties has { key='runId' and value='"+runId+"' }");
+      if(duplicate.length)throw Error('同じ計算IDは登録済みか取り込み処理中です。');
     }
     const children=await list("'"+group.id+"' in parents and mimeType = '"+folderType+"'");
     const usedNumbers=new Set();
@@ -521,9 +529,16 @@ async function reserveReactionRun(source){
       const match=entry.name.match(new RegExp('^'+method+'\\((\\d+)\\)$'));
       if(match)usedNumbers.add(Number(match[1]));
     }
-    let number=Number(source.runNumber);
-    if(!Number.isSafeInteger(number)||number<1)number=1;
+    const requested=Number(source.runNumber);
+    const next=Number(group.appProperties?.nextRunNumber);
+    let number=Math.max(Number.isSafeInteger(requested)&&requested>0?requested:1,
+      Number.isSafeInteger(next)&&next>0?next:1);
     while(usedNumbers.has(number))number++;
+    // Reserve the number independently of display labels; deletion/rename never resets it.
+    await request(drive+'/files/'+encodeURIComponent(group.id)+'?fields=id',{
+      method:'PATCH',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({appProperties:{...(group.appProperties||{}),nextRunNumber:String(number+1)}}),
+    });
     const leaf=method+'('+number+')';
     const props={method,runNumber:String(number),sourceReactionId:reactionId};
     if(runId)props.runId=runId;
@@ -607,6 +622,9 @@ async function renameRecord(jobId, name) {
   const job = cards.get(jobId);
   if (!job) throw Error('計算記録を一覧から開き直してください。');
   // Renaming a run must retain runId, runNumber, method and original source identity.
+  const siblings=await list("'"+(job._parentId||root)+"' in parents and mimeType = '"+folderType+"'");
+  if(siblings.some(item=>item.id!==jobId&&item.name===name))
+    throw Error('同じフォルダ内に同名の計算記録があります。');
   const appProperties={...(job.appProperties||{})};
   if(!appProperties.runId&&!appProperties.importKey)
     appProperties.importKey=await importKey(job.name);
@@ -1027,7 +1045,7 @@ async function loadRecords() {
   for(const entry of rootFolders){
     if(entry.appProperties?.xyzStudio==='colabReactionGroup'){
       const children=await list("'"+entry.id+"' in parents and mimeType = '"+folderType+"'");
-      for(const job of children){job._parentName=entry.name;folders.push(job);}
+      for(const job of children){job._parentName=entry.name;job._parentId=entry.id;folders.push(job);}
     }else folders.push(entry);
   }
   folders.forEach(job => { job.addedAt = Date.parse(job.createdTime); });
