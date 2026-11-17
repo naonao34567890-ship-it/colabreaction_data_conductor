@@ -3,7 +3,7 @@
 const control = id=>document.getElementById(id);
 const selected = new Set();
 let records = [];
-let changing = false;
+let changing = false, duplicating = false;
 const days = document.getElementById('reactionDays');
 const status = document.getElementById('reactionStatus');
 const dayKey = new Intl.DateTimeFormat('ja-JP',{dateStyle:'long'});
@@ -214,7 +214,7 @@ function selectionUI() {
   const active=selected.has(card.dataset.id);
   card.classList.toggle('selected',active);
  }
- for(const id of ['reactionTag','reactionDelete','reactionZip','reactionArchive','reactionCopy','reactionClassify'])control(id).disabled=changing||!selected.size;
+ for(const id of ['reactionTag','reactionDelete','reactionZip','reactionArchive','reactionDuplicate','reactionClassify'])control(id).disabled=changing||!selected.size;
  control('reactionSelection').textContent=selected.size+' 件選択中';
 }
 function selectCard(id,additive) {
@@ -250,8 +250,34 @@ async function pasteReactions(){
   status.textContent=copied+' 件の反応を貼り付けました。';
  }finally{changing=false;selectionUI();}
 }
-control('reactionCopy').onclick=()=>void copyReactions().catch(e=>status.textContent=e.message);
-control('reactionPaste').onclick=()=>void pasteReactions().catch(e=>status.textContent=e.message);
+function nextReactionDuplicateName(name,used) {
+ const base=name.replace(/ \(\d+\)$/,'');
+ let index=1,candidate;
+ do {candidate=base+' ('+(index++)+')';} while(used.has(candidate));
+ used.add(candidate);
+ return candidate;
+}
+async function duplicateReactions(){
+ if(changing||duplicating||!selected.size)return;
+ duplicating=true;changing=true;selectionUI();
+ try {
+  const used=new Set((await ReactionStore.list()).map(r=>r.name));
+  const ids=[...selected];
+  const originals=await Promise.all(ids.map(id=>ReactionStore.read(id)));
+  if(originals.some(record=>!record))throw Error('選択した反応が見つかりません。再読み込みしてください。');
+  let copied=0;
+  for(const item of originals){
+   const {id,createdAt,name,startPreview,_driveFileId,...rest}=structuredClone(item);
+   await ReactionStore.createReaction(rest,nextReactionDuplicateName(name,used));
+   copied++;
+  }
+  await renderReactions();
+  status.textContent=copied+' 件の反応を複製しました。';
+ }finally{duplicating=false;changing=false;selectionUI();}
+}
+control('reactionDuplicate').onclick=()=>void duplicateReactions().catch(e=>status.textContent='複製に失敗しました: '+e.message);
+
+
 window.addEventListener('keydown',event=>{
  if(!(event.ctrlKey||event.metaKey)||event.altKey||event.shiftKey||MolClipboard.editable(event))return;
  const key=event.key.toLowerCase();
