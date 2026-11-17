@@ -17,6 +17,47 @@ export class LibraryCoordinator {
     try {
       const { accessToken, action, expectedGeneration, nextHead } = await request.json();
       if (!accessToken) return json({ state: 'connect' }, 401);
+      // The Durable Object is the single serialized numbering ledger for Colab and Mol Bench.
+      // runId is idempotent; neither source filenames nor displayed paths identify a run.
+      if (action === 'reserveRun' || action === 'lookupRun') {
+        const input = await request.clone().json().catch(() => null);
+        const runId=input?.runId, reactionId=input?.reactionId, method=input?.method||'DMF';
+        if(typeof runId!=='string'||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(runId))
+          return json({state:'invalid_run_id'},400);
+        const runKey='run-id/'+runId.toLowerCase();
+        const existing=await this.ctx.storage.get(runKey);
+        if(action==='lookupRun')return existing?json({state:'found',run:existing}):json({state:'not_found'},404);
+        if(typeof reactionId!=='string'||reactionId.length<1||reactionId.length>256||
+           !/^[A-Za-z0-9_-]{1,24}$/.test(method))
+          return json({state:'invalid_reaction_identity'},400);
+        const originalName=String(input?.reactionName||'反応').trim().slice(0,120)||'反応';
+        if(existing){
+          if(existing.reactionId!==reactionId||existing.method!==method)
+            return json({state:'identity_conflict'},409);
+          return json({state:'reserved',run:existing,alreadyReserved:true});
+        }
+        const groupKey='run-group/'+reactionId;
+        let group=await this.ctx.storage.get(groupKey);
+        if(!group){
+          let name=originalName,i=1;
+          while(await this.ctx.storage.get('run-label/'+name)){
+            name=originalName+' ('+(i++)+')';
+          }
+          group={reactionId,name};
+          await this.ctx.storage.put(groupKey,group);
+          await this.ctx.storage.put('run-label/'+name,reactionId);
+        }
+        const seqKey='run-sequence/'+reactionId+'/'+method;
+        const previous=await this.ctx.storage.get(seqKey);
+        const initial=Number(input?.minimumRunNumber);
+        const minimum=Number.isSafeInteger(initial)&&initial>0&&initial<1000000000?initial:1;
+        const runNumber=Math.max(Number(previous||0)+1,minimum);
+        const run={runId, reactionId, method,runNumber,
+          reactionName:group.name,displayPath:group.name+'/'+method+'('+runNumber+')'};
+        await this.ctx.storage.put(runKey,run);
+        await this.ctx.storage.put(seqKey,runNumber);
+        return json({state:'reserved',run,alreadyReserved:false});
+      }
       const call = async (path, init = {}) => {
         const response = await fetch(
           (path.includes('uploadType=media') ? 'https://www.googleapis.com/upload/drive/v3' : API) +
