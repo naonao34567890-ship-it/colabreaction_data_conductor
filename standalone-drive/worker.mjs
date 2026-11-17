@@ -51,11 +51,13 @@ async function route(request,env){
   const user=await identity.json();
   if(!user.sub||user.email_verified!==true)return json({state:'identity_error'},403);
   const input=await request.json();
+  if(input.expectedAccountSub&&input.expectedAccountSub!==user.sub)
+    return json({state:'wrong_google_account'},403);
   if(!env.LIBRARY_COORDINATOR)return json({state:'library_setup_required'},503);
   const id=env.LIBRARY_COORDINATOR.idFromName(user.sub);
   const response=await env.LIBRARY_COORDINATOR.get(id).fetch(new Request('https://internal/runs',{
    method:'POST',body:JSON.stringify({...input,accessToken:bearer})}));
-  return json(await response.json(),response.status);
+  return json({...await response.json(),account:{sub:user.sub}},response.status);
  }
  if(request.headers.get('Origin')!==APP)return json({state:'forbidden'},403);
  const session=request.headers.get('Authorization')?.match(/^Bearer ([a-f0-9]{64})$/)?.[1];if(!session)return json({state:'connect'},401);
@@ -71,11 +73,13 @@ async function route(request,env){
   if(!identity.ok)return json({state:'identity_error'},403);
   const user=await identity.json();if(!user.sub||user.email_verified!==true)return json({state:'identity_error'},403);
   const input=await request.json();
+  if(url.pathname==='/runs'&&input.expectedAccountSub&&input.expectedAccountSub!==user.sub)
+    return json({state:'wrong_google_account'},403);
   const id=env.LIBRARY_COORDINATOR.idFromName(user.sub);
   const response=await env.LIBRARY_COORDINATOR.get(id).fetch(new Request('https://internal/'+(url.pathname==='/runs'?'runs':'library'),{
    method:'POST',body:JSON.stringify({...input,accessToken:data.access_token})}));
   const result=await response.json();
-  return json(url.pathname==='/runs'?result:{...result,account:{sub:user.sub,email:user.email}},response.status);
+  return json({...result,account:url.pathname==='/runs'?{sub:user.sub}:{sub:user.sub,email:user.email}},response.status);
  }
  return json({state:'connected',access_token:data.access_token,expires_in:data.expires_in});
 }
