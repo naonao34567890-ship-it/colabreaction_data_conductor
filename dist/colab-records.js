@@ -1296,8 +1296,7 @@ const legacyNumber = (name, method) => {
 const legacyField = (text, field) => text.split(/\r?\n/)
   .find(line=>line.startsWith(field+':'))?.slice(field.length+1).trim()||'';
 function legacyName(raw) {
-  const value=String(raw||'').trim();
-  return Mol.safeName(value&&!legacyUUID.test(value)?value:'旧計算記録').slice(0,105);
+  return Mol.safeName(String(raw||'').trim()).slice(0,105);
 }
 async function legacyCandidates() {
   const top=await list("'"+root+"' in parents and mimeType = '"+folderType+"'");
@@ -1339,13 +1338,16 @@ async function molBenchLegacyMigration(mode='preview') {
       const props=job.appProperties||{};
       const reactionId=props.sourceReactionId||legacyField(config,'元の反応ID')||group?.appProperties?.sourceReactionId||'';
       const reactionName=props.reactionName||legacyField(config,'元の反応名')||'';
-      const runId=props.runId&&legacyUUID.test(props.runId)?props.runId:null;
+      // Old unnamed records may have a UUID as the original folder name.
+      // Reuse it as both internal run ID and provisional visible reaction name.
+      const runId=props.runId&&legacyUUID.test(props.runId)?props.runId:
+        legacyUUID.test(job.name)?job.name:null;
       const method=/^[A-Za-z0-9_-]{1,24}$/.test(props.method||'DMF')?props.method||'DMF':'DMF';
       preliminary.push({job,group,reactionId,reactionName,runId,method});
     }
     const preview=preliminary.map(({job,group,reactionId,reactionName,runId,skip})=>({
       folder:group?group.name+'/'+job.name:job.name,
-      reaction:reactionName||null,
+      reaction:reactionName||runId||'（実行時に新規UUIDを暫定名に設定）',
       reactionId:reactionId||null,
       hasRunId:!!runId,
       action:skip||'新形式に移行',
@@ -1374,7 +1376,11 @@ async function molBenchLegacyMigration(mode='preview') {
         if(!group){
           // Never infer a reaction ID from its name. Unknown-ID records get
           // their own independent group rather than merging by display name.
-          const base=legacyName(item.reactionName||job.name);
+          // No reliable original reaction name: use the run UUID verbatim as
+          // the provisional group name. Never treat a timestamp or ZIP
+          // filename as a reliable reaction name.
+          item.runId ||= crypto.randomUUID();
+          const base=legacyName(item.reactionName||item.runId);
           const name=usedNames.has(base)?Mol.nextDuplicateName(base,usedNames):base;
           const properties={xyzStudio:'colabReactionGroup'};
           if(item.reactionId)properties.sourceReactionId=item.reactionId;
