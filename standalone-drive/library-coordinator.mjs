@@ -44,8 +44,10 @@ export class LibraryCoordinator {
             name=originalName+' ('+(i++)+')';
           }
           group={reactionId,name};
-          await this.ctx.storage.put(groupKey,group);
-          await this.ctx.storage.put('run-label/'+name,reactionId);
+          await this.ctx.storage.transaction(async storage=>{
+            await storage.put(groupKey,group);
+            await storage.put('run-label/'+name,reactionId);
+          });
         }
         const seqKey='run-sequence/'+reactionId+'/'+method;
         const previous=await this.ctx.storage.get(seqKey);
@@ -54,8 +56,10 @@ export class LibraryCoordinator {
         const runNumber=Math.max(Number(previous||0)+1,minimum);
         const run={runId, reactionId, method,runNumber,
           reactionName:group.name,displayPath:group.name+'/'+method+'('+runNumber+')'};
-        await this.ctx.storage.put(runKey,run);
-        await this.ctx.storage.put(seqKey,runNumber);
+        await this.ctx.storage.transaction(async storage=>{
+          await storage.put(runKey,run);
+          await storage.put(seqKey,runNumber);
+        });
         return json({state:'reserved',run,alreadyReserved:false});
       }
       const call = async (path, init = {}) => {
