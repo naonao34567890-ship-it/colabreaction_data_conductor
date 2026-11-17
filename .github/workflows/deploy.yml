@@ -12,6 +12,7 @@ on:
   # Publication requested for molecule and reaction library duplicate actions (2026-11-17).
   # Retry publication after updating catalogue-shell assertions for duplicate controls.
   # Deploy extension-aware duplicate naming and collision handling (2026-11-17).
+  # Retry after removing stale suffix reference found in browser tests.
   push:
     branches: [main]
     paths: [.github/workflows/deploy.yml]
