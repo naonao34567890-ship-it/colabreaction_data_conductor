@@ -518,7 +518,7 @@ async function reserveReactionRun(source){
       const props=entry.appProperties||{};
       if(props.method===method&&Number.isSafeInteger(Number(props.runNumber))&&Number(props.runNumber)>0)
         usedNumbers.add(Number(props.runNumber));
-      const match=entry.name.match(new RegExp('^'+method+'\((\d+)\)$'));
+      const match=entry.name.match(new RegExp('^'+method+'\\((\\d+)\\)$'));
       if(match)usedNumbers.add(Number(match[1]));
     }
     let number=Number(source.runNumber);
