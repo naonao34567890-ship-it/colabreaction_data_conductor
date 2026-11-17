@@ -17,6 +17,7 @@ on:
   # Rerun after correcting optional chaining assertion in run-path regression test.
   # Audit and publish naming unification: local IDs, Colab runs, ORCA, XYZ ZIP imports.
   # Release after expanded ID, cross-tab numbering and renamed-run regression tests.
+  # Final publication: numbered reaction defaults, cross-client naming, ZIP archives and new tests.
   push:
     branches: [main]
     paths: [.github/workflows/deploy.yml]
