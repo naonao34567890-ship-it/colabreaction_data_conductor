@@ -3,6 +3,24 @@ async function parse(text){const result=[];for await(const b of M.parseFile(new 
 async function test(name,fn){await fn();passed++;console.log('PASS',name);}
 (async()=>{
 const fixture=fs.readFileSync(path.join(__dirname,'qm9_39.xyz'),'utf8');
+await test('Duplicate names use lowest free suffix before file extensions',async()=>{
+ const alloc=M.nextDuplicateName;
+ let used=new Set(['benzene.xyz','benzene (1).xyz','benzene (3).xyz']);
+ assert.equal(alloc('benzene.xyz',used),'benzene (2).xyz');
+ assert.equal(alloc('benzene (2).xyz',used),'benzene (4).xyz');
+ assert.equal(alloc('benzene (3).xyz',used),'benzene (5).xyz');
+ used=new Set(['A','A (1)','A (3)']);
+ assert.equal(alloc('A',used),'A (2)');
+ assert.equal(alloc('A (1)',used),'A (4)');
+ used=new Set(['experiment.v2.zip','experiment.v2 (1).zip']);
+ assert.equal(alloc('experiment.v2.zip',used),'experiment.v2 (2).zip');
+ used=new Set(['x.sdf','x (1).sdf']);
+ assert.equal(alloc('x (1).sdf',used),'x (2).sdf');
+ used=new Set(['data.xyz']);
+ assert.equal(alloc('data.xyz',used),'data (1).xyz');
+ assert.equal(alloc('data.xyz',used),'data (2).xyz');
+});
+
 await test('SDF import converts V2000 and V3000, ignores properties, and recovers across records',async()=>{
  const v2000=['','SDF test','','  2  1  0  0  0  0            999 V2000',
   '    1.2345   -2.5000    0.0000 C   0  0  0  0  0  0',
