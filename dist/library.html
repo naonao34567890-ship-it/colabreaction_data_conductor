@@ -30,7 +30,7 @@
 </nav>
 <header><div class="toolbar tidy-toolbar" aria-label="分子ライブラリの操作">
  <div class="tidy-group tidy-import"><span class="tidy-label">ファイル</span><button class="primary" id="fileButton">＋ ファイルを選択</button><button id="folderButton">フォルダを選択</button><input hidden type="file" id="files" multiple accept=".xyz,.pyxyz,.sdf,.zip"><input hidden type="file" id="folder" multiple webkitdirectory></div>
- <div class="tidy-group tidy-selection"><span class="tidy-label">選択・編集</span><button id="all">全選択</button><button id="none">全解除</button><button id="copyMolecules" disabled title="Ctrl+C">コピー</button><button id="pasteMolecules" title="Ctrl+V">貼り付け</button><button id="open" class="tidy-open" disabled>エディタで開く ↗</button></div>
+ <div class="tidy-group tidy-selection"><span class="tidy-label">選択・編集</span><button id="all">全選択</button><button id="none">全解除</button><button id="duplicateMolecules" disabled title="選択した分子を複製">複製</button><button id="open" class="tidy-open" disabled>エディタで開く ↗</button></div>
  <div class="tidy-group tidy-organize"><span class="tidy-label">整理</span><button id="tagSelected" disabled>タグ付け</button><button id="download" disabled>ダウンロード ↓</button><button id="deleteSelected" class="tidy-danger" title="Ctrl＋Shift＋Backspace" disabled>削除</button></div>
  </div><div class="row library-list-row"><h2>すべての分子</h2><span id="count" class="muted">0 分子</span><span class="spacer"></span><select id="thumbnailMode" aria-label="サムネイルの表示形式"></select><label>並び順 <select id="libraryOrder" autocomplete="off"><option value="name-asc">名前順</option><option value="added-asc">追加時間昇順</option><option value="added-desc">追加時間降順</option><option value="name-desc">名前逆順</option><option value="mass-asc">分子量昇順</option><option value="mass-desc">分子量降順</option><option value="id">内部ID順</option><option value="tag-added">タグ順＋アイテム追加順</option><option value="tag-name" selected>タグ順＋名前順</option></select></label><small id="selected">0 選択中</small></div></header><main class="workspace" id="libraryScroll"><div class="heading"><div><div class="eyebrow">MOLECULAR WORKSPACE / 01</div><h1>分子ライブラリ</h1></div><div class="badge">ローカル保存 · XYZ / QM9</div></div><div class="progress-area"><div class="row"><span id="progressText">ファイル・フォルダを登録できます</span><span class="spacer"></span><span id="queued">待機中 0件</span><button id="cancel" disabled>キャンセル</button></div><progress id="progress" value="0" max="1"></progress></div><div class="grid-view" id="grid"><div id="empty" class="empty"><div>XYZ・SDFファイルをドロップするか、上の「ファイルを選択」から追加できます。</div></div></div><div class="drop-hint">このページに XYZ・SDF ファイル・フォルダをドロップ　／　左ドラッグで範囲選択（Shiftで範囲内の選択を反転）　／　ダブルクリックで分子エディタを開く</div><details id="results"><summary id="summary">読み込み結果</summary><pre id="resultText"></pre></details><div class="status" id="notice" role="status" aria-live="polite"></div></main>
 </div>
@@ -75,7 +75,7 @@
 <dialog id="exportDialog"><h2>選択した分子をダウンロード</h2><label>保存する名前<input id="exportName" value="molecules"></label><label>出力形式<select id="format"><option value="zip">ZIP（分子ごとの xyz）</option><option value="xyz">1つの連結 xyz</option></select></label><label><input id="exportMemo" type="checkbox" style="width:auto"> 保存用 .pyxyz（メモ付き）</label><p class="muted" id="exportHint"></p><div class="dialog-actions"><button id="closeDialog">戻る</button><button class="primary" id="exportStart">保存する</button></div></dialog>
 <script>
 'use strict';
-const $=id=>document.getElementById(id);let meta=[],selected=new Set(),jobs=[],active=null,exporting=false,exportCancel=null,deleting=false;const channel=Mol.cloud?new EventTarget():new BroadcastChannel('molecular-xyz');
+const $=id=>document.getElementById(id);let meta=[],selected=new Set(),jobs=[],active=null,exporting=false,exportCancel=null,deleting=false,duplicating=false;const channel=Mol.cloud?new EventTarget():new BroadcastChannel('molecular-xyz');
 const grid=new Mol.VirtualGrid($('grid'),{scrollport:$('libraryScroll'),onSelect:(m,event)=>{
  if(!event.ctrlKey)selected.clear();
  if(selected.has(m.id))selected.delete(m.id);
@@ -90,7 +90,7 @@ const grid=new Mol.VirtualGrid($('grid'),{scrollport:$('libraryScroll'),onSelect
 grid.thumbnailSettings=Mol.thumbnailMode($('thumbnailMode'),'molecules',Mol.clearMoleculePreviews,()=>{grid.clear();refresh();});
 function notice(s){$('notice').textContent=s;}
 function openEditor(m){window.open('editor.html?id='+encodeURIComponent(m.id),'_blank','noopener');}
-function selectionUI(){ $('selected').textContent=selected.size.toLocaleString()+' 選択中';$('copyMolecules').disabled=!selected.size||!!active||exporting;$('download').disabled=!selected.size||exporting||!!active;$('open').disabled=selected.size!==1;$('tagSelected').disabled=![...selected].some(id=>metaMap.has(id)&&!metaMap.get(id).builtin);$('deleteSelected').disabled=deleting||!!active||exporting||![...selected].some(id=>!metaMap.get(id)?.builtin);}
+function selectionUI(){ $('selected').textContent=selected.size.toLocaleString()+' 選択中';$('duplicateMolecules').disabled=!selected.size||!!active||exporting||deleting||duplicating;$('download').disabled=!selected.size||exporting||!!active;$('open').disabled=selected.size!==1;$('tagSelected').disabled=![...selected].some(id=>metaMap.has(id)&&!metaMap.get(id).builtin);$('deleteSelected').disabled=deleting||!!active||exporting||![...selected].some(id=>!metaMap.get(id)?.builtin);}
 $('libraryOrder').value='tag-name';
 let massOrderRequest=0;
 $('libraryOrder').onchange=()=>{massOrderRequest++;$('libraryScroll').scrollTop=0;refresh();};
@@ -116,8 +116,41 @@ async function pasteMolecules(){
  Mol.notify({type:'added',items:saved});
  notice(saved.length+' 件の分子を貼り付けました。');
 }
-$('copyMolecules').onclick=()=>void copyMolecules().catch(e=>notice(e.message));
-$('pasteMolecules').onclick=()=>void pasteMolecules().catch(e=>notice(e.message));
+// Reserve the lowest unused numeric suffix for each original name, including
+// duplicates of previously duplicated entries ("example (1)" -> "example (2)").
+function nextDuplicateName(name,used) {
+ const base=name.replace(/ \\(\\d+\\)$/,'');
+ let index=1,candidate;
+ do {candidate=base+' ('+index+++')';} while(used.has(candidate));
+ used.add(candidate);
+ return candidate;
+}
+async function duplicateMolecules(){
+ if(duplicating||deleting||active||exporting||!selected.size)return;
+ duplicating=true;selectionUI();
+ try{
+  const ids=[...selected];
+  const used=new Set((await Mol.metadata()).map(m=>m.name));
+  const copies=[];
+  for(const id of ids){
+   const source=await Mol.get('body',id);
+   if(!source)throw Error('選択した分子が見つかりません。再読み込みしてください。');
+   const duplicate=structuredClone(source);
+   duplicate.name=nextDuplicateName(source.name,used);
+   delete duplicate.id;
+   delete duplicate.revision;
+   copies.push(duplicate);
+  }
+  const saved=await Mol.saveBatch(copies);
+  const change={type:'added',items:saved};
+  applyChange(change);
+  Mol.notify(change);
+  notice(saved.length+' 件の分子を複製しました。');
+ }finally{duplicating=false;selectionUI();}
+}
+$('duplicateMolecules').onclick=()=>void duplicateMolecules().catch(e=>notice('複製に失敗しました: '+e.message));
+
+
 window.addEventListener('keydown',e=>{
  if(!(e.ctrlKey||e.metaKey)||e.shiftKey||e.altKey||MolClipboard.editable(e))return;
  if(e.key.toLowerCase()==='c'&&selected.size){e.preventDefault();void copyMolecules().catch(error=>notice(error.message));}
