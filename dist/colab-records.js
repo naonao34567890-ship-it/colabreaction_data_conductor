@@ -353,7 +353,7 @@ async function importRecords(name, sourceLabel, readFiles, batchJob = null) {
         const basename=baseName(memberPath);
         const indexMatch=basename.match(/^(\d+)_/);
         const jobNumber=indexMatch?Number(indexMatch[1]):null;
-        const job=jobs.find(item=>item.number===jobNumber) ??
+        const job=jobs.find(item=>Number(item.number)===jobNumber && jobNumber!==null) ??
           jobs.find(item=>item.reaction_id && basename.includes(String(item.reaction_id).slice(0,8))) ?? null;
         status('一括計算結果を取り込み中 '+(++index)+'/'+resultZipEntries.length+': '+memberPath);
         await importRecords(basename,'ZIP',()=>readZip(memberFile),job);
@@ -378,11 +378,17 @@ async function importRecords(name, sourceLabel, readFiles, batchJob = null) {
     }
     // The source Colab bundle can omit reaction-context.json. Recover known
     // identity fields from batch_status.json without inventing classification.
-    if(!sourceReaction && batchJob) {
-      sourceReaction={
-        name:typeof batchJob.name==='string'?batchJob.name:null,
-        sourceReactionId:typeof batchJob.reaction_id==='string'?batchJob.reaction_id:null,
-        classification:typeof batchJob.classification==='string'?batchJob.classification:null,
+    if (batchJob) {
+      // Prefer the per-job context where present; fill missing fields from
+      // the authoritative batch_status.json entry for the same numbered job.
+      sourceReaction = {
+        ...(sourceReaction || {}),
+        name: sourceReaction?.name ?? (typeof batchJob.name==='string'?batchJob.name:null),
+        sourceReactionId: sourceReaction?.sourceReactionId ??
+          (typeof batchJob.reaction_id==='string'?batchJob.reaction_id:null),
+        classification: sourceReaction?.classification ??
+          (typeof batchJob.classification==='string'?batchJob.classification:null),
+        tags: sourceReaction?.tags ?? (Array.isArray(batchJob.tags)?batchJob.tags:[]),
       };
     }
     const reactant = find('reactant.xyz'), product = find('product.xyz');
