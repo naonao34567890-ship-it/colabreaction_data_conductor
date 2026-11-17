@@ -1282,6 +1282,167 @@ replotButton.onclick = async () => {
   }
 };
 
+
+// Manual, opt-in migration. Never runs during page load or normal record refresh.
+// Usage from colab.html DevTools: await molBenchLegacyMigration('preview')
+//                             await molBenchLegacyMigration('run')
+let manualLegacyMigrationRunning = false;
+const legacyUUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+const legacyNumber = (name, method) => {
+  if (typeof name !== 'string' || !name.startsWith(method+'(') || !name.endsWith(')')) return 0;
+  const n=Number(name.slice(method.length+1,-1));
+  return Number.isSafeInteger(n)&&n>0?n:0;
+};
+const legacyField = (text, field) => text.split(/\r?\n/)
+  .find(line=>line.startsWith(field+':'))?.slice(field.length+1).trim()||'';
+function legacyName(raw) {
+  const value=String(raw||'').trim();
+  return Mol.safeName(value&&!legacyUUID.test(value)?value:'旧計算記録').slice(0,105);
+}
+async function legacyCandidates() {
+  const top=await list("'"+root+"' in parents and mimeType = '"+folderType+"'");
+  const groups=top.filter(f=>f.appProperties?.xyzStudio==='colabReactionGroup');
+  const entries=top.filter(f=>f.appProperties?.xyzStudio!=='colabReactionGroup')
+    .map(job=>({job,group:null}));
+  for(const group of groups){
+    const children=await list("'"+group.id+"' in parents and mimeType = '"+folderType+"'");
+    for(const job of children) {
+      const p=job.appProperties||{};
+      if(p.legacyMigrationVersion==='1')continue;
+      if(!legacyUUID.test(p.runId||'') || !legacyNumber(String(p.runNumber||''),'') ||
+         !legacyNumber(job.name,p.method||'DMF'))entries.push({job,group});
+    }
+  }
+  return {top,groups,entries};
+}
+async function molBenchLegacyMigration(mode='preview') {
+  if(mode!=='preview'&&mode!=='run')throw Error("mode は 'preview' または 'run' です。");
+  if(!token||!root)throw Error('先にColab計算記録ページでGoogle Driveに接続してください。');
+  if(manualLegacyMigrationRunning||active||pending.length||connecting||replotRunning)
+    throw Error('別の取り込み・メンテナンス処理が実行中です。完了後に実行してください。');
+  manualLegacyMigrationRunning=true;
+  const current={...{input:input.disabled,folder:folderInput.disabled,replot:replotButton.disabled}};
+  input.disabled=folderInput.disabled=replotButton.disabled=true;
+  updateImportButtons();
+  try {
+    const {top,groups,entries}=await legacyCandidates();
+    const preliminary=[];
+    for(const {job,group} of entries) {
+      const children=await list("'"+job.id+"' in parents");
+      const configFile=children.find(f=>f.name==='config.txt'&&f.mimeType!==folderType);
+      if(!configFile){
+        preliminary.push({job,group,skip:'config.txtなし（未完了）'});
+        continue;
+      }
+      const config=await(await download(configFile.id)).text();
+      const props=job.appProperties||{};
+      const reactionId=props.sourceReactionId||legacyField(config,'元の反応ID')||group?.appProperties?.sourceReactionId||'';
+      const reactionName=props.reactionName||legacyField(config,'元の反応名')||'';
+      const runId=props.runId&&legacyUUID.test(props.runId)?props.runId:null;
+      const method=/^[A-Za-z0-9_-]{1,24}$/.test(props.method||'DMF')?props.method||'DMF':'DMF';
+      preliminary.push({job,group,reactionId,reactionName,runId,method});
+    }
+    const preview=preliminary.map(({job,group,reactionId,reactionName,runId,skip})=>({
+      folder:group?group.name+'/'+job.name:job.name,
+      reaction:reactionName||null,
+      reactionId:reactionId||null,
+      hasRunId:!!runId,
+      action:skip||'新形式に移行',
+    }));
+    console.table(preview);
+    if(mode==='preview'){
+      console.info('プレビューのみ：変更はありません。実行するには await molBenchLegacyMigration("run")');
+      return {mode,total:entries.length,preview};
+    }
+    if(!entries.length)return {mode,converted:0,skipped:0,errors:[]};
+    if(!confirm('旧Colab計算記録 '+entries.length+' 件を新形式へ移行します。'
+      +'元の計算ファイルは削除せず、記録フォルダの移動・改名と内部メタデータ更新を行います。続行しますか？'))
+      return {mode,cancelled:true};
+    const usedNames=new Set(top.map(item=>item.name));
+    const byReaction=new Map(groups.filter(g=>g.appProperties?.sourceReactionId)
+      .map(g=>[g.appProperties.sourceReactionId,g]));
+    const errors=[];
+    let converted=0,skipped=0;
+    for(let i=0;i<preliminary.length;i++){
+      const item=preliminary[i],{job,method}=item;
+      status('旧計算記録の一度限りの移行 '+(i+1)+'/'+preliminary.length);
+      if(item.skip){skipped++;continue;}
+      try {
+        let group=item.group;
+        if(!group&&item.reactionId)group=byReaction.get(item.reactionId)||null;
+        if(!group){
+          // Never infer a reaction ID from its name. Unknown-ID records get
+          // their own independent group rather than merging by display name.
+          const base=legacyName(item.reactionName||job.name);
+          const name=usedNames.has(base)?Mol.nextDuplicateName(base,usedNames):base;
+          const properties={xyzStudio:'colabReactionGroup'};
+          if(item.reactionId)properties.sourceReactionId=item.reactionId;
+          group=await(await request(drive+'/files?fields=id,name,appProperties',{
+            method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({name,mimeType:folderType,parents:[root],appProperties:properties}),
+          })).json();
+          usedNames.add(name);
+          groups.push(group);
+          if(item.reactionId)byReaction.set(item.reactionId,group);
+        }
+        const siblings=await list("'"+group.id+"' in parents and mimeType = '"+folderType+"'");
+        const occupied=new Set();
+        for(const other of siblings){
+          if(other.id===job.id)continue;
+          const n=legacyNumber(other.name,method);
+          if(n)occupied.add(n);
+          if(other.appProperties?.method===method){
+            const propN=Number(other.appProperties.runNumber);
+            if(Number.isSafeInteger(propN)&&propN>0)occupied.add(propN);
+          }
+        }
+        const prior=Number(job.appProperties?.runNumber)||legacyNumber(job.name,method);
+        const n=Number.isSafeInteger(prior)&&prior>0&&!occupied.has(prior)
+          ?prior:Math.max(0,...occupied)+1;
+        const leaf=method+'('+n+')';
+        const props={...job.appProperties,
+          runId:item.runId||crypto.randomUUID(),runNumber:String(n),method,
+          legacyMigrationVersion:'1'};
+        if(item.reactionId)props.sourceReactionId=item.reactionId;
+        if(item.reactionName&&new TextEncoder().encode(item.reactionName).length<=100)
+          props.reactionName=item.reactionName;
+        if(!props.legacyOriginalName&&new TextEncoder().encode(job.name).length<=100)
+          props.legacyOriginalName=job.name;
+        const moving=group.id!==item.group?.id;
+        const url=drive+'/files/'+encodeURIComponent(job.id)
+          +(moving?'?addParents='+encodeURIComponent(group.id)
+            +'&removeParents='+encodeURIComponent(root)+'&fields=id,name,parents,appProperties'
+            :'?fields=id,name,appProperties');
+        // A single Drive metadata update: no result-file bytes are touched.
+        const saved=await(await request(url,{method:'PATCH',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({name:leaf,appProperties:props}),
+        })).json();
+        if(saved.name!==leaf||saved.appProperties?.runId!==props.runId
+          ||saved.appProperties?.legacyMigrationVersion!=='1')
+          throw Error('Driveが移行メタデータを確認できませんでした。');
+        converted++;
+      }catch(error){
+        errors.push({name:job.name,error:error.message});
+        console.error('旧計算記録の移行失敗:',job.name,error);
+      }
+    }
+    await refresh();
+    status('旧記録の移行：成功 '+converted+'件、未完了 '+skipped+'件、失敗 '+errors.length+'件');
+    console.table(errors);
+    return {mode,converted,skipped,errors};
+  }finally{
+    manualLegacyMigrationRunning=false;
+    input.disabled=current.input;
+    folderInput.disabled=current.folder;
+    replotButton.disabled=current.replot;
+    updateImportButtons();
+  }
+}
+Object.defineProperty(window,'molBenchLegacyMigration',{
+  configurable:true,value:molBenchLegacyMigration,
+});
+
 async function authorize(response) {
   if (!response.access_token) {
     status('Google Driveへの接続が完了しませんでした。');
