@@ -35,7 +35,7 @@ async function read(file){
   if(hasList&&blocks.length!==1)throw Error('対応表の各ファイルは1分子である必要があります。');
   for(let i=0;i<blocks.length;i++){
    const block=blocks[i],state=Mol.electronicState({...block,...(Object.hasOwn(item,'charge')?{charge:item.charge}:{}),...(Object.hasOwn(item,'multiplicity')?{multiplicity:item.multiplicity}:{})});
-   records.push({id:hasList?item.id:crypto.randomUUID(),name:blocks.length===1?item.name:item.name+'('+(i+1)+')',atoms:block.atoms,comment:block.comment,...state,tags:item.tags||Mol.readMemo(block.comment).tags,raw:new Blob(block.rawParts,{type:'chemical/x-xyz'}),baseLines:block.baseLines,originalLines:block.originalLines,edited:false});
+   records.push({id:hasList?item.id:crypto.randomUUID(),name:blocks.length===1?item.name:item.name+' ('+(i+1)+')',atoms:block.atoms,comment:block.comment,...state,tags:item.tags||Mol.readMemo(block.comment).tags,raw:new Blob(block.rawParts,{type:'chemical/x-xyz'}),baseLines:block.baseLines,originalLines:block.originalLines,edited:false});
   }
   await Mol.tick();
  }
