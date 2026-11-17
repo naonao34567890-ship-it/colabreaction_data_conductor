@@ -15,12 +15,12 @@ export class LibraryCoordinator {
   }
   async handle(request) {
     try {
-      const { accessToken, action, expectedGeneration, nextHead } = await request.json();
+      const input=await request.json();
+      const { accessToken, action, expectedGeneration, nextHead } = input;
       if (!accessToken) return json({ state: 'connect' }, 401);
       // The Durable Object is the single serialized numbering ledger for Colab and Mol Bench.
       // runId is idempotent; neither source filenames nor displayed paths identify a run.
       if (action === 'reserveRun' || action === 'lookupRun') {
-        const input = await request.clone().json().catch(() => null);
         const runId=input?.runId, reactionId=input?.reactionId, method=input?.method||'DMF';
         if(typeof runId!=='string'||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(runId))
           return json({state:'invalid_run_id'},400);
