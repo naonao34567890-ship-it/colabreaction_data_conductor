@@ -20,6 +20,7 @@ on:
   # Final publication: numbered reaction defaults, cross-client naming, ZIP archives and new tests.
   # Re-run publication after updating preexisting legacy suffix assertion.
   # Publish hardening for immutable IDs in local/cloud reaction update APIs.
+  # Publish shared run ledger, ID-based slideshow matching and readable bundle naming.
   push:
     branches: [main]
     paths: [.github/workflows/deploy.yml]
