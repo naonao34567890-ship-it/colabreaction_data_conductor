@@ -1,5 +1,9 @@
 # 分子 XYZ ライブラリ ＋ 分子エディタ
 
+**現在のリリース：Mol Bench v0.99-beta**（正式版 v1.0.0 前の機能確認・安定化段階）。
+
+この版は、分子・反応のID保護、共通命名規則、ColabReactionの共通実行番号台帳を含むベータ基準版です。実データでの回帰試験、旧形式ZIPの読み込み、同時実行、通信中断からの復旧を確認した後に正式版へ移行します。
+
 通常の公開操作は [公開スイッチ](PUBLISH.md) を参照してください。GitHubへ保存しただけではWorkers／Firebaseを公開せず、手動起動で同じコミットを両方へ反映します。
 
 Firebase公開版の分子・反応ライブラリをDriveへ保存する実装を追加しました。既存機能とIDを維持し、ローカルはキャッシュとして扱います。公開・移行の手順と検証範囲は [DRIVE-STORAGE.md](DRIVE-STORAGE.md)、既存機能との対応は [STORAGE-MIGRATION-AUDIT.md](STORAGE-MIGRATION-AUDIT.md) を参照してください。以下のIndexedDB・フロントエンドのみという説明は、ローカル実行と旧版の仕様です。
