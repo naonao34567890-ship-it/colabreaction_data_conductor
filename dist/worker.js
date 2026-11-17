@@ -35,14 +35,14 @@ class ImportJob{
     if(block.error){this.reason(block.error,file.name);continue;}
     index++;
     if(choice.ranges&&!choice.ranges.some(([first,last])=>index>=first&&index<=last))continue;
-    await this.add(block,`${base}(${index})`);
+    await this.add(block,`${base} (${index})`);
     selected++;
    }
    this.stats.extra+=Math.max(0,selected-1);
    continue;
   }
   let first=null,count=0,errors=0;const base=Mol.structureBaseName(file.name);
-  for await(const b of Mol.parseFile(file,()=>this.cancelled)){if(b.error){errors++;this.reason(b.error,file.name);continue;}count++;if(count===1)first=b;else{if(first){await this.add(first,base+'(1)');first=null;}await this.add(b,`${base}(${count})`);}}
+  for await(const b of Mol.parseFile(file,()=>this.cancelled)){if(b.error){errors++;this.reason(b.error,file.name);continue;}count++;if(count===1)first=b;else{if(first){await this.add(first,base+' (1)');first=null;}await this.add(b,`${base} (${count})`);}}
   if(first&&!this.cancelled)await this.add(first,base);if(!count&&!errors&&!this.cancelled)this.reason('登録可能な分子なし',file.name);this.stats.extra+=Math.max(0,count-1);
  }catch(e){if(this.stats.fatal)break;this.reason(e.message,file.name,true);}finally{this.stats.processed++;if(Date.now()-this.last>80){this.emit({type:'progress',stats:this.stats});this.last=Date.now();}await Mol.tick();}}
  }
@@ -57,9 +57,9 @@ async function exportData(ids,format,send,cancelled,progress,withMemo=false,bodi
   if(format==='zip'){
    const extension=withMemo?'.pyxyz':'.xyz';
    const base=isList?'lib_list':files?files[id].path:Mol.safeName(body.name);
-   let name=isList?'lib_list.json':files?base:base+extension,n=1;
+   let name=isList?'lib_list.json':files?base:base+extension;
    if(files&&names.has(name))throw Error('ZIP内のパスが重複しています');
-   while(names.has(name))name=base+' ('+(++n)+')'+extension;
+   if(names.has(name))name=Mol.nextDuplicateName(name,names);
    names.add(name);
    const filename=encoder.encode(name),bytes=new Uint8Array(await blob.arrayBuffer()),crc=Mol.crc32(bytes);if(filename.length>65535)throw Error('ZIP内のファイル名が長すぎます');
    if(listEnabled&&!isList){const m=meta||await Mol.get('meta',id);molecules.push({id,name:body.name,file:name,...Mol.electronicState(body),tags:m?.tags||body.tags||[],sha256:Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('')});}
