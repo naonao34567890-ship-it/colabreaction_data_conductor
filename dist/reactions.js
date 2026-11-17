@@ -420,7 +420,8 @@ control('reactionZip').onclick=()=>void changeSelection(async ids=>{
  if(!bodies.length)throw Error('ダウンロードできる構造がありません。');
  const chunks=[];
  await MolJobs.exportData(bodies.map((_,index)=>index),'zip',bytes=>chunks.push(bytes),()=>false,()=>{},false,bodies);
- Mol.downloadBlob(new Blob(chunks,{type:'application/zip'}),'reactions.zip');
+ const label=chosen.size===1?Mol.safeName(records.find(item=>chosen.has(item.id))?.name||'reaction'):'reactions ('+chosen.size+')';
+  Mol.downloadBlob(new Blob(chunks,{type:'application/zip'}),label+'.zip');
 });
 
 /* Marquee coordinates remain anchored to the reaction list during scrolling. */
