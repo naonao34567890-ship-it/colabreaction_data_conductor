@@ -355,7 +355,7 @@ $('cancel').onclick=()=>{if(exporting&&exportCancel){exportCancel();return;}if(a
 $('download').onclick=()=>{$('exportName').value=selected.size===1?metaMap.get(selected.values().next().value).name:'molecules';$('format').value=selected.size===1?'xyz':'zip';$('exportMemo').checked=false;$('exportHint').textContent=selected.size+' 分子。ZIPにはID・名前・電荷・多重度の対応表 lib_list.json を同封します。単独XYZには座標のみを書き出します。';$('exportDialog').showModal();};$('closeDialog').onclick=()=>$('exportDialog').close();
 $('exportStart').onclick=async()=>{
  const withMemo=$('exportMemo').checked;
- const ids=Array.from(selected),format=$('format').value,name=Mol.safeName($('exportName').value)+'.'+(format==='xyz'&&withMemo?'pyxyz':format),estimate=ids.reduce((s,id)=>s+(metaMap.get(id)?.bytes||0)+200,0);
+ const ids=Array.from(selected),format=$('format').value,name=Mol.safeName($('exportName').value).replace(/\.(?:xyz|pyxyz|zip)$/i,'')+'.'+(format==='xyz'&&withMemo?'pyxyz':format),estimate=ids.reduce((s,id)=>s+(metaMap.get(id)?.bytes||0)+200,0);
  if(ids.length>10000&&!confirm(`${ids.length.toLocaleString()} 分子、非圧縮で約 ${(estimate/1048576).toFixed(1)} MiB。処理目安 ${Math.ceil(ids.length/1500)}〜${Math.ceil(ids.length/100)} 秒（端末に依存）。続行しますか？`))return;
  let sink=null;try{if(window.showSaveFilePicker){const handle=await showSaveFilePicker({suggestedName:name});sink=await handle.createWritable();}}catch(e){if(e.name==='AbortError')return;notice('直接保存を利用できないため、ブラウザのダウンロードを使います。');}
  $('exportDialog').close();exporting=true;selectionUI();$('cancel').disabled=false;let cancelled=false,worker=null,chunks=[],bytes=0;
