@@ -4,6 +4,7 @@ const state=new Map();
 const storage={
  async get(key){return state.get(key);},
  async put(key,value){state.set(key,value);},
+ async transaction(callback){return callback(this);},
 };
 const object=new LibraryCoordinator({storage});
 const reserve=async(runId,reactionId,reactionName,minimumRunNumber=1,method='DMF')=>{
