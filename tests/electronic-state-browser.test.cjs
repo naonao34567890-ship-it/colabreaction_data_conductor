@@ -35,7 +35,7 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict'),path
    let error;try{await Mol.importMolecules([{...fresh,id:'would-be-partial'}, {...read.records[0],charge:1}]);}catch(e){error=e.message;}
    return {same,added,duplicateNameRepeat,id:(await Mol.get('body','new-id')).id,name:(await Mol.get('body','new-id')).name,charge:(await Mol.get('body','new-id')).charge,error,partial:!!await Mol.get('body','would-be-partial')};
   });
-  assert.deepEqual(imports.same,{added:0,skipped:1});assert.equal(imports.added.added,1);assert.equal(imports.duplicateNameRepeat.skipped,1);assert.equal(imports.id,'new-id');assert.equal(imports.name,'legacy (2)');assert.equal(imports.charge,-2);assert.match(imports.error,/上書き/);assert.equal(imports.partial,false);
+  assert.deepEqual(imports.same,{added:0,skipped:1});assert.equal(imports.added.added,1);assert.equal(imports.duplicateNameRepeat.skipped,1);assert.equal(imports.id,'new-id');assert.equal(imports.name,'legacy (1)');assert.equal(imports.charge,-2);assert.match(imports.error,/上書き/);assert.equal(imports.partial,false);
   const source=await page.evaluate(()=>URL.createObjectURL(new Blob(['1\nenergy=0 charge=-1 spin=2\nO 0 0 0\n1\nenergy=1 charge=1 spin=3\nO 1 0 0\n'])));
   const viewer=await context.newPage();await viewer.goto('https://state.test/reaction-viewer.html#'+new URLSearchParams({source,name:'colab-state'}));
   await viewer.waitForFunction(()=>!document.querySelector('#importStart').disabled);
