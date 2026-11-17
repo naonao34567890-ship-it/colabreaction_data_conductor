@@ -5,6 +5,7 @@ on:
   # A workflow-file update dispatches the approved manual-event release.
   # Google WIF credentials remain restricted to workflow_dispatch events.
   # Release verification: Colab ZIP disk spool and large-import tests aligned.
+  # Publication requested for the batch ZIP import fix (2026-11-17).
   push:
     branches: [main]
     paths: [.github/workflows/deploy.yml]
