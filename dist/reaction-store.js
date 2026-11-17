@@ -36,10 +36,19 @@ const ReactionStore = (() => {
     if (!request.result) { abort('反応が見つかりません。'); return; }
     if (check && !check(request.result)) { abort("別のタブで構造が更新されました。開き直してからもう一度操作してください。"); return; }
     const {id:_ignoredId,createdAt:_ignoredCreatedAt,...safeFields}=fields;
-    const value = {...request.result,...safeFields,id:request.result.id,createdAt:request.result.createdAt};
-    if (Object.hasOwn(fields,'START')) delete value.startPreview;
-    store.put(value);
-    done(value);
+    const value={...request.result,...safeFields,id:request.result.id,createdAt:request.result.createdAt};
+    const apply=()=>{
+      if(Object.hasOwn(fields,'START'))delete value.startPreview;
+      store.put(value);done(value);
+    };
+    if(Object.hasOwn(safeFields,'name')){
+      const all=store.getAll();
+      all.onsuccess=()=>{
+        const used=new Set(all.result.filter(item=>item.id!==id).map(item=>item.name));
+        if(used.has(value.name))value.name=Mol.nextDuplicateName(value.name,used);
+        apply();
+      };
+    }else apply();
    };
   });
  }
