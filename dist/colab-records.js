@@ -906,14 +906,7 @@ async function renameClassification(name) {
   let count = 0;
   try {
     if (name === from) throw Error('同じ名前の分類があります。');
-    const rootFolders=await list("'"+root+"' in parents and mimeType = '"+folderType+"'");
-  const folders=[];
-  for(const entry of rootFolders){
-    if(entry.appProperties?.xyzStudio==='colabReactionGroup'){
-      const children=await list("'"+entry.id+"' in parents and mimeType = '"+folderType+"'");
-      for(const job of children){job._parentName=entry.name;folders.push(job);}
-    }else folders.push(entry);
-  }
+    const folders=await list("'"+root+"' in parents and mimeType = '"+folderType+"'");
     if (folders.some(job=>job.appProperties?.classification===name)) throw Error('同じ名前の分類があります。');
     for (const job of folders.filter(job=>job.appProperties?.classification===from)) {
       const response = await request(drive + '/files/' + encodeURIComponent(job.id) + '?fields=appProperties',{
@@ -989,7 +982,14 @@ async function loadRecords() {
   imageUrls.clear();
   jobs.replaceChildren();
   cards.clear();
-  const folders = await list("'" + root + "' in parents and mimeType = '" + folderType + "'");
+  const rootFolders=await list("'"+root+"' in parents and mimeType = '"+folderType+"'");
+  const folders=[];
+  for(const entry of rootFolders){
+    if(entry.appProperties?.xyzStudio==='colabReactionGroup'){
+      const children=await list("'"+entry.id+"' in parents and mimeType = '"+folderType+"'");
+      for(const job of children){job._parentName=entry.name;folders.push(job);}
+    }else folders.push(entry);
+  }
   folders.forEach(job => { job.addedAt = Date.parse(job.createdTime); });
   folders.sort((a,b) => Mol.compareDisplayOrder(a,b,order.value));
   for (let offset=0; offset<folders.length; offset+=4) {
