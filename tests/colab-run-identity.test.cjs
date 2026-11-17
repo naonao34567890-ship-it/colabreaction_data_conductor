@@ -45,7 +45,7 @@ const reserve=new Function('list','folder','request','Mol','root','folderType','
  assert.equal(entries.filter(x=>x.appProperties?.xyzStudio==='colabReactionGroup').length,2);
  assert.match(source,/properties\.runId=runId/);
  assert.match(source,/sourceReaction\?\.sourceReactionId/);
- assert.match(source,/runInfo\.displayPath/);
+ assert.match(source,/runInfo\?\.displayPath/);
  assert.match(source,/job\._parentName\?job\._parentName\+'\/'\+job\.name/);
  console.log('PASS Colab run identity is independent of display folder and uses numbered hierarchical paths');
 })().catch(error=>{console.error(error);process.exitCode=1;});
