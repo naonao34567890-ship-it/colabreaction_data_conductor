@@ -24,6 +24,7 @@ on:
   # Release finalized owner-bound run numbering and audited low-traffic UI naming paths.
   # Final check: atomic Durable Object run allocation, with matching transaction regression tests.
   # Redeploy after run-identity test browser lock fixture repair (2026-11-17).
+  # Release v0.99-beta: freeze functional scope and publish version metadata.
   push:
     branches: [main]
     paths: [.github/workflows/deploy.yml]
