@@ -294,7 +294,13 @@ async function importKey(name) {
   return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
 }
 
-async function alreadyRegistered(name) {
+async function alreadyRegistered(name,runId=null) {
+  if(runId){
+    if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(runId))throw Error('計算runIdが不正です。');
+    const found=await list("mimeType = '"+folderType+"' and appProperties has { key='runId' and value='"+runId+"' }");
+    for(const job of found)if((await list("'"+job.id+"' in parents and name = 'config.txt'")).length)return true;
+    return false;
+  }
   const key = await importKey(name);
   const escaped = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   const matches = await list("'" + root + "' in parents and mimeType = '" + folderType +
@@ -310,10 +316,6 @@ async function alreadyRegistered(name) {
 async function importRecords(name, sourceLabel, readFiles, batchJob = null) {
   let parent, temporary;
   try {
-    if (await alreadyRegistered(name)) {
-      status('登録済みのためスキップしました。' + name);
-      return;
-    }
     const source = await readFiles();
     temporary = source?.cleanup ? source : null;
     const files = temporary ? source.files : source;
@@ -351,9 +353,11 @@ async function importRecords(name, sourceLabel, readFiles, batchJob = null) {
       let index=0;
       for (const [memberPath, memberFile] of resultZipEntries) {
         const basename=baseName(memberPath);
+        const explicit=jobs.filter(item=>item.result_zip===basename);
+        if(explicit.length>1)throw Error('結果ZIP名がバッチ一覧で重複しています: '+basename);
         const indexMatch=basename.match(/^(\d+)_/);
         const jobNumber=indexMatch?Number(indexMatch[1]):null;
-        const job=jobs.find(item=>Number(item.number)===jobNumber && jobNumber!==null) ??
+        const job=explicit[0] ?? jobs.find(item=>Number(item.number)===jobNumber && jobNumber!==null) ??
           jobs.find(item=>item.reaction_id && basename.includes(String(item.reaction_id).slice(0,8))) ?? null;
         status('一括計算結果を取り込み中 '+(++index)+'/'+resultZipEntries.length+': '+memberPath);
         await importRecords(basename,'ZIP',()=>readZip(memberFile),job);
@@ -389,8 +393,16 @@ async function importRecords(name, sourceLabel, readFiles, batchJob = null) {
         classification: sourceReaction?.classification ??
           (typeof batchJob.classification==='string'?batchJob.classification:null),
         tags: sourceReaction?.tags ?? (Array.isArray(batchJob.tags)?batchJob.tags:[]),
+        runId: sourceReaction?.runId ?? batchJob.run_id ?? null,
+        runNumber: sourceReaction?.runNumber ?? batchJob.run_number ?? null,
+        method: sourceReaction?.method ?? batchJob.method ?? 'DMF',
+        displayPath: sourceReaction?.displayPath ?? batchJob.display_path ?? null,
       };
     }
+    if(sourceReaction?.runId&&batchJob?.run_id&&sourceReaction.runId!==batchJob.run_id)
+      throw Error('個別ZIPとバッチ一覧のrunIdが一致しません。');
+    const runId=sourceReaction?.runId||null;
+    if(await alreadyRegistered(name,runId)){status('登録済みの計算をスキップ: '+name);return;}
     const reactant = find('reactant.xyz'), product = find('product.xyz');
     const csv = find('DMF_energy.csv'), trajectory = find('DMF_final.xyz');
     if (!reactant || !product || !csv) throw Error('reactant.xyz、product.xyz、DMF_energy.csv が必要です。');
@@ -408,9 +420,15 @@ async function importRecords(name, sourceLabel, readFiles, batchJob = null) {
       ...(sourceReaction?.name?['元の反応名: '+sourceReaction.name]:[]),
       ...(sourceReaction?.sourceReactionId?['元の反応ID: '+sourceReaction.sourceReactionId]:[]),
       ...(sourceReaction?.classification?['元の分類: '+sourceReaction.classification]:[]),
+      ...(runId?['計算runId: '+runId]:[]),
+      ...(sourceReaction?.displayPath?['表示パス: '+sourceReaction.displayPath]:[]),
     ].join('\n');
     status('Google Driveに保存しています…');
-    parent = await folder(name, root);
+    let runInfo=null;
+    if(sourceReaction?.name&&sourceReaction?.sourceReactionId){
+      runInfo=await reserveReactionRun(sourceReaction);
+      parent=runInfo.folderId;
+    }else parent=await folder(name,root);
     const originals = await folder('計算結果', parent);
     const directories = new Map([['', originals]]);
     let saved = 0;
@@ -441,6 +459,9 @@ async function importRecords(name, sourceLabel, readFiles, batchJob = null) {
       properties.reactionName=sourceReaction.name;
     if(sourceReaction?.sourceReactionId&&new TextEncoder().encode(sourceReaction.sourceReactionId).length<=100)
       properties.sourceReactionId=sourceReaction.sourceReactionId;
+    if(runId)properties.runId=runId;
+    if(runInfo){properties.runNumber=String(runInfo.runNumber);properties.method=runInfo.method;}
+    if(!runId)properties.importKey=await importKey(name);
     await writeRecordSummary(parent,properties);
     parent = null;
     await refresh();
@@ -463,6 +484,31 @@ async function importRecords(name, sourceLabel, readFiles, batchJob = null) {
       catch (error) { console.warn('ZIP一時ファイルの削除に失敗しました:',error); }
     }
   }
+}
+
+async function reserveReactionRun(source){
+  const reactionId=String(source.sourceReactionId);
+  const reactionName=Mol.safeName(source.name).slice(0,120);
+  const method=/^[A-Za-z0-9_-]{1,24}$/.test(source.method||'DMF')?source.method||'DMF':'DMF';
+  const rootFolders=await list("'"+root+"' in parents and mimeType = '"+folderType+"'");
+  let group=rootFolders.find(item=>item.appProperties?.xyzStudio==='colabReactionGroup'
+    && item.appProperties?.sourceReactionId===reactionId);
+  if(!group){
+    const used=new Set(rootFolders.map(item=>item.name));
+    const groupName=used.has(reactionName)?Mol.nextDuplicateName(reactionName,used):reactionName;
+    const id=await folder(groupName,root);
+    await request(drive+'/files/'+encodeURIComponent(id)+'?fields=id',{
+      method:'PATCH',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({appProperties:{xyzStudio:'colabReactionGroup',sourceReactionId:reactionId}}),
+    });
+    group={id,name:groupName};
+  }
+  const children=await list("'"+group.id+"' in parents and mimeType = '"+folderType+"'");
+  const used=new Set(children.map(item=>item.name));
+  let number=Number(source.runNumber);
+  if(!Number.isSafeInteger(number)||number<1)number=1;
+  while(used.has(method+'('+number+')'))number++;
+  return {folderId:await folder(method+'('+number+')',group.id),runNumber:number,method};
 }
 
 async function writeRecordSummary(id, properties) {
@@ -529,7 +575,7 @@ async function renameRecord(jobId, name) {
     body:JSON.stringify({name,appProperties}),
   });
   Object.assign(job,await response.json());
-  job.title.textContent = job.name;
+  job.title.textContent = job._parentName?job._parentName+'/'+job.name:job.name;
   sortCards();
   return job.name;
 }
@@ -570,7 +616,7 @@ async function downloadArchive(job, originals, button) {
   button.disabled = true;
   let output;
   try {
-    const filename=Mol.safeName(job.name).replace(/\.zip$/i,'')+'.zip';
+    const filename=Mol.safeName((job._parentName?job._parentName+'_':'')+job.name).replace(/\.zip$/i,'')+'.zip';
     // Chrome/Chromebook: stream directly to disk, rather than allocating a 1GB ZIP in RAM.
     if(typeof window.showSaveFilePicker==='function'){
       try{
@@ -860,7 +906,14 @@ async function renameClassification(name) {
   let count = 0;
   try {
     if (name === from) throw Error('同じ名前の分類があります。');
-    const folders = await list("'" + root + "' in parents and mimeType = '" + folderType + "'");
+    const rootFolders=await list("'"+root+"' in parents and mimeType = '"+folderType+"'");
+  const folders=[];
+  for(const entry of rootFolders){
+    if(entry.appProperties?.xyzStudio==='colabReactionGroup'){
+      const children=await list("'"+entry.id+"' in parents and mimeType = '"+folderType+"'");
+      for(const job of children){job._parentName=entry.name;folders.push(job);}
+    }else folders.push(entry);
+  }
     if (folders.some(job=>job.appProperties?.classification===name)) throw Error('同じ名前の分類があります。');
     for (const job of folders.filter(job=>job.appProperties?.classification===from)) {
       const response = await request(drive + '/files/' + encodeURIComponent(job.id) + '?fields=appProperties',{
@@ -999,11 +1052,11 @@ async function renderRecord(job) {
   const open = document.createElement('button');
   open.type = 'button';
   open.textContent = '反応経路を開く';
-  open.onclick = () => void openReaction(job.id,job.name,files.get('計算結果'),files);
+  open.onclick = () => void openReaction(job.id,job._parentName?job._parentName+'/'+job.name:job.name,files.get('計算結果'),files);
   const title = document.createElement('h3');
-  title.textContent = job.name;
+  title.textContent = job._parentName?job._parentName+'/'+job.name:job.name;
   title.className = 'colab-record-name';
-  Mol.editName(title,name=>renameRecord(job.id,Mol.safeName(name)),status);
+  Mol.editName(title,name=>renameRecord(job.id,Mol.safeName(name.split('/').at(-1))),status);
   const notes = document.createElement('div');
   notes.className = 'colab-notes';
   const notesLabel = document.createElement('strong');
