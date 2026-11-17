@@ -491,29 +491,51 @@ async function importRecords(name, sourceLabel, readFiles, batchJob = null) {
 }
 
 async function reserveReactionRun(source){
+  // Reaction groups are keyed by stable reactionId; a label is never an identity.
   const reactionId=String(source.sourceReactionId);
   const reactionName=Mol.safeName(source.name).slice(0,120);
   const method=/^[A-Za-z0-9_-]{1,24}$/.test(source.method||'DMF')?source.method||'DMF':'DMF';
-  const rootFolders=await list("'"+root+"' in parents and mimeType = '"+folderType+"'");
-  let group=rootFolders.find(item=>item.appProperties?.xyzStudio==='colabReactionGroup'
-    && item.appProperties?.sourceReactionId===reactionId);
-  if(!group){
-    const used=new Set(rootFolders.map(item=>item.name));
-    const groupName=used.has(reactionName)?Mol.nextDuplicateName(reactionName,used):reactionName;
-    const id=await folder(groupName,root);
-    await request(drive+'/files/'+encodeURIComponent(id)+'?fields=id',{
-      method:'PATCH',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({appProperties:{xyzStudio:'colabReactionGroup',sourceReactionId:reactionId}}),
-    });
-    group={id,name:groupName};
-  }
-  const children=await list("'"+group.id+"' in parents and mimeType = '"+folderType+"'");
-  const used=new Set(children.map(item=>item.name));
-  let number=Number(source.runNumber);
-  if(!Number.isSafeInteger(number)||number<1)number=1;
-  while(used.has(method+'('+number+')'))number++;
-  const leaf=method+'('+number+')';
-  return {folderId:await folder(leaf,group.id),runNumber:number,method,displayPath:group.name+'/'+leaf};
+  const runId=source.runId||null;
+  if(runId&&(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(runId)))
+    throw Error('計算runIdが不正です。');
+  const perform=async()=>{
+    const rootFolders=await list("'"+root+"' in parents and mimeType = '"+folderType+"'");
+    let group=rootFolders.find(item=>item.appProperties?.xyzStudio==='colabReactionGroup'
+      && item.appProperties?.sourceReactionId===reactionId);
+    if(!group){
+      const used=new Set(rootFolders.map(item=>item.name));
+      const groupName=used.has(reactionName)?Mol.nextDuplicateName(reactionName,used):reactionName;
+      const created=await (await request(drive+'/files?fields=id,name,appProperties',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({name:groupName,mimeType:folderType,parents:[root],
+          appProperties:{xyzStudio:'colabReactionGroup',sourceReactionId:reactionId}}),
+      })).json();
+      group=created;
+    }
+    const children=await list("'"+group.id+"' in parents and mimeType = '"+folderType+"'");
+    const usedNumbers=new Set();
+    for(const entry of children){
+      const props=entry.appProperties||{};
+      if(props.method===method&&Number.isSafeInteger(Number(props.runNumber))&&Number(props.runNumber)>0)
+        usedNumbers.add(Number(props.runNumber));
+      const match=entry.name.match(new RegExp('^'+method.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\\\((\\\\d+)\\\\)$'));
+      if(match)usedNumbers.add(Number(match[1]));
+    }
+    let number=Number(source.runNumber);
+    if(!Number.isSafeInteger(number)||number<1)number=1;
+    while(usedNumbers.has(number))number++;
+    const leaf=method+'('+number+')';
+    const props={method,runNumber:String(number),sourceReactionId:reactionId};
+    if(runId)props.runId=runId;
+    const created=await (await request(drive+'/files?fields=id,name,appProperties',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:leaf,mimeType:folderType,parents:[group.id],appProperties:props}),
+    })).json();
+    return {folderId:created.id,runNumber:number,method,displayPath:group.name+'/'+leaf};
+  };
+  // Cross-tab serialization; cross-device concurrency requires an authoritative server lock.
+  if(navigator.locks)return navigator.locks.request('mol-bench-colab-run-allocation',perform);
+  return perform();
 }
 
 async function writeRecordSummary(id, properties, {required=false}={}) {
@@ -584,9 +606,12 @@ async function countOriginalFiles(id) {
 async function renameRecord(jobId, name) {
   const job = cards.get(jobId);
   if (!job) throw Error('計算記録を一覧から開き直してください。');
-  const appProperties = job.appProperties?.importKey ? undefined : {importKey:await importKey(job.name)};
+  // Renaming a run must retain runId, runNumber, method and original source identity.
+  const appProperties={...(job.appProperties||{})};
+  if(!appProperties.runId&&!appProperties.importKey)
+    appProperties.importKey=await importKey(job.name);
   const response = await request(drive + '/files/' + encodeURIComponent(jobId) + '?fields=name,appProperties',{
-    method:'PATCH', headers:{'Content-Type':'application/json'},
+    method:'PATCH',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({name,appProperties}),
   });
   Object.assign(job,await response.json());
