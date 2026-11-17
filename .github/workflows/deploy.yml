@@ -5,6 +5,7 @@ on:
   # A workflow-file update dispatches the approved manual-event release.
   # Publish console-only legacy Colab record migration command (2026-11-17).
   # Publish UUID fallback names for unnamed historical Colab records.
+  # Publish hardened resumable one-time migration of legacy Colab records.
   # Google WIF credentials remain restricted to workflow_dispatch events.
   # Release verification: Colab ZIP disk spool and large-import tests aligned.
   # Publication requested for the batch ZIP import fix (2026-11-17).
