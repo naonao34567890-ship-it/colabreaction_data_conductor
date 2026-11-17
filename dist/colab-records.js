@@ -1428,6 +1428,8 @@ async function molBenchLegacyMigration(mode='preview'){
             if(propertyNumber)occupied.add(propertyNumber);
           }
         }
+        // Existing Drive records are authoritative. Keep their names and numbers.
+        // Only the incoming legacy record is renumbered on a collision.
         const runNumber=item.oldNumber&&!occupied.has(item.oldNumber)
           ?item.oldNumber:Math.max(0,...occupied)+1;
         const leaf=method+'('+runNumber+')';
