@@ -1081,7 +1081,8 @@ export function createDriveStore(local, options = {}) {
         if (!old) throw Error('反応が見つかりません。');
         if (check && !check(old))
           throw Error('別のタブで構造が更新されました。開き直してからもう一度操作してください。');
-        const body = { ...old, ...fields };
+        const {id:_ignoredId,createdAt:_ignoredCreatedAt,...safeFields}=fields;
+        const body = { ...old, ...safeFields, id:old.id, createdAt:old.createdAt };
         for (const slot of ['START', 'FINISH'])
           if (
             Object.hasOwn(fields, slot) &&
