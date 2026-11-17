@@ -466,7 +466,7 @@ async function importRecords(name, sourceLabel, readFiles, batchJob = null) {
     if(runId)properties.runId=runId;
     if(runInfo){properties.runNumber=String(runInfo.runNumber);properties.method=runInfo.method;}
     if(!runId)properties.importKey=await importKey(name);
-    await writeRecordSummary(parent,properties);
+    await writeRecordSummary(parent,properties,{required:true});
     parent = null;
     await refresh();
     status('計算記録を保存しました。');
@@ -516,13 +516,20 @@ async function reserveReactionRun(source){
   return {folderId:await folder(leaf,group.id),runNumber:number,method,displayPath:group.name+'/'+leaf};
 }
 
-async function writeRecordSummary(id, properties) {
+async function writeRecordSummary(id, properties, {required=false}={}) {
   try {
-    await request(drive + '/files/' + encodeURIComponent(id) + '?fields=id', {
-      method:'PATCH', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({appProperties:properties}),
+    const existing=cards.get(id)?.appProperties||{};
+    const merged={...existing,...properties};
+    const response=await request(drive+'/files/'+encodeURIComponent(id)+'?fields=id,appProperties',{
+      method:'PATCH',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({appProperties:merged}),
     });
-  } catch (error) {
+    const applied=(await response.json()).appProperties||{};
+    if(required && ['runId','importKey','sourceReactionId'].some(key=>merged[key]&&applied[key]!==merged[key]))
+      throw Error('計算IDのDriveへの保存を確認できませんでした。');
+    if(cards.has(id))cards.get(id).appProperties=applied;
+  }catch(error){
+    if(required)throw error;
     console.warn('Colab記録の一覧要約を保存できませんでした:',id,error);
   }
 }
@@ -858,7 +865,7 @@ async function saveClassification(name) {
   try {
     const response = await request(drive + '/files/' + encodeURIComponent(jobId) + '?fields=appProperties', {
       method:'PATCH', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({appProperties:{classification:name || null}}),
+      body:JSON.stringify({appProperties:{...(cards.get(jobId)?.appProperties||{}),classification:name || null}}),
     });
     const {appProperties} = await response.json();
     const job = cards.get(jobId);
@@ -919,7 +926,7 @@ async function renameClassification(name) {
     for (const job of folders.filter(job=>job.appProperties?.classification===from)) {
       const response = await request(drive + '/files/' + encodeURIComponent(job.id) + '?fields=appProperties',{
         method:'PATCH',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({appProperties:{classification:name}}),
+        body:JSON.stringify({appProperties:{...(cards.get(job.id)?.appProperties||{}),classification:name}}),
       });
       const {appProperties} = await response.json();
       const entry = cards.get(job.id);
