@@ -22,6 +22,8 @@ const create=new Function('Mol','crypto','transaction',reactions.slice(start,end
  assert.equal(result.id,'generated-id-A');
  assert.equal(result.name,'User-facing reaction');
  assert.notEqual(result.createdAt,0);
+ assert.match(reactions,/id:request\.result\.id,createdAt:request\.result\.createdAt/);
+ assert.match(file('drive-store.js'),/id:old\.id, createdAt:old\.createdAt/);
  assert.equal(input.id,'attacker-provided-id','Caller input must not be changed');
  const second=await create(input,'User-facing reaction');
  assert.equal(second.id,'generated-id-B');
