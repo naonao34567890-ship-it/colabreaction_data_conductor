@@ -9,8 +9,15 @@ const list=async query=>{
  return entries.filter(x=>x.parent===parent&&!x.trashed);
 };
 const request=async (url,opts)=>{
- if(opts.method!=='POST')throw Error('Unexpected request '+opts.method);
- const value=JSON.parse(opts.body),id='folder-'+(++seq);
+ const value=JSON.parse(opts.body);
+ if(opts.method==='PATCH'){
+  const id=url.match(/\/files\/([^?]+)/)?.[1];
+  const entry=entries.find(x=>x.id===id);assert.ok(entry,'Unknown folder');
+  entry.appProperties=value.appProperties;
+  return {json:async()=>({id})};
+ }
+ assert.equal(opts.method,'POST');
+ const id='folder-'+(++seq);
  entries.push({id,parent:value.parents[0],name:value.name,appProperties:value.appProperties||{}});
  return {json:async()=>({id,name:value.name,appProperties:value.appProperties})};
 };
@@ -31,6 +38,11 @@ const allocate=new Function('list','request','Mol','root','folderType','drive','
  assert.equal(entries.filter(x=>x.appProperties.xyzStudio==='colabReactionGroup').length,2);
  assert.equal(entries.find(x=>x.id===b.folderId).appProperties.runNumber,'2');
  assert.equal(entries.find(x=>x.id===a.folderId).appProperties.runId,id1);
+ // Removing a run must not recycle previously allocated runNumber 2.
+ entries.find(x=>x.id===b.folderId).trashed=true;
+ const d=await allocate({sourceReactionId:'reaction-A',name:'Renamed again',method:'DMF',runNumber:1});
+ assert.equal(d.displayPath,'Bromination/DMF(3)');
+ assert.equal(entries.find(x=>x.parent===entries.find(g=>g.name==='Bromination').id&&x.id===d.folderId).appProperties.runNumber,'3');
  assert.match(source,/appProperties=\{\.\.\.\(job\.appProperties\|\|\{\}\)\}/);
  assert.match(source,/properties\.runId=runId/);
  console.log('PASS: identity-driven parent, renamed run number never recycled, stored runId preserved');
