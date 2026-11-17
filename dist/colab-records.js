@@ -1283,166 +1283,194 @@ replotButton.onclick = async () => {
 };
 
 
-// Manual, opt-in migration. Never runs during page load or normal record refresh.
-// Usage from colab.html DevTools: await molBenchLegacyMigration('preview')
-//                             await molBenchLegacyMigration('run')
+// Manual one-time migration. Never runs during normal page load or refresh.
+// In colab.html DevTools: await molBenchLegacyMigration('preview')
+//                         await molBenchLegacyMigration('run')
 let manualLegacyMigrationRunning = false;
 const legacyUUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const legacyNumber = (name, method) => {
-  if (typeof name !== 'string' || !name.startsWith(method+'(') || !name.endsWith(')')) return 0;
-  const n=Number(name.slice(method.length+1,-1));
-  return Number.isSafeInteger(n)&&n>0?n:0;
+  const match=String(name||'').match(new RegExp('^'+method+'\\((\\d+)\\)$'));
+  const number=match?Number(match[1]):0;
+  return Number.isSafeInteger(number)&&number>0?number:0;
 };
-const legacyField = (text, field) => text.split(/\r?\n/)
+const legacyField=(source,field)=>source.split(/\r?\n/)
   .find(line=>line.startsWith(field+':'))?.slice(field.length+1).trim()||'';
-function legacyName(raw) {
-  return Mol.safeName(String(raw||'').trim()).slice(0,105);
-}
-async function legacyCandidates() {
+const legacyPositive=value=>{
+  const number=Number(value);
+  return Number.isSafeInteger(number)&&number>0?number:0;
+};
+const legacySafeName=value=>Mol.safeName(String(value).trim()).slice(0,105);
+const legacyRecordComplete=(job,group)=>{
+  const p=job.appProperties||{};
+  return !!group && legacyUUID.test(p.runId||'') &&
+    legacyPositive(p.runNumber)===legacyNumber(job.name,p.method||'DMF') &&
+    legacyPositive(p.runNumber)>0;
+};
+async function legacyInventory(){
   const top=await list("'"+root+"' in parents and mimeType = '"+folderType+"'");
-  const groups=top.filter(f=>f.appProperties?.xyzStudio==='colabReactionGroup');
-  const entries=top.filter(f=>f.appProperties?.xyzStudio!=='colabReactionGroup')
+  const groups=top.filter(item=>item.appProperties?.xyzStudio==='colabReactionGroup');
+  const entries=top.filter(item=>item.appProperties?.xyzStudio!=='colabReactionGroup')
     .map(job=>({job,group:null}));
+  const siblings=new Map();
   for(const group of groups){
     const children=await list("'"+group.id+"' in parents and mimeType = '"+folderType+"'");
-    for(const job of children) {
-      const p=job.appProperties||{};
-      if(p.legacyMigrationVersion==='1')continue;
-      if(!legacyUUID.test(p.runId||'') ||
-         !Number.isSafeInteger(Number(p.runNumber)) || Number(p.runNumber)<1 ||
-         !legacyNumber(job.name,p.method||'DMF'))entries.push({job,group});
-    }
+    siblings.set(group.id,children);
+    for(const job of children)if(!legacyRecordComplete(job,group))
+      entries.push({job,group});
   }
-  return {top,groups,entries};
+  return {top,groups,entries,siblings};
 }
-async function molBenchLegacyMigration(mode='preview') {
+async function molBenchLegacyMigration(mode='preview'){
   if(mode!=='preview'&&mode!=='run')throw Error("mode は 'preview' または 'run' です。");
-  if(!token||!root)throw Error('先にColab計算記録ページでGoogle Driveに接続してください。');
+  if(!token||!root)throw Error('Colab計算記録ページでGoogle Driveに接続してください。');
   if(manualLegacyMigrationRunning||active||pending.length||connecting||replotRunning)
-    throw Error('別の取り込み・メンテナンス処理が実行中です。完了後に実行してください。');
+    throw Error('取り込み・再生成・移行の終了後に実行してください。');
   manualLegacyMigrationRunning=true;
-  const current={...{input:input.disabled,folder:folderInput.disabled,replot:replotButton.disabled}};
+  const disabled={input:input.disabled,folder:folderInput.disabled,replot:replotButton.disabled};
   input.disabled=folderInput.disabled=replotButton.disabled=true;
   updateImportButtons();
   try {
-    const {top,groups,entries}=await legacyCandidates();
-    const preliminary=[];
-    for(const {job,group} of entries) {
+    const inventory=await legacyInventory();
+    const {top,groups,entries,siblings}=inventory;
+    const prepared=[];
+    for(const {job,group} of entries){
       const children=await list("'"+job.id+"' in parents");
       const configFile=children.find(f=>f.name==='config.txt'&&f.mimeType!==folderType);
       if(!configFile){
-        preliminary.push({job,group,skip:'config.txtなし（未完了）'});
+        prepared.push({job,group,skip:'config.txtがない未完了記録'});
         continue;
       }
-      const config=await(await download(configFile.id)).text();
-      const props=job.appProperties||{};
-      const reactionId=props.sourceReactionId||legacyField(config,'元の反応ID')||group?.appProperties?.sourceReactionId||'';
-      const reactionName=props.reactionName||legacyField(config,'元の反応名')||'';
-      // Old unnamed records may have a UUID as the original folder name.
-      // Reuse it as both internal run ID and provisional visible reaction name.
-      const runId=props.runId&&legacyUUID.test(props.runId)?props.runId:
+      let config;
+      try {config=await(await download(configFile.id)).text();}
+      catch(error){
+        prepared.push({job,group,skip:'config.txtを取得できない: '+error.message});
+        continue;
+      }
+      const p=job.appProperties||{};
+      const reactionId=p.sourceReactionId||legacyField(config,'元の反応ID')||
+        group?.appProperties?.sourceReactionId||'';
+      const reactionName=p.reactionName||legacyField(config,'元の反応名')||'';
+      const runId=legacyUUID.test(p.runId||'')?p.runId:
+        legacyUUID.test(legacyField(config,'計算runId'))?legacyField(config,'計算runId'):
         legacyUUID.test(job.name)?job.name:null;
-      const method=/^[A-Za-z0-9_-]{1,24}$/.test(props.method||'DMF')?props.method||'DMF':'DMF';
-      preliminary.push({job,group,reactionId,reactionName,runId,method});
+      const method=/^[A-Za-z0-9_-]{1,24}$/.test(p.method||'DMF')?p.method||'DMF':'DMF';
+      prepared.push({job,group,reactionId,reactionName,runId,method,
+        oldNumber:legacyPositive(p.runNumber)||legacyNumber(job.name,method)});
     }
-    const preview=preliminary.map(({job,group,reactionId,reactionName,runId,skip})=>({
-      folder:group?group.name+'/'+job.name:job.name,
-      reaction:reactionName||runId||'（実行時に新規UUIDを暫定名に設定）',
-      reactionId:reactionId||null,
-      hasRunId:!!runId,
-      action:skip||'新形式に移行',
+    const report=prepared.map(item=>({
+      original:item.group?item.group.name+'/'+item.job.name:item.job.name,
+      proposedReaction:item.reactionName||item.runId||'(新しいUUIDを発行)',
+      reactionId:item.reactionId||'(不明・独立管理)',
+      existingNumber:item.oldNumber||'(なし)',
+      action:item.skip||'移行対象',
     }));
-    console.table(preview);
+    console.table(report);
     if(mode==='preview'){
-      console.info('プレビューのみ：変更はありません。実行するには await molBenchLegacyMigration("run")');
-      return {mode,total:entries.length,preview};
+      console.info('プレビューのみ。変更はありません。実行: await molBenchLegacyMigration("run")');
+      return {mode,total:entries.length,report};
     }
-    if(!entries.length)return {mode,converted:0,skipped:0,errors:[]};
-    if(!confirm('旧Colab計算記録 '+entries.length+' 件を新形式へ移行します。'
-      +'元の計算ファイルは削除せず、記録フォルダの移動・改名と内部メタデータ更新を行います。続行しますか？'))
+    if(!prepared.length)return {mode,converted:0,skipped:0,failed:0,errors:[]};
+    if(!confirm('旧Colab計算記録 '+prepared.length+' 件を移行します。'
+      +'元の計算ファイルは変更せず、記録フォルダの名前・親フォルダ・内部情報だけ変更します。続行しますか？'))
       return {mode,cancelled:true};
     const usedNames=new Set(top.map(item=>item.name));
     const byReaction=new Map(groups.filter(g=>g.appProperties?.sourceReactionId)
       .map(g=>[g.appProperties.sourceReactionId,g]));
-    const errors=[];
+    const byLegacyFile=new Map(groups.filter(g=>g.appProperties?.legacySourceFileId)
+      .map(g=>[g.appProperties.legacySourceFileId,g]));
+    const usedRunIds=new Set();
+    for(const group of groups)for(const other of siblings.get(group.id)||[])
+      if(legacyRecordComplete(other,group))usedRunIds.add(other.appProperties.runId.toLowerCase());
     let converted=0,skipped=0;
-    for(let i=0;i<preliminary.length;i++){
-      const item=preliminary[i],{job,method}=item;
-      status('旧計算記録の一度限りの移行 '+(i+1)+'/'+preliminary.length);
+    const errors=[];
+    for(let index=0;index<prepared.length;index++){
+      const item=prepared[index];
+      const {job,method}=item;
+      status('旧計算記録を移行中 '+(index+1)+'/'+prepared.length);
       if(item.skip){skipped++;continue;}
-      try {
+      try{
         let group=item.group;
         if(!group&&item.reactionId)group=byReaction.get(item.reactionId)||null;
+        if(!group)group=byLegacyFile.get(job.id)||null;
+        const runId=item.runId&&!usedRunIds.has(item.runId.toLowerCase())
+          ?item.runId:crypto.randomUUID();
         if(!group){
-          // Never infer a reaction ID from its name. Unknown-ID records get
-          // their own independent group rather than merging by display name.
-          // No reliable original reaction name: use the run UUID verbatim as
-          // the provisional group name. Never treat a timestamp or ZIP
-          // filename as a reliable reaction name.
-          item.runId ||= crypto.randomUUID();
-          const base=legacyName(item.reactionName||item.runId);
-          const name=usedNames.has(base)?Mol.nextDuplicateName(base,usedNames):base;
-          const properties={xyzStudio:'colabReactionGroup'};
-          if(item.reactionId)properties.sourceReactionId=item.reactionId;
+          // Unknown reaction IDs are *never* matched on name alone.
+          // A UUID is also the provisional human-readable name if the
+          // original name was lost. The actual record is identified by Drive ID.
+          const displayName=legacySafeName(item.reactionName||runId);
+          const name=usedNames.has(displayName)
+            ?Mol.nextDuplicateName(displayName,usedNames):displayName;
+          const appProperties={xyzStudio:'colabReactionGroup',
+            legacySourceFileId:job.id};
+          if(item.reactionId)appProperties.sourceReactionId=item.reactionId;
           group=await(await request(drive+'/files?fields=id,name,appProperties',{
             method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({name,mimeType:folderType,parents:[root],appProperties:properties}),
+            body:JSON.stringify({name,mimeType:folderType,parents:[root],appProperties}),
           })).json();
           usedNames.add(name);
           groups.push(group);
+          siblings.set(group.id,[]);
+          byLegacyFile.set(job.id,group);
           if(item.reactionId)byReaction.set(item.reactionId,group);
         }
-        const siblings=await list("'"+group.id+"' in parents and mimeType = '"+folderType+"'");
+        // The current source parent may be root OR an older reaction group.
+        const sourceParent=item.group?.id||root;
+        const siblingsNow=siblings.get(group.id)||
+          await list("'"+group.id+"' in parents and mimeType = '"+folderType+"'");
         const occupied=new Set();
-        for(const other of siblings){
+        for(const other of siblingsNow){
           if(other.id===job.id)continue;
-          const n=legacyNumber(other.name,method);
-          if(n)occupied.add(n);
+          const number=legacyNumber(other.name,method);
+          if(number)occupied.add(number);
           if(other.appProperties?.method===method){
-            const propN=Number(other.appProperties.runNumber);
-            if(Number.isSafeInteger(propN)&&propN>0)occupied.add(propN);
+            const propertyNumber=legacyPositive(other.appProperties.runNumber);
+            if(propertyNumber)occupied.add(propertyNumber);
           }
         }
-        const prior=Number(job.appProperties?.runNumber)||legacyNumber(job.name,method);
-        const n=Number.isSafeInteger(prior)&&prior>0&&!occupied.has(prior)
-          ?prior:Math.max(0,...occupied)+1;
-        const leaf=method+'('+n+')';
-        const props={...job.appProperties,
-          runId:item.runId||crypto.randomUUID(),runNumber:String(n),method,
-          legacyMigrationVersion:'1'};
+        const runNumber=item.oldNumber&&!occupied.has(item.oldNumber)
+          ?item.oldNumber:Math.max(0,...occupied)+1;
+        const leaf=method+'('+runNumber+')';
+        const props={...job.appProperties,runId,method,runNumber:String(runNumber),
+          legacyMigrationVersion:'2'};
         if(item.reactionId)props.sourceReactionId=item.reactionId;
         if(item.reactionName&&new TextEncoder().encode(item.reactionName).length<=100)
           props.reactionName=item.reactionName;
         if(!props.legacyOriginalName&&new TextEncoder().encode(job.name).length<=100)
           props.legacyOriginalName=job.name;
-        const moving=group.id!==item.group?.id;
-        const url=drive+'/files/'+encodeURIComponent(job.id)
-          +(moving?'?addParents='+encodeURIComponent(group.id)
-            +'&removeParents='+encodeURIComponent(root)+'&fields=id,name,parents,appProperties'
-            :'?fields=id,name,appProperties');
-        // A single Drive metadata update: no result-file bytes are touched.
-        const saved=await(await request(url,{method:'PATCH',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({name:leaf,appProperties:props}),
-        })).json();
-        if(saved.name!==leaf||saved.appProperties?.runId!==props.runId
-          ||saved.appProperties?.legacyMigrationVersion!=='1')
-          throw Error('Driveが移行メタデータを確認できませんでした。');
+        const moving=sourceParent!==group.id;
+        const query=new URLSearchParams({fields:'id,name,parents,appProperties'});
+        if(moving){
+          query.set('addParents',group.id);
+          query.set('removeParents',sourceParent);
+        }
+        const saved=await(await request(drive+'/files/'+encodeURIComponent(job.id)
+          +'?'+query,{
+            method:'PATCH',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({name:leaf,appProperties:props}),
+          })).json();
+        if(saved.name!==leaf||saved.appProperties?.runId!==runId||
+          saved.appProperties?.runNumber!==String(runNumber)||
+          (moving&&!saved.parents?.includes(group.id)))
+          throw Error('Drive上の名前・番号・移動先を確認できませんでした。');
+        usedRunIds.add(runId.toLowerCase());
+        siblingsNow.push({...job,name:leaf,appProperties:props});
+        siblings.set(group.id,siblingsNow);
         converted++;
       }catch(error){
-        errors.push({name:job.name,error:error.message});
-        console.error('旧計算記録の移行失敗:',job.name,error);
+        errors.push({record:job.name,message:error.message});
+        console.error('旧計算記録の移行失敗',job.name,error);
       }
     }
     await refresh();
-    status('旧記録の移行：成功 '+converted+'件、未完了 '+skipped+'件、失敗 '+errors.length+'件');
+    status('旧記録の移行完了：成功 '+converted+'・未完了 '+skipped+'・失敗 '+errors.length);
     console.table(errors);
-    return {mode,converted,skipped,errors};
+    return {mode,converted,skipped,failed:errors.length,errors};
   }finally{
     manualLegacyMigrationRunning=false;
-    input.disabled=current.input;
-    folderInput.disabled=current.folder;
-    replotButton.disabled=current.replot;
+    input.disabled=disabled.input;
+    folderInput.disabled=disabled.folder;
+    replotButton.disabled=disabled.replot;
     updateImportButtons();
   }
 }
