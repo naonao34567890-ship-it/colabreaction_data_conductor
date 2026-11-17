@@ -39,7 +39,7 @@ const orca=file('orca-gallery.js');
 assert.match(orca,/sourceName\+'\/ORCA\('\+number\+'\)'/);
 assert.match(orca,/id:crypto\.randomUUID\(\),name,sourceName,method:'ORCA',runNumber:number/);
 const colab=file('colab-records.js');
-assert.match(colab,/nextRunNumber:String\(number\+1\)/);
+assert.match(colab,/nextRunNumber:String\(Math\.max\(number\+1/);
 assert.match(colab,/const appProperties=\{\.\.\.\(job\.appProperties\|\|\{\}\)\}/);
 assert.match(colab,/sourceReaction\.sourceReactionId!==batchJob\.reaction_id/);
 const slideshow=file('slideshow.js');
