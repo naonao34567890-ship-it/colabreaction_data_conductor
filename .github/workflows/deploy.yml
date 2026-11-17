@@ -16,6 +16,7 @@ on:
   # Validate and publish independent Colab run IDs and reaction/DMF(n) paths.
   # Rerun after correcting optional chaining assertion in run-path regression test.
   # Audit and publish naming unification: local IDs, Colab runs, ORCA, XYZ ZIP imports.
+  # Release after expanded ID, cross-tab numbering and renamed-run regression tests.
   push:
     branches: [main]
     paths: [.github/workflows/deploy.yml]
