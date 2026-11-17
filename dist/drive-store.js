@@ -667,9 +667,7 @@ export function createDriveStore(local, options = {}) {
       });
   }
   function uniqueName(name, used) {
-    const base = name;
-    let n = 1;
-    while (used.has(name)) name = base + ' (' + ++n + ')';
+    if (used.has(name)) return Mol.nextDuplicateName(name, used);
     used.add(name);
     return name;
   }
