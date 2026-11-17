@@ -1083,6 +1083,10 @@ export function createDriveStore(local, options = {}) {
           throw Error('別のタブで構造が更新されました。開き直してからもう一度操作してください。');
         const {id:_ignoredId,createdAt:_ignoredCreatedAt,...safeFields}=fields;
         const body = { ...old, ...safeFields, id:old.id, createdAt:old.createdAt };
+        if(Object.hasOwn(safeFields,'name')){
+          const used=new Set(entries('r').filter(item=>item.meta.id!==id).map(item=>item.meta.name));
+          if(used.has(body.name))body.name=Mol.nextDuplicateName(body.name,used);
+        }
         for (const slot of ['START', 'FINISH'])
           if (
             Object.hasOwn(fields, slot) &&
