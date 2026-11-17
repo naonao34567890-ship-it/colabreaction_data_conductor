@@ -328,7 +328,7 @@ async function importRecords(name, sourceLabel, readFiles) {
     const entries=[...files];
     const baseName=path=>path.split('/').at(-1);
     const resultZipEntries=entries.filter(([path]) =>
-      /\\.zip$/i.test(baseName(path)) && !/^source-reaction\\.zip$/i.test(baseName(path)));
+      /\.zip$/i.test(baseName(path)) && !/^source-reaction\.zip$/i.test(baseName(path)));
     const batchManifestEntry=entries.find(([path])=>baseName(path)==='batch_status.json');
     const hasDirectResultFiles=['reactant.xyz','product.xyz','DMF_energy.csv']
       .every(name=>entries.some(([path])=>baseName(path)===name));
