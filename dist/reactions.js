@@ -410,9 +410,9 @@ control('reactionZip').onclick=()=>void changeSelection(async ids=>{
   const reaction=await ReactionStore.read(summary.id);
   if(!reaction)throw Error('反応が削除されました。再読み込みしてください。');
   const base=Mol.safeName(reaction.name);
-  let name=base, number=1;
-  while(usedNames.has(name))name=base+' ('+(++number)+')';
-  usedNames.add(name);
+  let name=base;
+  if(usedNames.has(name))name=Mol.nextDuplicateName(name,usedNames);
+  else usedNames.add(name);
   for(const slot of ['START','FINISH']) {
    if(reaction[slot])bodies.push({...reaction[slot],name:name+'_'+slot});
   }
