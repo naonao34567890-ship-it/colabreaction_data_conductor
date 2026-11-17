@@ -45,9 +45,9 @@ const Mol={safeName:x=>String(x).replace(/[\\/:*?"<>|\x00-\x1f]/g,'_').trim()||'
  nextDuplicateName:(name,used)=>{let n=1,v;do{v=name+' ('+(n++)+')';}while(used.has(v));used.add(v);return v;}};
 const crypto={randomUUID:()=> '99999999-9999-4999-8999-'+String(++generated).padStart(12,'0')};
 const globalThis={navigator:{locks:{request:async(_key,callback)=>callback()}}};
-const allocate=new Function('list','request','driveFetch','Mol','root','folderType','drive','crypto','globalThis',
+const allocate=new Function('list','request','driveFetch','Mol','root','folderType','drive','crypto','globalThis','navigator',
  code+';return reserveReactionRun;')(list,request,driveFetch,Mol,'root','application/vnd.google-apps.folder',
- 'https://www.googleapis.com/drive/v3',crypto,globalThis);
+ 'https://www.googleapis.com/drive/v3',crypto,globalThis,globalThis.navigator);
 (async()=>{
  const id1='11111111-1111-4111-8111-111111111111',id2='22222222-2222-4222-8222-222222222222';
  const a=await allocate({sourceReactionId:'reaction-A',name:'Bromination',method:'DMF',runId:id1});
