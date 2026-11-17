@@ -1040,22 +1040,16 @@ export function createDriveStore(local, options = {}) {
     async reactionCreate(structures, name) {
       structures={...structures};for(const slot of ['START','FINISH'])if(structures[slot])structures[slot]={...structures[slot],...Mol.electronicState(structures[slot])};
       await ready;
-      const now = new Date(),
-        body = {
-          ...clone(structures),
-          id: crypto.randomUUID(),
-          createdAt: Date.now(),
-          name:
-            name ||
-            [now.getHours(), now.getMinutes()].map((n) => String(n).padStart(2, '0')).join(''),
-        };
-      for (const slot of ['START', 'FINISH'])
-        if (body[slot] && !body[slot].revision)
-          body[slot] = { ...body[slot], revision: crypto.randomUUID() };
-      return commit([], async () => ({
-        puts: [{ kind: 'r', meta: reactionMeta(body), body }],
-        result: body,
-      }));
+      const base=String(name||structures.name||'反応');
+      const body={...clone(structures),id:crypto.randomUUID(),createdAt:Date.now(),name:base};
+      for(const slot of ['START','FINISH'])
+        if(body[slot]&&!body[slot].revision)
+          body[slot]={...body[slot],revision:crypto.randomUUID()};
+      return commit([],async()=>{
+        const used=new Set(entries('r').map(r=>r.meta.name));
+        body.name=used.has(base)?Mol.nextDuplicateName(base,used):base;
+        return {puts:[{kind:'r',meta:reactionMeta(body),body}],result:body};
+      });
     },
     async reactionImport(items) {
       await ready;
