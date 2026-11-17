@@ -44,11 +44,17 @@ const ReactionStore = (() => {
  }
  function createReaction(structures, reactionName) {
   structures={...structures};for(const slot of ['START','FINISH'])if(structures[slot])structures[slot]={...structures[slot],...Mol.electronicState(structures[slot])};
-  const date = new Date();
-  const name = [date.getHours(),date.getMinutes()].map(n=>String(n).padStart(2,'0')).join('');
   const {id:_discardId,createdAt:_discardCreatedAt,name:_discardName,...payload}=structures;
-   const value = {...payload,id:crypto.randomUUID(),createdAt:date.getTime(),name:reactionName || name};
-  return transaction('readwrite',(store,done)=>{ store.add(value); done(value); });
+  const base=String(reactionName||structures.name||'反応');
+  return transaction('readwrite',(store,done)=>{
+   const req=store.getAll();
+   req.onsuccess=()=>{
+    const used=new Set(req.result.map(r=>r.name));
+    const name=used.has(base)?Mol.nextDuplicateName(base,used):base;
+    const value={...payload,id:crypto.randomUUID(),createdAt:Date.now(),name};
+    store.add(value);done(value);
+   };
+  });
  }
  async function importRecords(items) {
   if(!items.length)return {added:0,skipped:0};
