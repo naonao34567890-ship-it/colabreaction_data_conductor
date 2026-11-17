@@ -23,6 +23,7 @@ on:
   # Publish shared run ledger, ID-based slideshow matching and readable bundle naming.
   # Release finalized owner-bound run numbering and audited low-traffic UI naming paths.
   # Final check: atomic Durable Object run allocation, with matching transaction regression tests.
+  # Redeploy after run-identity test browser lock fixture repair (2026-11-17).
   push:
     branches: [main]
     paths: [.github/workflows/deploy.yml]
