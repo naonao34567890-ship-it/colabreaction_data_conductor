@@ -467,7 +467,7 @@ async function importRecords(name, sourceLabel, readFiles, batchJob = null) {
     if(sourceReaction?.sourceReactionId&&new TextEncoder().encode(sourceReaction.sourceReactionId).length<=100)
       properties.sourceReactionId=sourceReaction.sourceReactionId;
     if(runId)properties.runId=runId;
-    if(runInfo){properties.runNumber=String(runInfo.runNumber);properties.method=runInfo.method;}
+    if(runInfo){properties.runId=runInfo.runId;properties.runNumber=String(runInfo.runNumber);properties.method=runInfo.method;}
     if(!runId)properties.importKey=await importKey(name);
     await writeRecordSummary(parent,properties,{required:true});
     parent = null;
@@ -494,62 +494,81 @@ async function importRecords(name, sourceLabel, readFiles, batchJob = null) {
 }
 
 async function reserveReactionRun(source){
-  // Reaction groups are keyed by stable reactionId; a label is never an identity.
-  const reactionId=String(source.sourceReactionId);
-  const reactionName=Mol.safeName(source.name).slice(0,120);
+  const reactionId=String(source.sourceReactionId||'');
+  const runId=source.runId||crypto.randomUUID();
   const method=/^[A-Za-z0-9_-]{1,24}$/.test(source.method||'DMF')?source.method||'DMF':'DMF';
-  const runId=source.runId||null;
-  if(runId&&(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(runId)))
+  if(!reactionId)throw Error('元反応IDがありません。');
+  if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(runId))
     throw Error('計算runIdが不正です。');
   const perform=async()=>{
     const rootFolders=await list("'"+root+"' in parents and mimeType = '"+folderType+"'");
     let group=rootFolders.find(item=>item.appProperties?.xyzStudio==='colabReactionGroup'
       && item.appProperties?.sourceReactionId===reactionId);
+    const usedNames=new Set(rootFolders.map(item=>item.name));
+    const base=Mol.safeName(source.name).slice(0,120);
+    const proposedName=group?.name||(usedNames.has(base)?Mol.nextDuplicateName(base,usedNames):base);
+    const children=group?await list("'"+group.id+"' in parents and mimeType = '"+folderType+"'"):[];
+    const occupied=new Set();
+    for(const item of children){
+      const props=item.appProperties||{};
+      if(props.method===method&&Number.isSafeInteger(Number(props.runNumber))&&Number(props.runNumber)>0)
+        occupied.add(Number(props.runNumber));
+      const match=item.name.match(new RegExp('^'+method+'\\((\\d+)\\)$'));
+      if(match)occupied.add(Number(match[1]));
+    }
+    const hint=Number(source.runNumber),legacyNext=Number(group?.appProperties?.nextRunNumber);
+    const minimum=Math.max(
+      Number.isSafeInteger(hint)&&hint>0?hint:1,
+      Number.isSafeInteger(legacyNext)&&legacyNext>0?legacyNext:1,
+      occupied.size?Math.max(...occupied)+1:1);
+    const reserved=await driveFetch('runs',{body:JSON.stringify({
+      action:'reserveRun',runId,reactionId,method,reactionName:proposedName,
+      minimumRunNumber:minimum,
+    })});
+    const payload=await reserved.json();
+    if(!reserved.ok||payload.state!=='reserved'||!payload.run)
+      throw Error('共通の実行番号台帳から番号を取得できませんでした（'+(payload.state||reserved.status)+'）。計算を別番号で保存せず中止します。');
+    const official=payload.run;
+    if(official.reactionId!==reactionId||official.runId.toLowerCase()!==runId.toLowerCase()||official.method!==method)
+      throw Error('実行番号台帳が異なる計算IDを返しました。');
+    const number=official.runNumber,leaf=method+'('+number+')';
+    if(!Number.isSafeInteger(number)||number<1)throw Error('共通台帳の実行番号が不正です。');
+    if(occupied.has(number)&&!children.some(item=>item.name===leaf&&item.appProperties?.runId===runId))
+      throw Error('旧記録と共通台帳のDMF番号が衝突しました。既存履歴を台帳へ移行してから再実行してください。');
     if(!group){
-      const used=new Set(rootFolders.map(item=>item.name));
-      const groupName=used.has(reactionName)?Mol.nextDuplicateName(reactionName,used):reactionName;
       const created=await (await request(drive+'/files?fields=id,name,appProperties',{
         method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({name:groupName,mimeType:folderType,parents:[root],
-          appProperties:{xyzStudio:'colabReactionGroup',sourceReactionId:reactionId,nextRunNumber:'1'}}),
+        body:JSON.stringify({name:official.reactionName,mimeType:folderType,parents:[root],
+          appProperties:{xyzStudio:'colabReactionGroup',sourceReactionId:reactionId,
+            nextRunNumber:String(number+1)}}),
       })).json();
       group=created;
     }
-    if(runId){
-      const duplicate=await list("mimeType = '"+folderType+
-        "' and appProperties has { key='runId' and value='"+runId+"' }");
-      if(duplicate.length)throw Error('同じ計算IDは登録済みか取り込み処理中です。');
+    const previous=children.find(item=>item.appProperties?.runId===runId||item.name===leaf);
+    if(previous) {
+      if(previous.appProperties?.runId!==runId)throw Error('同名の実行フォルダが別IDで存在します。');
+      const completed=await list("'"+previous.id+"' in parents and name = 'config.txt'");
+      if(completed.length)throw Error('同じ計算IDは登録済みです。');
+      // Recover an interrupted import without changing its identity or number.
+      return {folderId:previous.id,runId,runNumber:number,method,
+        displayPath:group.name+'/'+leaf};
     }
-    const children=await list("'"+group.id+"' in parents and mimeType = '"+folderType+"'");
-    const usedNumbers=new Set();
-    for(const entry of children){
-      const props=entry.appProperties||{};
-      if(props.method===method&&Number.isSafeInteger(Number(props.runNumber))&&Number(props.runNumber)>0)
-        usedNumbers.add(Number(props.runNumber));
-      const match=entry.name.match(new RegExp('^'+method+'\\((\\d+)\\)$'));
-      if(match)usedNumbers.add(Number(match[1]));
-    }
-    const requested=Number(source.runNumber);
-    const next=Number(group.appProperties?.nextRunNumber);
-    let number=Math.max(Number.isSafeInteger(requested)&&requested>0?requested:1,
-      Number.isSafeInteger(next)&&next>0?next:1);
-    while(usedNumbers.has(number))number++;
-    // Reserve the number independently of display labels; deletion/rename never resets it.
-    await request(drive+'/files/'+encodeURIComponent(group.id)+'?fields=id',{
-      method:'PATCH',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({appProperties:{...(group.appProperties||{}),nextRunNumber:String(number+1)}}),
-    });
-    const leaf=method+'('+number+')';
-    const props={method,runNumber:String(number),sourceReactionId:reactionId};
-    if(runId)props.runId=runId;
+    const props={method,runNumber:String(number),sourceReactionId:reactionId,runId};
     const created=await (await request(drive+'/files?fields=id,name,appProperties',{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({name:leaf,mimeType:folderType,parents:[group.id],appProperties:props}),
     })).json();
-    return {folderId:created.id,runNumber:number,method,displayPath:group.name+'/'+leaf};
+    // The Durable Object assigns numbers across devices; this cache is for legacy readers.
+    await request(drive+'/files/'+encodeURIComponent(group.id)+'?fields=id',{
+      method:'PATCH',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({appProperties:{...(group.appProperties||{}),
+        xyzStudio:'colabReactionGroup',sourceReactionId:reactionId,
+        nextRunNumber:String(Math.max(number+1,Number(group.appProperties?.nextRunNumber)||1))}}),
+    });
+    return {folderId:created.id,runId,runNumber:number,method,
+      displayPath:group.name+'/'+leaf};
   };
-  // Cross-tab serialization; cross-device concurrency requires an authoritative server lock.
-  if(navigator.locks)return navigator.locks.request('mol-bench-colab-run-allocation',perform);
+  if(globalThis.navigator?.locks)return navigator.locks.request('mol-bench-colab-run-allocation',perform);
   return perform();
 }
 
