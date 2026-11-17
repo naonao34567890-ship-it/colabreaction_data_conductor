@@ -38,8 +38,25 @@ async function route(request,env){
   await env.DRIVE_KV.put(sessionKey,await seal(env,sessionKey,{refresh:data.refresh_token,expiresAt:Date.now()+AGE*1000}),{expirationTtl:AGE});
   return redirect(RETURN+'#drive_session='+session+'&flow='+pending.flow);
  }
- if(!['/token','/logout','/library'].includes(url.pathname))return json({},404);
+ if(!['/token','/logout','/library','/runs'].includes(url.pathname))return json({},404);
  if(request.method!=='POST')return json({},405);
+ // Colab uses a short-lived Google OAuth token, verified by Google, not a web-app session.
+ // Requests from other browser origins remain forbidden; no endpoint accepts an unverified identity.
+ if(url.pathname==='/runs'&&!request.headers.get('Origin')){
+  const bearer=request.headers.get('Authorization')?.match(/^Bearer ([A-Za-z0-9._~-]{20,4096})$/)?.[1];
+  if(!bearer)return json({state:'connect'},401);
+  const identity=await fetch('https://openidconnect.googleapis.com/v1/userinfo',{
+   headers:{Authorization:'Bearer '+bearer}});
+  if(!identity.ok)return json({state:'identity_error'},403);
+  const user=await identity.json();
+  if(!user.sub||user.email_verified!==true)return json({state:'identity_error'},403);
+  const input=await request.json();
+  if(!env.LIBRARY_COORDINATOR)return json({state:'library_setup_required'},503);
+  const id=env.LIBRARY_COORDINATOR.idFromName(user.sub);
+  const response=await env.LIBRARY_COORDINATOR.get(id).fetch(new Request('https://internal/runs',{
+   method:'POST',body:JSON.stringify({...input,accessToken:bearer})}));
+  return json(await response.json(),response.status);
+ }
  if(request.headers.get('Origin')!==APP)return json({state:'forbidden'},403);
  const session=request.headers.get('Authorization')?.match(/^Bearer ([a-f0-9]{64})$/)?.[1];if(!session)return json({state:'connect'},401);
  const sessionKey='session/'+await hash(session),stored=await env.DRIVE_KV.get(sessionKey);if(!stored)return json({state:'connect'},401);
@@ -48,15 +65,17 @@ async function route(request,env){
  const {ok,data}=await exchange(env,{grant_type:'refresh_token',refresh_token:saved.refresh});
  if(!ok){if(data.error==='invalid_grant'){await env.DRIVE_KV.delete(sessionKey);return json({state:'connect'},401);}return json({state:'google_error'},502);}
  if(data.refresh_token){saved.refresh=data.refresh_token;await env.DRIVE_KV.put(sessionKey,await seal(env,sessionKey,saved),{expirationTtl:Math.max(60,Math.ceil((saved.expiresAt-Date.now())/1000))});}
- if(url.pathname==='/library'){
+ if(url.pathname==='/library'||url.pathname==='/runs'){
   if(!env.LIBRARY_COORDINATOR)return json({state:'library_setup_required'},503);
   const identity=await fetch('https://openidconnect.googleapis.com/v1/userinfo',{headers:{Authorization:'Bearer '+data.access_token}});
   if(!identity.ok)return json({state:'identity_error'},403);
   const user=await identity.json();if(!user.sub||user.email_verified!==true)return json({state:'identity_error'},403);
   const input=await request.json();
   const id=env.LIBRARY_COORDINATOR.idFromName(user.sub);
-  const response=await env.LIBRARY_COORDINATOR.get(id).fetch(new Request('https://internal/library',{method:'POST',body:JSON.stringify({...input,accessToken:data.access_token})}));
-  const result=await response.json();return json({...result,account:{sub:user.sub,email:user.email}},response.status);
+  const response=await env.LIBRARY_COORDINATOR.get(id).fetch(new Request('https://internal/'+(url.pathname==='/runs'?'runs':'library'),{
+   method:'POST',body:JSON.stringify({...input,accessToken:data.access_token})}));
+  const result=await response.json();
+  return json(url.pathname==='/runs'?result:{...result,account:{sub:user.sub,email:user.email}},response.status);
  }
  return json({state:'connected',access_token:data.access_token,expires_in:data.expires_in});
 }
