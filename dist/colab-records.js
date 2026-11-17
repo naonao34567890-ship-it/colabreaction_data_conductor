@@ -296,15 +296,18 @@ async function importKey(name) {
 
 async function alreadyRegistered(name,runId=null) {
   if(runId){
-    if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(runId))throw Error('計算runIdが不正です。');
+    if(typeof runId!=='string'||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(runId))throw Error('計算runIdが不正です。');
     const found=await list("mimeType = '"+folderType+"' and appProperties has { key='runId' and value='"+runId+"' }");
     for(const job of found)if((await list("'"+job.id+"' in parents and name = 'config.txt'")).length)return true;
     return false;
   }
   const key = await importKey(name);
   const escaped = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-  const matches = await list("'" + root + "' in parents and mimeType = '" + folderType +
-    "' and (name = '" + escaped + "' or appProperties has { key='importKey' and value='" + key + "' })");
+  const [original,named]=await Promise.all([
+    list("'"+root+"' in parents and mimeType = '"+folderType+"' and name = '"+escaped+"'"),
+    list("mimeType = '"+folderType+"' and appProperties has { key='importKey' and value='"+key+"' }"),
+  ]);
+  const matches=[...new Map([...original,...named].map(item=>[item.id,item])).values()];
   for (const match of matches) {
     if (match.appProperties?.importKey && match.appProperties.importKey !== key) continue;
     const completed = await list("'" + match.id + "' in parents and name = 'config.txt'");
@@ -412,6 +415,11 @@ async function importRecords(name, sourceLabel, readFiles, batchJob = null) {
     const match = name.match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
     const date = match ? match.slice(1,4).join('-') + ' ' + match.slice(4).join(':') : '不明';
     const start = await thumbnail(reactant), final = await thumbnail(product), plot = await energyPlot(points);
+    let runInfo=null;
+    if(sourceReaction?.name&&sourceReaction?.sourceReactionId){
+      runInfo=await reserveReactionRun(sourceReaction);
+      parent=runInfo.folderId;
+    }
     const config = [
       sourceLabel + '名: ' + name.replace(/[\r\n]/g, ' '), 'プロット点数: ' + points.length,
       'ファイル数: ' + files.size,
@@ -421,14 +429,10 @@ async function importRecords(name, sourceLabel, readFiles, batchJob = null) {
       ...(sourceReaction?.sourceReactionId?['元の反応ID: '+sourceReaction.sourceReactionId]:[]),
       ...(sourceReaction?.classification?['元の分類: '+sourceReaction.classification]:[]),
       ...(runId?['計算runId: '+runId]:[]),
-      ...(sourceReaction?.displayPath?['表示パス: '+sourceReaction.displayPath]:[]),
+      ...((runInfo?.displayPath||sourceReaction?.displayPath)?['表示パス: '+(runInfo?.displayPath||sourceReaction.displayPath)]:[]),
     ].join('\n');
     status('Google Driveに保存しています…');
-    let runInfo=null;
-    if(sourceReaction?.name&&sourceReaction?.sourceReactionId){
-      runInfo=await reserveReactionRun(sourceReaction);
-      parent=runInfo.folderId;
-    }else parent=await folder(name,root);
+    if(!parent)parent=await folder(name,root);
     const originals = await folder('計算結果', parent);
     const directories = new Map([['', originals]]);
     let saved = 0;
@@ -508,7 +512,8 @@ async function reserveReactionRun(source){
   let number=Number(source.runNumber);
   if(!Number.isSafeInteger(number)||number<1)number=1;
   while(used.has(method+'('+number+')'))number++;
-  return {folderId:await folder(method+'('+number+')',group.id),runNumber:number,method};
+  const leaf=method+'('+number+')';
+  return {folderId:await folder(leaf,group.id),runNumber:number,method,displayPath:group.name+'/'+leaf};
 }
 
 async function writeRecordSummary(id, properties) {
@@ -535,7 +540,10 @@ function compareClassifications(a,b) {
 
 function sortCards() {
   const entries = [...cards.values()].sort((a,b) => order.value === 'classification'
-    ? compareClassifications(a,b) : Mol.compareDisplayOrder(a,b,order.value));
+    ? compareClassifications(a,b) :
+    (order.value==='name-asc'||order.value==='name-desc')
+      ? Mol.compareTagNames(a._parentName?a._parentName+'/'+a.name:a.name,b._parentName?b._parentName+'/'+b.name:b.name)*(order.value==='name-desc'?-1:1)
+      : Mol.compareDisplayOrder(a,b,order.value));
   const content = document.createDocumentFragment();
   let previous;
   for (const entry of entries) {
@@ -906,7 +914,7 @@ async function renameClassification(name) {
   let count = 0;
   try {
     if (name === from) throw Error('同じ名前の分類があります。');
-    const folders=await list("'"+root+"' in parents and mimeType = '"+folderType+"'");
+    const folders=[...cards.values()];
     if (folders.some(job=>job.appProperties?.classification===name)) throw Error('同じ名前の分類があります。');
     for (const job of folders.filter(job=>job.appProperties?.classification===from)) {
       const response = await request(drive + '/files/' + encodeURIComponent(job.id) + '?fields=appProperties',{
