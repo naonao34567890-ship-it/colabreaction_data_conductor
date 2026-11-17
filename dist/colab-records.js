@@ -335,7 +335,7 @@ async function importRecords(name, sourceLabel, readFiles) {
         throw Error('batch_status.json を解析できませんでした: '+error.message);
       }
       if(batch?.format==='mol-bench-colabreaction-batch'){
-        const members=[...files].filter(([path])=>/^[^/]+\\.zip$/i.test(path));
+        const members=[...files].filter(([path])=>!path.includes('/') && path.toLowerCase().endsWith('.zip'));
         if(!members.length)throw Error('一括結果ZIPの中に個別計算結果ZIPがありません。');
         let index=0;
         for(const [memberName, memberFile] of members){
