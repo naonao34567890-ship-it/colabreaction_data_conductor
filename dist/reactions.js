@@ -250,13 +250,6 @@ async function pasteReactions(){
   status.textContent=copied+' 件の反応を貼り付けました。';
  }finally{changing=false;selectionUI();}
 }
-function nextReactionDuplicateName(name,used) {
- const base=name.replace(/ \(\d+\)$/,'');
- let index=1,candidate;
- do {candidate=base+' ('+(index++)+')';} while(used.has(candidate));
- used.add(candidate);
- return candidate;
-}
 async function duplicateReactions(){
  if(changing||duplicating||!selected.size)return;
  duplicating=true;changing=true;selectionUI();
@@ -268,7 +261,7 @@ async function duplicateReactions(){
   let copied=0;
   for(const item of originals){
    const {id,createdAt,name,startPreview,_driveFileId,...rest}=structuredClone(item);
-   await ReactionStore.createReaction(rest,nextReactionDuplicateName(name,used));
+   await ReactionStore.createReaction(rest,Mol.nextDuplicateName(name,used));
    copied++;
   }
   await renderReactions();
