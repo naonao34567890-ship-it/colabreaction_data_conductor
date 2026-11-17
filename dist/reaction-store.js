@@ -35,7 +35,8 @@ const ReactionStore = (() => {
    request.onsuccess = () => {
     if (!request.result) { abort('反応が見つかりません。'); return; }
     if (check && !check(request.result)) { abort("別のタブで構造が更新されました。開き直してからもう一度操作してください。"); return; }
-    const value = {...request.result,...fields};
+    const {id:_ignoredId,createdAt:_ignoredCreatedAt,...safeFields}=fields;
+    const value = {...request.result,...safeFields,id:request.result.id,createdAt:request.result.createdAt};
     if (Object.hasOwn(fields,'START')) delete value.startPreview;
     store.put(value);
     done(value);
