@@ -372,11 +372,24 @@ function compareDisplayOrder(a, b, order='name-asc') {
  return byName || byId;
 }
 async function metadata(){const d=await db();return new Promise((res,rej)=>{const result=builtinMeta.map(record => ({...record})),t=d.transaction('meta'),r=t.objectStore('meta').openCursor();r.onsuccess=()=>{const c=r.result;if(c){result.push(c.value);c.continue();}else res(result);};r.onerror=()=>rej(r.error);});}
+// Allocate the lowest unused copy number before a filename extension.
+// Examples: benzene.xyz -> benzene (1).xyz; benzene (1).xyz -> benzene (2).xyz.
+// Keep names without extensions unchanged except for the numeric suffix.
+function nextDuplicateName(name,used){
+ const extensionMatch=/^(.*?)(\.[A-Za-z0-9]{1,12})$/.exec(name);
+ const stem=extensionMatch?extensionMatch[1]:name;
+ const extension=extensionMatch?extensionMatch[2]:'';
+ const base=stem.replace(/ \(\d+\)$/,'');
+ let index=1,candidate;
+ do{candidate=base+' ('+(index++)+')'+extension;}while(used.has(candidate));
+ used.add(candidate);
+ return candidate;
+}
 async function saveBatch(records){if(!records.length)return [];for(const r of records)Object.assign(r,electronicState(r));const d=await db();return new Promise((res,rej)=>{
  const tx=d.transaction(['meta','body','tags'],'readwrite'),meta=tx.objectStore('meta'),body=tx.objectStore('body'),saved=[];
  tx.oncomplete=()=>res(saved);tx.onabort=()=>rej(tx.error||Error('保存失敗'));tx.onerror=()=>{};
  // Request chaining keeps the transaction alive and serializes collision checks.
- let i=0;function next(){if(i>=records.length)return;const r=records[i++],base=r.name;Object.assign(r,electronicState(r));let suffix=nameHints.get(base)||1;if(suffix>1)r.name=`${base} (${suffix})`;function attempt(){const q=meta.index('name').getKey(r.name);q.onsuccess=()=>{if(q.result!==undefined){r.name=`${base} (${++suffix})`;attempt();}else{nameHints.set(base,suffix+1);r.id=crypto.randomUUID();delete r.revision;const m={id:r.id,name:r.name,count:r.atoms.length,mass:Mass.calculate(r.atoms),...electronicState(r),thumb:false,addedAt:performance.timeOrigin+performance.now(),batchPosition:i,bytes:r.raw?.size||standard(r).length};if(r.tags?.length){m.tags=r.tags;for(const name of r.tags)tx.objectStore('tags').put({name});}meta.add(m);body.add(r);saved.push(m);next();}};}attempt();}next();
+ let i=0;function next(){if(i>=records.length)return;const r=records[i++],base=r.name;Object.assign(r,electronicState(r));const tried=new Set();function attempt(){const q=meta.index('name').getKey(r.name);q.onsuccess=()=>{if(q.result!==undefined){tried.add(r.name);r.name=nextDuplicateName(base,tried);attempt();}else{nameHints.set(base,suffix+1);r.id=crypto.randomUUID();delete r.revision;const m={id:r.id,name:r.name,count:r.atoms.length,mass:Mass.calculate(r.atoms),...electronicState(r),thumb:false,addedAt:performance.timeOrigin+performance.now(),batchPosition:i,bytes:r.raw?.size||standard(r).length};if(r.tags?.length){m.tags=r.tags;for(const name of r.tags)tx.objectStore('tags').put({name});}meta.add(m);body.add(r);saved.push(m);next();}};}attempt();}next();
  });}
 async function overwrite(record, expectedRevision) {
  record={...record,...electronicState(record)};
@@ -435,7 +448,7 @@ function parseFrameRanges(value,total){
  });
  return ranges;
 }
-const API={internalElectronicWarnings,reactionChargeWarnings,mirrorReactionState,electronicWarningText,electronicWarnings,checkElectronicState,electronicComment,electronicState,validateElectronicFields,moleculeSignature,importMolecules,mass:Mass,setDatabaseName,acceptsStructure,structureBaseName,calculationOutput,readMemo,formatMemo,compareTagNames:displayNames.compare,parseFrameRanges,scanEntries,elements,tick,atomLine,lines,parseFile,standard,compareDisplayOrder,output,centroid,swap,bonds,db,get,metadata,saveBatch,overwrite,remove,removeMany,cacheThumb,notify,crc32,safeName};root.Mol=API;if(typeof module!=='undefined')module.exports=API;
+const API={internalElectronicWarnings,reactionChargeWarnings,mirrorReactionState,electronicWarningText,electronicWarnings,checkElectronicState,electronicComment,electronicState,validateElectronicFields,moleculeSignature,importMolecules,mass:Mass,setDatabaseName,acceptsStructure,structureBaseName,calculationOutput,readMemo,formatMemo,compareTagNames:displayNames.compare,parseFrameRanges,scanEntries,elements,tick,atomLine,lines,parseFile,standard,compareDisplayOrder,output,centroid,swap,bonds,db,get,metadata,nextDuplicateName,saveBatch,overwrite,remove,removeMany,cacheThumb,notify,crc32,safeName};root.Mol=API;if(typeof module!=='undefined')module.exports=API;
 })(globalThis);
 
 /* Browser-only presentation helpers; no DOM or Three dependency in Worker. */
