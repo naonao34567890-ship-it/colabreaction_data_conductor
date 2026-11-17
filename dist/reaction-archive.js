@@ -54,7 +54,8 @@
   const {files}=await build(records,{progress});
   const chunks=[];
   await MolJobs.exportFiles(files,bytes=>{chunks.push(bytes);});
-  Mol.downloadBlob(new Blob(chunks,{type:'application/zip'}),'reaction-library.zip');
+  const label=records.length===1?Mol.safeName(records[0].name):Mol.safeName(records[0].name)+' 他'+(records.length-1)+'反応';
+  Mol.downloadBlob(new Blob(chunks,{type:'application/zip'}),label+'.reaction-library.zip');
  }
  const maxBytes=512*1024*1024;
  function safePath(path) {
