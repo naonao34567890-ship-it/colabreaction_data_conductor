@@ -34,10 +34,13 @@
   $('optDownloadLog').onclick = () => {
     const logs = savedLogs();
     const recent = runLog ? [runLog, ...logs.filter(log => log.id !== runLog.id)].slice(0, 8) : logs;
-    if (recent.length) Mol.downloadBlob(
-      new Blob([JSON.stringify(recent, null, 2)], {type: 'application/json'}),
-      'xyz-optimization-logs.json',
-    );
+    if(recent.length){
+      const names=new Set(recent.map(log=>log.molecule).filter(Boolean));
+      const label=names.size===1?Mol.safeName([...names][0]):'molecules ('+names.size+')';
+      Mol.downloadBlob(
+        new Blob([JSON.stringify(recent,null,2)],{type:'application/json'}),
+        label+'_optimization-logs.json');
+    }
   };
 
   function normalizeInteger(value) {
