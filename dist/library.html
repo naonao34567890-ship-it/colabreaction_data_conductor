@@ -118,13 +118,6 @@ async function pasteMolecules(){
 }
 // Reserve the lowest unused numeric suffix for each original name, including
 // duplicates of previously duplicated entries ("example (1)" -> "example (2)").
-function nextDuplicateName(name,used) {
- const base=name.replace(/ \(\d+\)$/,'');
- let index=1,candidate;
- do {candidate=base+' ('+(index++)+')';} while(used.has(candidate));
- used.add(candidate);
- return candidate;
-}
 async function duplicateMolecules(){
  if(duplicating||deleting||active||exporting||!selected.size)return;
  duplicating=true;selectionUI();
@@ -136,7 +129,7 @@ async function duplicateMolecules(){
    const source=await Mol.get('body',id);
    if(!source)throw Error('選択した分子が見つかりません。再読み込みしてください。');
    const duplicate=structuredClone(source);
-   duplicate.name=nextDuplicateName(source.name,used);
+   duplicate.name=Mol.nextDuplicateName(source.name,used);
    delete duplicate.id;
    delete duplicate.revision;
    copies.push(duplicate);
