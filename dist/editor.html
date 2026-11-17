@@ -1,5 +1,5 @@
 <!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>分子エディタ</title><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script><script src="atomic-weights.js"></script>
-<script src="common.js?v=names-2"></script><script src="reaction-store.js?v=names-2"></script><style>
+<script src="common.js?v=names-2"></script><script src="reaction-store.js?v=run-ledger-1"></script><style>
 #reactionSaveDialog label[hidden]{display:none}
 </style><style>
 /* Core editor features stay visible in the sidebar. */
@@ -322,4 +322,4 @@ if(!molecule)throw Error('指定した分子は見つかりません');structure
  if(dirty){if(model){scene.remove(model);graphics.dispose(model);}model=atoms.length?graphics.model(atoms,selected,point,moieties,$('displayMode').value):null;if(model)scene.add(model);dirty=false;numbersDirty=true;}renderer.render(scene,camera);if(showNumbers&&numbersDirty){drawAtomNumbers();numbersDirty=false;}}update();requestAnimationFrame(frame);
  }catch(e){notice(e.message);if(!molecule)$('lineInfo').textContent='分子を表示できません';$('save').disabled=$('direct').disabled=true;}}
 document.addEventListener("DOMContentLoaded",init,{once:true});
-</script><script src="reaction-editor.js"></script><script src="optimize-ui.js"></script></body></html>
+</script><script src="reaction-editor.js"></script><script src="optimize-ui.js?v=run-ledger-1"></script></body></html>
