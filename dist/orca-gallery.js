@@ -69,11 +69,28 @@ async function importFiles(files){
   const logFile=batch.files.find(f=>/\.out$/i.test(f.path))||batch.files.find(f=>/\.log$/i.test(f.path));
   const log=logFile?await logFile.blob.text():'';
   const summary=parseLog(log);
-  const name=batch.name||'ORCA job';
-  const id=crypto.randomUUID();
-  const rec={id,name,kind:kindFromResultName(name),createdAt:Date.now(),...summary,
-   files:batch.files.map(f=>({path:f.path,size:f.blob.size})),logExcerpt:log?log.slice(0,3000)+(log.length>6000?'\n…\n':'')+log.slice(-3000):''};
-  await save(rec,batch.files);saved++;$('progress').value=saved;$('status').textContent='登録中 '+saved+' / '+batches.length;
+  const sourceName=batch.name||'ORCA job';
+  const kind=kindFromResultName(sourceName);
+  // An ORCA run has a stable ID independent of its source name and display label.
+  const persist=async()=>{
+    const existing=await records();
+    const used=new Set();
+    for(const old of existing){
+      if(old.sourceName===sourceName&&Number.isSafeInteger(old.runNumber))used.add(old.runNumber);
+      const match=String(old.name).match(/\/ORCA\((\d+)\)$/);
+      if(match&&old.name.slice(0,match.index)===sourceName)used.add(Number(match[1]));
+    }
+    let number=1;while(used.has(number))number++;
+    const name=sourceName+'/ORCA('+number+')';
+    const rec={id:crypto.randomUUID(),name,sourceName,method:'ORCA',runNumber:number,
+      kind,createdAt:Date.now(),...summary,
+      files:batch.files.map(f=>({path:f.path,size:f.blob.size})),
+      logExcerpt:log?log.slice(0,3000)+(log.length>6000?'\n…\n':'')+log.slice(-3000):''};
+    await save(rec,batch.files);
+  };
+  if(navigator.locks)await navigator.locks.request('mol-bench-orca-name-allocation',persist);
+  else await persist();
+  saved++;$('progress').value=saved;$('status').textContent='登録中 '+saved+' / '+batches.length;
  }
  $('progress').hidden=true;$('status').textContent=saved+'件のORCA計算結果を保存しました。';
  await refresh();
