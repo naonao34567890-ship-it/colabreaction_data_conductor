@@ -8,6 +8,7 @@ on:
   # Publication requested for the batch ZIP import fix (2026-11-17).
   # Publication requested after expanded nested batch ZIP compatibility fix.
   # Publication requested for verified canonical 9-job Colab bundle layout.
+  # Publication requested for classification metadata import merge (2026-11-17).
   push:
     branches: [main]
     paths: [.github/workflows/deploy.yml]
