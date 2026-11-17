@@ -507,7 +507,7 @@ async function registerFrames(ranges) {
     for (let i=0;i<frames.length;i++) {
       if (ranges && !ranges.some(([first,last]) => i+1>=first && i+1<=last)) continue;
       const block = i===current ? currentBlock : await readBlock(i);
-      await job.add(block,baseName+'('+(i+1)+')');
+      await job.add(block,baseName+' ('+(i+1)+')');
     }
     await job.flush();
     status(job.stats.registered+' 件をライブラリに取り込みました。');
@@ -535,7 +535,7 @@ $('downloadFrame').onclick = async () => {
   const index = current;
   try {
     const stem = vibrationActive ? vibrationFile.replace(/\.xyz$/i,'') : baseName;
-    Mol.downloadBlob(Mol.calculationOutput(currentBlock),Mol.safeName(stem+'('+(index+1)+')')+'.xyz');
+    Mol.downloadBlob(Mol.calculationOutput(currentBlock),Mol.safeName(stem+' ('+(index+1)+')')+'.xyz');
   } catch (error) {status(error.message);}
 };
 $('importFrame').onclick = () => registerFrames([[current+1,current+1]]);
@@ -563,9 +563,17 @@ async function saveEndpoint(finish, openEditor = false) {
     if (finish) {
       let target = lastReactionId && await ReactionStore.read(lastReactionId);
       if (!target) {
-        const candidates = (await ReactionStore.read()).filter(item=>item.name===name && item.START);
-        if (candidates.length!==1) throw Error(candidates.length ? '同名の反応が複数あります。' : '同名の出発物が見つかりません。');
-        target = candidates[0];
+        const reactions=await ReactionStore.read();
+        const sourceId=sourceReactionContext?.sourceReactionId||null;
+        // Never infer a reaction pairing from its display name when an origin ID exists.
+        const candidates=sourceId
+          ? reactions.filter(item=>item.sourceReactionId===sourceId&&item.START)
+          : reactions.filter(item=>item.name===name&&item.START);
+        if(candidates.length!==1)
+          throw Error(candidates.length
+            ? '同じ元反応に複数のSTARTがあります。対応するSTARTを保存した同じ画面からFINISHを保存してください。'
+            : '対応するSTARTが見つかりません。先にSTARTを保存してください。');
+        target=candidates[0];
       }
       if (target.FINISH && !await Mol.confirmFileAction('生成物の上書き',target.name+'_FINISH を上書きしますか？','生成物を上書きする')) return;
       structure.name = target.name+'_FINISH';
