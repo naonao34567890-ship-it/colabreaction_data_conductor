@@ -46,7 +46,8 @@ const ReactionStore = (() => {
   structures={...structures};for(const slot of ['START','FINISH'])if(structures[slot])structures[slot]={...structures[slot],...Mol.electronicState(structures[slot])};
   const date = new Date();
   const name = [date.getHours(),date.getMinutes()].map(n=>String(n).padStart(2,'0')).join('');
-  const value = {id:crypto.randomUUID(), createdAt:date.getTime(), name:reactionName || name, ...structures};
+  const {id:_discardId,createdAt:_discardCreatedAt,name:_discardName,...payload}=structures;
+   const value = {...payload,id:crypto.randomUUID(),createdAt:date.getTime(),name:reactionName || name};
   return transaction('readwrite',(store,done)=>{ store.add(value); done(value); });
  }
  async function importRecords(items) {
