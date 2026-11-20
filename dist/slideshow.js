@@ -261,6 +261,7 @@ function syncButtons() {
   $('nextTen').disabled = $('next').disabled;
   if (reaction) {
     $('saveStartImage').disabled = $('saveFinalImage').disabled = unavailable || !imageSavingEnabled || !imageChannel || !captureImage || imageSaving;
+    $('saveGroundSpxyz').disabled = $('saveTsSpxyz').disabled = unavailable || vibrationActive;
   }
   for (const id of ['importStart','importFinish','importFrameEdit']) $(id).disabled = unavailable;
   for (const id of ['numbers','importFrame','downloadFrame','importAll','importMany']) {
@@ -538,6 +539,51 @@ $('downloadFrame').onclick = async () => {
     Mol.downloadBlob(Mol.calculationOutput(currentBlock),Mol.safeName(stem+' ('+(index+1)+')')+'.xyz');
   } catch (error) {status(error.message);}
 };
+if (reaction) {
+  let frameToSave = null;
+  let saveAsTs = false;
+  const dialog = $('frameSpxyzDialog');
+  function saveFrameAsSpxyz(asTs) {
+    if (busy || !currentBlock || vibrationActive) return;
+    stopPlayback();
+    frameToSave = currentBlock;
+    saveAsTs = asTs;
+    const state = Mol.electronicState(frameToSave);
+    const position = current + 1;
+    $('frameSpxyzTitle').textContent = (asTs ? 'TS' : '基底状態') + 'のSPXYZを保存（フレーム ' + position + '）';
+    $('frameSpxyzName').value = spxyzName(baseName + ' (' + position + ')', asTs);
+    $('frameSpxyzCharge').value = state.charge;
+    $('frameSpxyzMultiplicity').value = state.multiplicity;
+    $('frameSpxyzError').textContent = '';
+    dialog.showModal();
+  }
+  function spxyzName(value, asTs) {
+    const stem = Mol.safeName(value).replace(/\.(?:spxyz|xyz)$/i, '')
+      .replace(/_ts(?=[_.\s]|$)/gi, '').trim();
+    if (!stem) throw Error('ファイル名を入力してください。');
+    return stem + (asTs ? '_ts' : '') + '.spxyz';
+  }
+  $('saveGroundSpxyz').onclick = () => saveFrameAsSpxyz(false);
+  $('saveTsSpxyz').onclick = () => saveFrameAsSpxyz(true);
+  $('frameSpxyzBack').onclick = () => dialog.close();
+  dialog.addEventListener('close', () => { frameToSave = null; });
+  $('frameSpxyzForm').onsubmit = event => {
+    event.preventDefault();
+    if (!frameToSave) return;
+    try {
+      const charge = $('frameSpxyzCharge').valueAsNumber;
+      const multiplicity = $('frameSpxyzMultiplicity').valueAsNumber;
+      const solvent = $('frameSpxyzSolvent').value;
+      const filename = spxyzName($('frameSpxyzName').value, saveAsTs);
+      const text = Mol.spxyzText({...frameToSave, charge, multiplicity}, solvent);
+      Mol.downloadBlob(new Blob([text], {type:'text/plain;charset=utf-8'}), filename);
+      dialog.close();
+      status(filename + ' を保存しました。');
+    } catch (error) {
+      $('frameSpxyzError').textContent = error.message;
+    }
+  };
+}
 $('importFrame').onclick = () => registerFrames([[current+1,current+1]]);
 let lastReactionId;
 function endpointRecord(block,name,slot) {
