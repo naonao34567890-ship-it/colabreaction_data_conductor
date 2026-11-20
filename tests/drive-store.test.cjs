@@ -422,6 +422,8 @@ const { chromium } = require('playwright'),
         {
           ...body,
           atoms: [{ el: 'N', x: 9, y: 0, z: 0 }],
+          charge: 0,
+          multiplicity: 4,
           raw: new Blob(['1\n\nN 9 0 0\n']),
           edited: true,
         },
@@ -554,7 +556,7 @@ const { chromium } = require('playwright'),
           worker.onerror = (e) => rej(Error(e.message));
           worker.onmessage = async ({ data: m }) => {
             if (m.type === 'ready')
-              worker.postMessage({ type: 'export', ids: [id], format: 'xyz', withMemo: true });
+              worker.postMessage({ type: 'export', ids: [id], format: 'spxyz', solvent: 'Chloroform' });
             else if (m.type === 'chunk') {
               chunks.push(m.bytes);
               worker.postMessage({ type: 'ack' });
@@ -573,8 +575,10 @@ const { chromium } = require('playwright'),
         }),
       created,
     );
-    assert.ok(exported.includes('N 9'));
-    assert.ok(exported.includes('new tag'));
+    const [header, , coordinates] = exported.split('\n');
+    assert.equal(header, '原子数: 1 | 組成式: N | スピン多重度: 4 | 電荷数: 0 | 溶媒: Chloroform');
+    assert.deepEqual(coordinates.split(/\s+/).slice(1).map(Number), [9, 0, 0]);
+    assert.deepEqual(await q.evaluate(async (id) => (await Mol.get('meta', id)).tags, created), ['new tag']);
     // A cold tab must refresh again under the shared cache lock before hydration.
     const cold = await ctx2.newPage();
     let headCalls = 0,
