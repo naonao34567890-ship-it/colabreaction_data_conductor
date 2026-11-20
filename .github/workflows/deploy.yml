@@ -3,6 +3,7 @@ run-name: "Mol Bench · ${{ (inputs.publish || github.event_name == 'push') && '
 
 on:
   # A workflow-file update dispatches the approved manual-event release.
+  # Publish SPXYZ partial export and current-account reads.
   # Publish the fix for empty SPXYZ files after failed library exports.
   # Publish console-only legacy Colab record migration command (2026-11-17).
   # Publish UUID fallback names for unnamed historical Colab records.
