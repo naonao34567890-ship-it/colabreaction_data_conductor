@@ -225,6 +225,7 @@ export function createDriveStore(local, options = {}) {
           ? 'Google Driveの保存容量を超えました。保存は完了していません。'
           : 'Driveへの読み書きに失敗しました（HTTP ' + r.status + '）。保存は完了していません。',
       );
+      error.status = r.status;
       if (reason === 'storageQuotaExceeded') error.name = 'QuotaExceededError';
       throw error;
     }
