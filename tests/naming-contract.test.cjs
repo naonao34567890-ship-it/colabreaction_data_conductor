@@ -47,7 +47,7 @@ assert.match(slideshow,/baseName\+' \('\+\(i\+1\)\+'\)'/);
 assert.match(slideshow,/stem\+' \('\+\(index\+1\)\+'\)'/);
 assert.match(slideshow,/item\.sourceReactionId===sourceId/);
 const moleculePage=file('library.html');
-assert.match(moleculePage,/replace\(\/\\.\(\?:xyz\|pyxyz\|zip\)\$\/i/);
+assert.match(moleculePage,/replace\(\/\\.\(\?:xyz\|spxyz\|zip\)\$\/i/);
 const optimize=file('optimize-ui.js');
 assert.match(optimize,/label\+'_optimization-logs\.json'/);
 const cloud=file('drive-store.js');
