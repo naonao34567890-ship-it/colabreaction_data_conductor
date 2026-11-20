@@ -844,10 +844,10 @@ if(typeof location!=='undefined'&&location.origin==='https://mol-bench.web.app')
  }else{
  let service;
  const load=()=>service||(service=import('./drive-store.js').then(module=>module.createDriveStore(local)));
- Mol.enableFastLocalMigration=async progress=>{
+ Mol.enableFastLocalMigration=async(progress,acceptPartial)=>{
   const s=await load();
   const {migrateToFastLocal}=await import('./fast-local-migration.js');
-  return migrateToFastLocal(s,progress);
+  return migrateToFastLocal(s,progress,acceptPartial);
  };
  Mol.cloud={get ready(){return load().then(s=>s.ready);},call:(method,...args)=>load().then(s=>s[method](...args)),get reactionDatabaseName(){return Mol.cloudDatabaseNames?.reactions;}};
  for(const key of ['db','metadata','get','saveBatch','importMolecules','overwrite','removeMany','renameMolecule'])Mol[key]=(...args)=>Mol.cloud.call(key,...args);
@@ -857,14 +857,16 @@ if(typeof location!=='undefined'&&location.origin==='https://mol-bench.web.app')
  if(typeof document!=='undefined'){
   const mount=()=>{const nav=document.querySelector('.mode-switch');if(!nav)return;const link=document.createElement('a');link.href='colab.html';link.className='mode-link';link.textContent='Drive接続';link.title='分子・反応ライブラリの保存先';nav.append(link);
   const fast=document.createElement('button');fast.type='button';fast.textContent='高速ローカルへ移行';
-  fast.title='既存Driveデータをすべて端末へコピーしてから切り替える（自動バックアップは未搭載）';
+  fast.title='Driveの分子・反応を確認し、端末にコピーしてから切り替える';
   nav.append(fast);
   fast.onclick=async()=>{
-   if(!confirm('Driveから全分子・反応を端末へコピーして高速ローカルモードへ切り替えます。Driveデータは削除されません。切替後は自動バックアップされないため、XYZ/ZIPを定期的に保存してください。ほかのMol Benchタブを閉じてから続行してください。'))return;
+   if(!confirm('Driveから全分子・反応を端末へコピーして高速ローカルモードへ切り替えます。Driveデータは削除されません。切替後は端末に保存し、Driveとはバックグラウンドで同期します。ほかのMol Benchタブを閉じてから続行してください。'))return;
    fast.disabled=true;
    try{
-    await Mol.enableFastLocalMigration(message=>{fast.textContent=message;});
-    location.reload();
+    const result=await Mol.enableFastLocalMigration(message=>{fast.textContent=message;},
+      report=>confirm(report+'\n\n取得できたデータで切り替えますか？ 未取得の項目はDriveに残し、同期時に再取得します。'));
+    if(result)location.reload();
+    else{fast.disabled=false;fast.textContent='高速ローカルへ移行';}
    }catch(error){alert('移行を中止しました。Drive正本のままです。\n'+error.message);fast.disabled=false;fast.textContent='高速ローカルへ移行';}
   };
   document.addEventListener('drive-store-status',event=>{link.textContent=event.detail.error?'Drive：要確認':event.detail.text.includes('移行中')?'Drive移行中…':event.detail.text.includes('読み込み中')?'Drive読込中…':event.detail.text.includes('保存中')?'Drive保存中…':event.detail.text==='Driveに保存済み'?'Drive保存済み':'Drive接続済み';link.title=event.detail.text;const pane=document.querySelector('#notice,#reactionStatus,#colabStatus');if(pane&&(event.detail.error||event.detail.text.includes('移行中')||event.detail.text.includes('読み込み中'))){pane.textContent=event.detail.text;pane.dataset.driveMessage=event.detail.text;}else if(pane&&pane.textContent===pane.dataset.driveMessage){pane.textContent='';delete pane.dataset.driveMessage;}});};

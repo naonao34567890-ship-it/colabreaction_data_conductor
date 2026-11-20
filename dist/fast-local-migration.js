@@ -1,6 +1,6 @@
 // One-time, opt-in migration from the Drive-authoritative library to independent
 // browser-local IndexedDB databases. Never deletes or modifies Drive data.
-// Do not enable local mode until both complete datasets are verified.
+// Enable local mode only after validating the staged data and reporting missing records.
 import {fastSyncFingerprint,saveFastSyncMigrationBaseline} from './fast-local-sync.js';
 const PREFIX='mol-bench-fast-local-v1';
 export const localMoleculeDB=sub=>PREFIX+'-molecules-'+sub;
@@ -23,8 +23,8 @@ function txComplete(tx){
     tx.onerror=()=>{};
   });
 }
-async function initializeMolecules(){
-  const db=await openDB(localMoleculeDB(activeSub),2,(db,tx)=>{
+async function initializeMolecules(sub){
+  const db=await openDB(localMoleculeDB(sub),2,(db,tx)=>{
     if(!db.objectStoreNames.contains('meta')){
       const meta=db.createObjectStore('meta',{keyPath:'id'});
       meta.createIndex('name','name',{unique:true});
@@ -42,9 +42,8 @@ async function initializeMolecules(){
   await txComplete(tx);
   return db;
 }
-let activeSub='';
-async function initializeReactions(){
-  const db=await openDB(localReactionDB(activeSub),1,db=>{
+async function initializeReactions(sub){
+  const db=await openDB(localReactionDB(sub),1,db=>{
     if(!db.objectStoreNames.contains('reactions'))db.createObjectStore('reactions',{keyPath:'id'});
   });
   const tx=db.transaction('reactions','readwrite');
@@ -59,77 +58,95 @@ async function count(db,store){
     r.onerror=()=>reject(r.error);
   });
 }
-export async function migrateToFastLocal(service,progress=()=>{}){
+// Evaluate coverage for each library so a large molecule library cannot mask
+// a mostly unavailable reaction library.
+const MIN_COVERAGE=0.9;
+
+export async function migrateToFastLocal(service,progress=()=>{},acceptPartial=()=>false){
+  const migrate=()=>stageMigration(service,progress,acceptPartial);
+  return navigator.locks
+    ?navigator.locks.request(fastModeKey,migrate)
+    :migrate();
+}
+
+async function stageMigration(service,progress,acceptPartial){
   await service.ready;
   const account=service.account;
   if(!account?.sub)throw Error('Drive接続のアカウントを確認できません。');
-  if(localStorage.getItem(fastModeKey))
-    throw Error('高速ローカルモードは既に有効です。');
-  activeSub=account.sub;
+  if(localStorage.getItem(fastModeKey))throw Error('高速ローカルモードは既に有効です。');
   progress('Google Driveから分子・反応を読み込みます。最初の一度だけ時間がかかります。');
   await service.refresh();
   const firstIndex=await service.syncIndex();
   const startVersions=new Map(firstIndex.records.map(row=>[row.key,row.version]));
   const fingerprints={};
-  const metas=(await service.metadata()).filter(m=>!String(m.id).startsWith('builtin-'));
-  const reactions=await service.reactionRead();
-  const molDB=await initializeMolecules(),reactionDB=await initializeReactions();
-  let saved=0;
+  const missing=new Map();
+  const datasets=[
+    {kind:'m',label:'分子',rows:firstIndex.records.filter(row=>row.key.startsWith('m:')),saved:0},
+    {kind:'r',label:'反応',rows:firstIndex.records.filter(row=>row.key.startsWith('r:')),saved:0},
+  ];
+  let molDB,reactionDB;
   try{
-    for(let offset=0;offset<metas.length;offset+=30){
-      const batch=metas.slice(offset,offset+30);
-      const contents=[];
-      // Fetch before opening a write transaction (network awaits terminate IndexedDB transactions).
-      for(const meta of batch){
-        const body=await service.get('body',meta.id);
-        if(!body?.atoms||body.id!==meta.id)
-          throw Error('Driveの分子データが不足しています: '+meta.name);
-        contents.push({meta,body});
-        fingerprints['m:'+meta.id]=await fastSyncFingerprint({kind:'m',meta,body});
+    molDB=await initializeMolecules(account.sub);
+    reactionDB=await initializeReactions(account.sub);
+    for(const dataset of datasets){
+      const {kind,label,rows}=dataset;
+      const db=kind==='m'?molDB:reactionDB;
+      const stores=kind==='m'?['meta','body']:['reactions'];
+      for(let offset=0;offset<rows.length;offset+=30){
+        const batch=rows.slice(offset,offset+30),contents=[];
+        for(const row of batch){
+          const id=row.key.slice(2);
+          let body;
+          try{
+            body=kind==='m'?await service.get('body',id):await service.syncRead(kind,id);
+          }catch(error){
+            if(error.status!==404)throw error;
+            missing.set(row.key,row.meta?.name||id);
+            continue;
+          }
+          if(body?.id!==id||(kind==='m'&&!Array.isArray(body.atoms)))
+            throw Error(label+'データが不完全です。 '+(row.meta?.name||id));
+          contents.push({meta:row.meta,body});
+          fingerprints[row.key]=await fastSyncFingerprint({kind,meta:row.meta,body});
+        }
+        const tx=db.transaction(stores,'readwrite'),done=txComplete(tx);
+        for(const {meta,body} of contents){
+          if(kind==='m'){
+            tx.objectStore('meta').put(meta);
+            tx.objectStore('body').put(body);
+          }else tx.objectStore('reactions').put(body);
+        }
+        await done;
+        dataset.saved+=contents.length;
+        progress(label+'を確認 '+(offset+batch.length).toLocaleString()+' / '+rows.length.toLocaleString()+
+          '（取得 '+dataset.saved.toLocaleString()+'件）');
       }
-      const tx=molDB.transaction(['meta','body','tags'],'readwrite');
-      for(const {meta,body}of contents){
-        tx.objectStore('meta').put(meta);
-        tx.objectStore('body').put(body);
-        for(const name of meta.tags||[])tx.objectStore('tags').put({name});
-      }
-      await txComplete(tx);
-      saved+=contents.length;
-      progress('分子をローカルへ移行 '+saved.toLocaleString()+' / '+metas.length.toLocaleString());
     }
-    // Preserve user-created but currently unused tag names as well.
     const tagsTx=molDB.transaction('tags','readwrite'),tagsDone=txComplete(tagsTx);
-    tagsTx.objectStore('tags').clear();
     for(const tag of firstIndex.tags||[])tagsTx.objectStore('tags').put(tag);
     await tagsDone;
-    let copied=0;
-    for(let i=0;i<reactions.length;i+=30){
-      const batch=reactions.slice(i,i+30);
-      for(const reaction of batch)
-        fingerprints['r:'+reaction.id]=await fastSyncFingerprint({kind:'r',body:reaction});
-      const tx=reactionDB.transaction('reactions','readwrite');
-      for(const reaction of batch)tx.objectStore('reactions').put(reaction);
-      await txComplete(tx);
-      copied=Math.min(i+30,reactions.length);
-      progress('反応をローカルへ移行 '+copied.toLocaleString()+' / '+reactions.length.toLocaleString());
-    }
-    const [mCount,rCount]=await Promise.all([count(molDB,'meta'),count(reactionDB,'reactions')]);
-    if(mCount!==metas.length||rCount!==reactions.length)
+    const [mCount,bodyCount,rCount]=await Promise.all([
+      count(molDB,'meta'),count(molDB,'body'),count(reactionDB,'reactions'),
+    ]);
+    if(mCount!==datasets[0].saved||bodyCount!==mCount||rCount!==datasets[1].saved)
       throw Error('移行件数が一致しません。モードの切替を中止しました。');
-    // Detect edits to catalogue metadata during the migration; do not silently adopt stale data.
-    await service.refresh();
-    const latest=(await service.metadata()).filter(m=>!String(m.id).startsWith('builtin-'));
-    const key=m=>JSON.stringify([m.id,m.name,m.revision,m.charge,m.multiplicity,m.tags]);
-    if(latest.length!==metas.length||latest.some((m,i)=>key(m)!==key(metas[i])))
-      throw Error('移行中にDrive上の分子が変更されました。切替せず再実行してください。');
-    await saveFastSyncMigrationBaseline(service,account.sub,fingerprints,startVersions,firstIndex.tagsVersion);
+    if(missing.size){
+      const totals=datasets.map(({label,saved,rows})=>label+' '+saved+' / '+rows.length+'件取得').join('\n');
+      const names=[...missing].slice(0,20).map(([key,name])=>(key.startsWith('m:')?'分子':'反応')+' '+name);
+      if(missing.size>names.length)names.push('ほか '+(missing.size-names.length)+'件');
+      const report=totals+'\n\nDriveで取得できなかった項目（404）\n'+names.join('\n');
+      if(datasets.some(({rows,saved})=>saved<rows.length*MIN_COVERAGE))
+        throw Error('取得率が90%未満のライブラリがあります。\n'+report);
+      if(!await acceptPartial(report))return null;
+    }
+    await saveFastSyncMigrationBaseline(service,account.sub,fingerprints,startVersions,firstIndex.tagsVersion,
+      missing,firstIndex.generation);
     if(navigator.storage?.persist)await navigator.storage.persist().catch(()=>false);
-    // This flag is committed ONLY after complete local data validation.
     localStorage.setItem(fastModeKey,JSON.stringify({sub:account.sub,email:account.email,migratedAt:new Date().toISOString()}));
     progress('移行完了。高速ローカルモードに切り替えます。');
-    return {molecules:mCount,reactions:rCount};
+    return {molecules:mCount,reactions:rCount,missing:missing.size};
   }finally{
-    molDB.close();
-    reactionDB.close();
+    molDB?.close();
+    reactionDB?.close();
   }
 }
