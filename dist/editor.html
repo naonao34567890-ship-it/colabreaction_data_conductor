@@ -105,7 +105,17 @@
 <h2>その他の分子ファイルで保存</h2>
 <label>ファイル名<input id="otherMolecularName" required></label>
 <label>形式<select id="otherMolecularFormat"><option value="spxyz">SPXYZ（計算条件付き）</option><option value="sdf">SDF</option></select></label>
-<label id="otherMolecularSolventRow">溶媒（ORCA名、気相は none）<input id="otherMolecularSolvent" value="none" spellcheck="false"></label>
+<label id="otherMolecularSolventRow">溶媒<select id="otherMolecularSolvent">
+  <option value="none">none（気相）</option>
+  <option value="Acetonitrile">AN（アセトニトリル）</option>
+  <option value="DMSO">DMSO</option>
+  <option value="Chloroform">クロロホルム</option>
+  <option value="Acetone">アセトン</option>
+  <option value="Ethylacetate">酢酸エチル（酢エチ）</option>
+  <option value="Water">水</option>
+  <option value="Diethylether">ジエチルエーテル</option>
+  <option value="DMF">DMF</option>
+</select></label>
 <p id="otherMolecularSdfHint" hidden>SDFの結合は座標から推定し、単結合として出力します。</p>
 <p id="otherMolecularError" role="alert"></p>
 <div class="dialog-actions"><button type="button" id="otherMolecularBack">戻る</button><button type="submit" class="primary">保存</button></div>

@@ -85,7 +85,17 @@
 <label>ファイル名<input id="frameSpxyzName" required></label>
 <label>電荷数<input id="frameSpxyzCharge" type="number" step="1" required></label>
 <label>スピン多重度<input id="frameSpxyzMultiplicity" type="number" min="1" step="1" required></label>
-<label>溶媒（ORCA名、気相は none）<input id="frameSpxyzSolvent" placeholder="none / Chloroform" spellcheck="false" required></label>
+<label>溶媒<select id="frameSpxyzSolvent">
+  <option value="none">none（気相）</option>
+  <option value="Acetonitrile">AN（アセトニトリル）</option>
+  <option value="DMSO">DMSO</option>
+  <option value="Chloroform">クロロホルム</option>
+  <option value="Acetone">アセトン</option>
+  <option value="Ethylacetate">酢酸エチル（酢エチ）</option>
+  <option value="Water">水</option>
+  <option value="Diethylether">ジエチルエーテル</option>
+  <option value="DMF">DMF</option>
+</select></label>
 <p id="frameSpxyzError" role="alert"></p>
 <div class="dialog-actions"><button id="frameSpxyzBack" type="button">戻る</button><button type="submit" class="primary">保存</button></div>
 </form>

@@ -72,7 +72,17 @@
 <button type="button" id="multiImport">全分子を登録</button>
 <button type="submit" class="primary">指定分子だけ登録</button>
 </div></form></dialog>
-<dialog id="exportDialog"><h2>選択した分子をダウンロード</h2><label>保存する名前<input id="exportName" value="molecules"></label><label>出力形式<select id="format"><option value="zip">ZIP（分子ごとの xyz）</option><option value="xyz">1つの連結 xyz</option><option value="spxyz">SPXYZ（構造と計算条件）</option></select></label><label id="exportSolventRow" hidden>溶媒（ORCA名、気相は none）<input id="exportSolvent" value="none" spellcheck="false"></label><p class="muted" id="exportHint"></p><div class="dialog-actions"><button id="closeDialog">戻る</button><button class="primary" id="exportStart">保存する</button></div></dialog>
+<dialog id="exportDialog"><h2>選択した分子をダウンロード</h2><label>保存する名前<input id="exportName" value="molecules"></label><label>出力形式<select id="format"><option value="zip">ZIP（分子ごとの xyz）</option><option value="xyz">1つの連結 xyz</option><option value="spxyz">SPXYZ（構造と計算条件）</option></select></label><label id="exportSolventRow" hidden>溶媒<select id="exportSolvent">
+  <option value="none">none（気相）</option>
+  <option value="Acetonitrile">AN（アセトニトリル）</option>
+  <option value="DMSO">DMSO</option>
+  <option value="Chloroform">クロロホルム</option>
+  <option value="Acetone">アセトン</option>
+  <option value="Ethylacetate">酢酸エチル（酢エチ）</option>
+  <option value="Water">水</option>
+  <option value="Diethylether">ジエチルエーテル</option>
+  <option value="DMF">DMF</option>
+</select></label><p class="muted" id="exportHint"></p><div class="dialog-actions"><button id="closeDialog">戻る</button><button class="primary" id="exportStart">保存する</button></div></dialog>
 <script>
 'use strict';
 const $=id=>document.getElementById(id);let meta=[],selected=new Set(),jobs=[],active=null,exporting=false,exportCancel=null,deleting=false,duplicating=false;const channel=Mol.cloud?new EventTarget():new BroadcastChannel('molecular-xyz');
