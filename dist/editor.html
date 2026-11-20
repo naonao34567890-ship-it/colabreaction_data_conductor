@@ -1,5 +1,5 @@
 <!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>分子エディタ</title><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script><script src="atomic-weights.js"></script>
-<script src="common.js?v=names-2"></script><script src="reaction-store.js?v=run-ledger-2"></script><style>
+<script src="common.js?v=spxyz-1"></script><script src="reaction-store.js?v=run-ledger-2"></script><style>
 #reactionSaveDialog label[hidden]{display:none}
 </style><style>
 /* Core editor features stay visible in the sidebar. */
@@ -85,6 +85,7 @@
       <button class="primary" id="saveReactionStart" disabled>STARTとして保存</button>
       <button id="saveReactionFinish" disabled>FINISHとして保存</button>
       <button id="direct">xyz ダウンロード ↓</button>
+      <button id="otherMolecularFile" disabled>その他の分子ファイル(sdf spxyz形式)で保存</button>
     </div></details>
   </div>
 </div></header><main class="editor-main"><section id="view" class="viewport" aria-label="分子の3Dビュー"><div class="view-label">3D VIEW / Å</div><div class="view-info" id="lineInfo">読み込み中…</div><canvas id="atomNumberCanvas" aria-hidden="true" hidden style="position:absolute;inset:0;pointer-events:none"></canvas><canvas id="lassoCanvas"></canvas></section><aside class="sidebar"><section class="panel"><div class="eyebrow">SELECTION</div><h2>選択と特別な点</h2><p id="selectionInfo">0 原子を選択</p><button id="deleteSelection" class="tidy-danger" disabled>選択を削除</button><p id="pointInfo" class="muted">特別な点：未指定</p><small>Ctrl＋クリックで選択<br>Ctrl＋Alt＋クリックで特別な点</small></section><section class="panel"><div class="eyebrow">MOIETIES</div><h2>モイエティの交換</h2><div class="row"><button id="register1">1 に登録</button><button id="register2">2 に登録</button></div><div class="moiety" id="m1">1 · 未登録</div><div class="moiety orange" id="m2">2 · 未登録</div><button id="swap" style="width:100%" disabled>⇄ 座標を交換</button><details class="help moiety-help"><summary>交換の使い方</summary><small>両方に特別な点があれば点を基準に、なければ重心を基準に交換します。</small></details></section><section class="mini-wrap"><div class="eyebrow">LIBRARY</div><div class="row"><h2>分子を追加</h2><span class="spacer"></span><small id="miniCount">0 分子</small></div><label>並び順 <select id="miniOrder" autocomplete="off"><option value="name-asc">名前順</option><option value="added-asc">追加時間昇順</option><option value="added-desc">追加時間降順</option><option value="name-desc">名前逆順</option><option value="mass-asc">分子量昇順</option><option value="mass-desc">分子量降順</option><option value="id">内部ID順</option><option value="tag-name" selected>タグ順＋名前順</option></select></label><div class="grid-view" id="mini"></div><button id="add" disabled>選択した1分子を追加 ＋</button></section><details class="help"><summary>キー・マウス操作</summary><div>左ドラッグ：カメラ回転（投げ縄OFF）<br>ホイール：ズーム ／ 中ドラッグ：パン<br>Ctrl＋クリック：選択追加・解除<br>空白クリック：選択解除<br>投げ縄ON＋左ドラッグ：範囲選択<br>Ctrl＋投げ縄：選択に追加<br>Ctrl＋Alt＋クリック：特別な点<br>Alt＋左ドラッグ：モイエティ回転<br>Ctrl＋Alt＋ドラッグ：操作なし<br>W/S：画面の奥／手前、A/D：画面の左／右<br>Space：画面の上 ／ Shift：画面の下<br>Ctrl＋Shift＋Backspace：選択を削除<br>Ctrl＋Z：Undo ／ Ctrl＋Y：Redo<br>MacではOptionがAltに対応</div></details><p class="status" id="notice" role="status" aria-live="polite"></p></aside></main></div><dialog id="reactionSaveDialog" aria-labelledby="reactionSaveTitle">
@@ -99,6 +100,17 @@
 </form>
 </dialog>
 <dialog id="nameDialog"><h2 id="dialogTitle">新しい分子として保存</h2><label>分子の名前<input id="name"></label><p class="muted">編集後はコメントを保持し、追加列・フッターを破棄した標準xyzで出力します。</p><div class="dialog-actions"><button id="back">戻る</button><button class="primary" id="confirm">保存</button></div></dialog>
+<dialog id="otherMolecularDialog">
+<form id="otherMolecularForm">
+<h2>その他の分子ファイルで保存</h2>
+<label>ファイル名<input id="otherMolecularName" required></label>
+<label>形式<select id="otherMolecularFormat"><option value="spxyz">SPXYZ（計算条件付き）</option><option value="sdf">SDF</option></select></label>
+<label id="otherMolecularSolventRow">溶媒（ORCA名、気相は none）<input id="otherMolecularSolvent" value="none" spellcheck="false"></label>
+<p id="otherMolecularSdfHint" hidden>SDFの結合は座標から推定し、単結合として出力します。</p>
+<p id="otherMolecularError" role="alert"></p>
+<div class="dialog-actions"><button type="button" id="otherMolecularBack">戻る</button><button type="submit" class="primary">保存</button></div>
+</form>
+</dialog>
 <dialog id="optDialog" style="margin:auto 1rem 1rem auto;max-width:min(420px, calc(100% - 2rem))">
 <h2 id="optTitle">GFN2-xTB 構造最適化</h2>
 <p class="muted">気相で拘束なしの予備最適化を行います。全電荷とスピン多重度は計算対象に合わせて指定してください。</p>
@@ -148,7 +160,8 @@ for(const id of ['structureCharge','structureMultiplicity'])$(id).addEventListen
 function push(before){history.push(before);if(history.length>60)history.shift();future=[];edited=true;update();}
 function restore(s){structureState={...(s.structureState||structureState)};syncElectronicInputs();atoms=s.atoms;selected=new Set(s.selected);point=s.point;moieties=s.moieties;edited=s.edited;dirty=true;update();}
 function undo(){if(drag?.mode==='rotate'){finishRotation();drag=null;controls.enabled=true;}finishKeys();if(!history.length)return;future.push(snapshot());restore(history.pop());}function redo(){if(drag?.mode==='rotate'){finishRotation();drag=null;controls.enabled=true;}finishKeys();if(!future.length)return;history.push(snapshot());restore(future.pop());}
-function update(){showElectronicCheck();if(point!==null&&!selected.has(point))point=null;$('selectionInfo').textContent=selected.size+' 原子を選択';$('pointInfo').textContent=point===null?'特別な点：未指定':`特別な点：#${point+1} ${atoms[point].el}`;$('lineInfo').textContent=`原子数 ${atoms.length} / 行数 ${atoms.length+2} · 選択 ${selected.size}`+(molecule&&molecule.originalLines>molecule.baseLines?` / 元ブロック全体 ${molecule.originalLines}行`:'')+(edited?' · 編集中':'');
+function update(){
+ $('otherMolecularFile').disabled=!molecule||!atoms.length;showElectronicCheck();if(point!==null&&!selected.has(point))point=null;$('selectionInfo').textContent=selected.size+' 原子を選択';$('pointInfo').textContent=point===null?'特別な点：未指定':`特別な点：#${point+1} ${atoms[point].el}`;$('lineInfo').textContent=`原子数 ${atoms.length} / 行数 ${atoms.length+2} · 選択 ${selected.size}`+(molecule&&molecule.originalLines>molecule.baseLines?` / 元ブロック全体 ${molecule.originalLines}行`:'')+(edited?' · 編集中':'');
  for(let k=0;k<2;k++){const m=moieties[k];$('m'+(k+1)).textContent=`${k+1} · ${m.ids.length?m.ids.length+'原子（'+m.ids.slice(0,10).map(i=>'#'+(i+1)).join(', ')+(m.ids.length>10?'…':'')+'）':'未登録'} / 特別な点 ${m.point===null?'なし':'#'+(m.point+1)}`;}$('swap').disabled=!moieties[0].ids.length||!moieties[1].ids.length;$('undo').disabled=!history.length;$('redo').disabled=!future.length;$('register1').disabled=$('register2').disabled=$('deleteSelection').disabled=!selected.size;$('optimizeGfn1').disabled=$('optimize').disabled=atoms.length<2;$('save').disabled=$('direct').disabled=!atoms.length;$('overwrite').disabled=overwriting||!canOverwriteStructure()||!atoms.length||!edited;dirty=true;}
 function finishKeys(){keys.clear();if(keySnapshot){push(keySnapshot);keySnapshot=null;}}
 function deleteSelection() {
@@ -245,6 +258,32 @@ $('overwrite').onclick=async()=>{
 let newSaving=false;let saveMode='save';function naming(mode){if(newSaving||!molecule||!atoms.length)return;try{validateStructureForSave();}catch(e){notice(e.message);return;}finishKeys();saveMode=mode;$('name').value=molecule.name+(edited?'_edited':'');$('dialogTitle').textContent=mode==='save'?'新しい分子として保存':'xyzをダウンロード';$('confirm').textContent=mode==='save'?'保存':'ダウンロード';$('nameDialog').showModal();}
 $('save').onclick=()=>naming('save');$('direct').onclick=()=>naming('download');$('back').onclick=()=>$('nameDialog').close();$('confirm').onclick=async()=>{if(newSaving)return;try{validateStructureForSave();}catch(e){notice(e.message);return;}newSaving=true;const label=$('confirm').textContent;for(const id of ['confirm','back','name'])$(id).disabled=true;$('confirm').textContent='保存中…';const name=Mol.safeName($('name').value);const m=edited?editedRecord(name):{...molecule,name};try{if(saveMode==='download')Mol.downloadBlob(Mol.calculationOutput(m),name+'.xyz');else{if(!await Mol.confirmElectronicSave(m))return;const items=await Mol.saveBatch([m]);miniChange({type:'added',items});Mol.notify({type:'added',items});notice('「'+items[0].name+'」として保存しました。');}$('nameDialog').close();}catch(e){notice((e.name==='QuotaExceededError'?'保存容量を超えました':e.message));}finally{newSaving=false;for(const id of ['confirm','back','name'])$(id).disabled=false;$('confirm').textContent=label;}};
 $('nameDialog').addEventListener('cancel',event=>{if(newSaving)event.preventDefault();});
+const otherMolecularFormat=$('otherMolecularFormat');
+otherMolecularFormat.onchange=()=>{
+ const sdf=otherMolecularFormat.value==='sdf';
+ $('otherMolecularSolventRow').hidden=sdf;
+ $('otherMolecularSdfHint').hidden=!sdf;
+};
+$('otherMolecularFile').onclick=()=>{
+ if(!molecule||!atoms.length)return;
+ $('otherMolecularName').value=molecule.name+(edited?'_edited':'');
+ $('otherMolecularError').textContent='';
+ $('otherMolecularDialog').showModal();
+};
+$('otherMolecularBack').onclick=()=>$('otherMolecularDialog').close();
+$('otherMolecularForm').onsubmit=event=>{
+ event.preventDefault();
+ try{
+  validateStructureForSave();
+  finishKeys();finishRotation();
+  const name=Mol.safeName($('otherMolecularName').value).replace(/\.(?:sdf|spxyz)$/i,'');
+  const record={...molecule,name,atoms,...structureState};
+  const format=otherMolecularFormat.value;
+  const text=format==='sdf'?Mol.sdfText(record):Mol.spxyzText(record,$('otherMolecularSolvent').value);
+  Mol.downloadBlob(new Blob([text],{type:'text/plain;charset=utf-8'}),name+'.'+format);
+  $('otherMolecularDialog').close();
+ }catch(error){$('otherMolecularError').textContent=error.message;}
+};
 function isTyping(e){return /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)||e.target.isContentEditable||document.querySelector('dialog[open]')!==null;}
 const movement=new Set(['KeyW','KeyA','KeyS','KeyD','Space','ShiftLeft','ShiftRight']);
 window.addEventListener('keydown',e=>{if(isTyping(e))return;

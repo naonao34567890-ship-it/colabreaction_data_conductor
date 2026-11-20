@@ -32,7 +32,7 @@ async function* lines(file, cancelled=()=>false) {
  if(pending.endsWith('\r'))yield {text:pending.slice(0,-1),raw:pending};
  else if(pending)yield {text:pending,raw:pending};
 }
-const structureExtension = /\.(?:xyz|pyxyz|sdf)$/i;
+const structureExtension = /\.(?:xyz|sdf)$/i;
 const acceptsStructure = name => structureExtension.test(name);
 const structureBaseName = name => name.replace(structureExtension,'');
 
@@ -269,6 +269,43 @@ function formatMemo(comment,tags,state={}){
  return fields.join('\t');
 }
 function calculationOutput(m){return new Blob([standard(m)],{type:"chemical/x-xyz"});}
+function spxyzSolvent(value) {
+ const solvent=String(value??'').trim();
+ if(!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(solvent))throw Error('溶媒にはORCAの溶媒名または気相を示す none を入力してください。');
+ return solvent.toLowerCase()==='none'?'none':solvent;
+}
+function spxyzText(m,solvent) {
+ solvent=spxyzSolvent(solvent);
+ const state=checkElectronicState(m);
+ if(!state.valid)throw Error((m.name?m.name+'：':'')+state.message);
+ const counts=new Map();
+ for(const {el,x,y,z} of m.atoms){
+  if(![x,y,z].every(Number.isFinite))throw Error('原子座標が不正です。');
+  counts.set(el,(counts.get(el)||0)+1);
+ }
+ let ordered=Array.from(counts.keys()).sort();
+ if(counts.has('C'))ordered=['C',...(counts.has('H')?['H']:[]),...ordered.filter(el=>el!=='C'&&el!=='H')];
+ const formula=ordered.map(el=>el+(counts.get(el)>1?counts.get(el):'')).join('');
+ const coordinates=standard(m).split('\n').slice(2).join('\n');
+ const comment=(m.comment||m.name||'').replace(/[\r\n]/g,' ');
+ return `原子数: ${m.atoms.length} | 組成式: ${formula} | スピン多重度: ${state.multiplicity} | 電荷数: ${state.charge} | 溶媒: ${solvent}\n${comment}\n${coordinates}`;
+}
+function sdfText(m) {
+ const title=(m.name||'Molecule').replace(/[\r\n]/g,' ');
+ const pairs=bonds(m.atoms);
+ const state=electronicState(m);
+ const rows=[title,'  MolBench          3D','','  0  0  0     0  0            999 V3000',
+  'M  V30 BEGIN CTAB',`M  V30 COUNTS ${m.atoms.length} ${pairs.length} 0 0 0`,'M  V30 BEGIN ATOM'];
+ m.atoms.forEach(({el,x,y,z},i)=>rows.push(`M  V30 ${i+1} ${el} ${x.toFixed(8)} ${y.toFixed(8)} ${z.toFixed(8)} 0`));
+ rows.push('M  V30 END ATOM');
+ if(pairs.length){
+  rows.push('M  V30 BEGIN BOND');
+  pairs.forEach(([a,b],i)=>rows.push(`M  V30 ${i+1} 1 ${a+1} ${b+1}`));
+  rows.push('M  V30 END BOND');
+ }
+ rows.push('M  V30 END CTAB','M  END','>  <TOTAL_CHARGE>',String(state.charge),'','>  <SPIN_MULTIPLICITY>',String(state.multiplicity),'','$$$$','');
+ return rows.join('\n');
+}
 function standard(m){return `${m.atoms.length}\n\n`+m.atoms.map(a=>`${a.el} ${a.x.toPrecision(12)} ${a.y.toPrecision(12)} ${a.z.toPrecision(12)}`).join('\n')+'\n';}
 async function output(m,memo=''){
  const type='chemical/x-xyz';
@@ -448,7 +485,7 @@ function parseFrameRanges(value,total){
  });
  return ranges;
 }
-const API={internalElectronicWarnings,reactionChargeWarnings,mirrorReactionState,electronicWarningText,electronicWarnings,checkElectronicState,electronicComment,electronicState,validateElectronicFields,moleculeSignature,importMolecules,mass:Mass,setDatabaseName,acceptsStructure,structureBaseName,calculationOutput,readMemo,formatMemo,compareTagNames:displayNames.compare,parseFrameRanges,scanEntries,elements,tick,atomLine,lines,parseFile,standard,compareDisplayOrder,output,centroid,swap,bonds,db,get,metadata,nextDuplicateName,saveBatch,overwrite,remove,removeMany,cacheThumb,notify,crc32,safeName};root.Mol=API;if(typeof module!=='undefined')module.exports=API;
+const API={spxyzSolvent,spxyzText,sdfText,internalElectronicWarnings,reactionChargeWarnings,mirrorReactionState,electronicWarningText,electronicWarnings,checkElectronicState,electronicComment,electronicState,validateElectronicFields,moleculeSignature,importMolecules,mass:Mass,setDatabaseName,acceptsStructure,structureBaseName,calculationOutput,readMemo,formatMemo,compareTagNames:displayNames.compare,parseFrameRanges,scanEntries,elements,tick,atomLine,lines,parseFile,standard,compareDisplayOrder,output,centroid,swap,bonds,db,get,metadata,nextDuplicateName,saveBatch,overwrite,remove,removeMany,cacheThumb,notify,crc32,safeName};root.Mol=API;if(typeof module!=='undefined')module.exports=API;
 })(globalThis);
 
 /* Browser-only presentation helpers; no DOM or Three dependency in Worker. */

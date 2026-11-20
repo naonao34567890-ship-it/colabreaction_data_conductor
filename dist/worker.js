@@ -1,5 +1,5 @@
 /* Classic Worker. Also loaded by index.html for cooperative fallback. */
-if(typeof importScripts==='function')importScripts('common.js');
+if(typeof importScripts==='function')importScripts('common.js?v=spxyz-1');
 (function(root){
 'use strict';
 class ImportJob{
@@ -49,20 +49,20 @@ class ImportJob{
  async finish(){try{await this.flush();}catch(_){}this.emit({type:'done',stats:this.stats,cancelled:this.cancelled});}
 }
 function header(size){const a=new Uint8Array(size);return{a,v:new DataView(a.buffer)};}
-async function exportData(ids,format,send,cancelled,progress,withMemo=false,bodies=null,files=null){
+async function exportData(ids,format,send,cancelled,progress,solvent='none',bodies=null,files=null){
  const central=[],encoder=new TextEncoder(),names=new Set(),molecules=[];let offset=0,done=0;
  const listEnabled=format==='zip'&&!files;
  const entries=[...ids,...(listEnabled?[null]:[])];
- for(const id of entries){if(cancelled())return;const isList=listEnabled&&id===null;const body=files||isList?{}:bodies?bodies[id]:await Mol.get('body',id);if(!body)throw Error('出力対象が削除されました。選択し直してください');const meta=withMemo&&!isList?await Mol.get('meta',id):null;const blob=isList?new Blob([JSON.stringify({format:'mol-bench-molecule-library',version:1,molecules},null,2)],{type:'application/json'}):files?files[id].blob:withMemo?await Mol.output(body,Mol.formatMemo(body.comment,meta?.tags||[],Mol.electronicState(body))):Mol.calculationOutput(body);
+ for(const id of entries){if(cancelled())return;const isList=listEnabled&&id===null;const body=files||isList?{}:bodies?bodies[id]:await Mol.get('body',id);if(!body)throw Error('出力対象が削除されました。選択し直してください');const blob=isList?new Blob([JSON.stringify({format:'mol-bench-molecule-library',version:1,molecules},null,2)],{type:'application/json'}):files?files[id].blob:format==='spxyz'?new Blob([Mol.spxyzText(body,solvent)]):Mol.calculationOutput(body);
   if(format==='zip'){
-   const extension=withMemo?'.pyxyz':'.xyz';
+   const extension='.xyz';
    const base=isList?'lib_list':files?files[id].path:Mol.safeName(body.name);
    let name=isList?'lib_list.json':files?base:base+extension;
    if(files&&names.has(name))throw Error('ZIP内のパスが重複しています');
    if(names.has(name))name=Mol.nextDuplicateName(name,names);
    names.add(name);
    const filename=encoder.encode(name),bytes=new Uint8Array(await blob.arrayBuffer()),crc=Mol.crc32(bytes);if(filename.length>65535)throw Error('ZIP内のファイル名が長すぎます');
-   if(listEnabled&&!isList){const m=meta||await Mol.get('meta',id);molecules.push({id,name:body.name,file:name,...Mol.electronicState(body),tags:m?.tags||body.tags||[],sha256:Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('')});}
+   if(listEnabled&&!isList){const m=await Mol.get('meta',id);molecules.push({id,name:body.name,file:name,...Mol.electronicState(body),tags:m?.tags||body.tags||[],sha256:Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('')});}
    const h=header(30+filename.length);h.v.setUint32(0,0x04034b50,true);h.v.setUint16(4,20,true);h.v.setUint16(6,0x800,true);h.v.setUint16(12,33,true);h.v.setUint32(14,crc,true);h.v.setUint32(18,bytes.length,true);h.v.setUint32(22,bytes.length,true);h.v.setUint16(26,filename.length,true);h.a.set(filename,30);
    const largeOffset=offset>=0xffffffff,c=header(46+filename.length+(largeOffset?12:0));c.v.setUint32(0,0x02014b50,true);c.v.setUint16(4,20,true);c.v.setUint16(6,largeOffset?45:20,true);c.v.setUint16(8,0x800,true);c.v.setUint16(14,33,true);c.v.setUint32(16,crc,true);c.v.setUint32(20,bytes.length,true);c.v.setUint32(24,bytes.length,true);c.v.setUint16(28,filename.length,true);c.v.setUint32(42,largeOffset?0xffffffff:offset,true);c.a.set(filename,46);if(largeOffset){c.v.setUint16(30,12,true);const x=46+filename.length;c.v.setUint16(x,1,true);c.v.setUint16(x+2,8,true);c.v.setBigUint64(x+4,BigInt(offset),true);}central.push(c.a);
    // The worker transfers ownership of each buffer, detaching it after send.
@@ -78,7 +78,7 @@ async function exportData(ids,format,send,cancelled,progress,withMemo=false,bodi
   const end=header(22);end.v.setUint32(0,0x06054b50,true);end.v.setUint16(8,Math.min(done,65535),true);end.v.setUint16(10,Math.min(done,65535),true);end.v.setUint32(12,Math.min(len,0xffffffff),true);end.v.setUint32(16,Math.min(offset,0xffffffff),true);await send(end.a);
  }
 }
-root.MolJobs={ImportJob,exportData,exportFiles:(files,send,progress=()=>{})=>exportData(files.map((_,i)=>i),'zip',send,()=>false,progress,false,null,files)};
+root.MolJobs={ImportJob,exportData,exportFiles:(files,send,progress=()=>{})=>exportData(files.map((_,i)=>i),'zip',send,()=>false,progress,'none',null,files)};
 if(typeof WorkerGlobalScope!=='undefined'&&root instanceof WorkerGlobalScope){let job=null,cancel=false,ack=null,choose=null;
  root.onmessage=async({data:m})=>{if(m.type==='cancel'){cancel=true;if(job)job.cancelled=true;if(choose){choose({action:'skip'});choose=null;}return;}if(m.type==='multiChoice'){if(choose){choose(m.choice);choose=null;}return;}if(m.type==='ack'){if(ack){ack();ack=null;}return;}
   try{if(m.type==='start'){
@@ -95,7 +95,7 @@ if(typeof WorkerGlobalScope!=='undefined'&&root instanceof WorkerGlobalScope){le
     }job=new ImportJob(v=>postMessage(v),(name,total,file)=>new Promise(resolve=>{choose=resolve;postMessage({type:'multiChoice',name,total,file});}));cancel=false;postMessage({type:'ready'});}
    else if(m.type==='files'){await job.files(m.files);postMessage({type:'ready'});}
    else if(m.type==='finish'){await job.finish();}
-   else if(m.type==='export'){cancel=false;await exportData(m.ids,m.format,bytes=>new Promise(r=>{ack=r;postMessage({type:'chunk',bytes},[bytes.buffer]);}),()=>cancel,n=>postMessage({type:'exportProgress',done:n}),m.withMemo);postMessage({type:'exportDone',cancelled:cancel});}
+   else if(m.type==='export'){cancel=false;await exportData(m.ids,m.format,bytes=>new Promise(r=>{ack=r;postMessage({type:'chunk',bytes},[bytes.buffer]);}),()=>cancel,n=>postMessage({type:'exportProgress',done:n}),m.solvent);postMessage({type:'exportDone',cancelled:cancel});}
   }catch(e){postMessage({type:'error',message:e.message,name:e.name});}
  };
 }
