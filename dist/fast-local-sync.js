@@ -102,8 +102,10 @@ async function writeBaseline(sub,entries,generation=null,dirtyToken=null,tagHash
 }
 // Shadow cache for DriveStore. Never switches Mol's live fast-local database.
 export const fastSyncFingerprint=fingerprint;
-export async function saveFastSyncMigrationBaseline(service,sub,hashes,startVersions,startTagsVersion){
+export async function saveFastSyncMigrationBaseline(service,sub,hashes,startVersions,startTagsVersion,missing=new Map(),startGeneration){
   const index=await service.syncIndex();
+  if(startGeneration!==undefined&&index.generation!==startGeneration)
+    throw Error('移行中にDriveのライブラリが変更されました。移行を中止します。');
   const versions=new Map(index.records.map(row=>[row.key,row.version]));
   if(index.tagsVersion!==startTagsVersion)throw Error('移行中にDriveのタグが変更されました。移行を中止します。');
   const baseline={};
@@ -112,6 +114,7 @@ export async function saveFastSyncMigrationBaseline(service,sub,hashes,startVers
       throw Error('移行中にDriveの分子・反応データが変更されました。移行を中止します。');
     baseline[key]={version:versions.get(key),hash};
   }
+  for(const [key,name] of missing)baseline[key]={version:versions.get(key),hash:null,missingName:name};
   await writeBaseline(sub,baseline,index.generation,localStorage.getItem('mol-bench-fast-sync-dirty-'+sub),await tagFingerprint(index.tags),index.tagsVersion);
 }
 function shadowBackend(){
@@ -273,7 +276,7 @@ export function startFastLocalSync(scope){
           drive.syncIndex(),readBaseline(sub),
         ]);
         const dirtyToken=localStorage.getItem(dirtyKey);
-        if(!manual&&savedState.generation===remote.generation&&savedState.dirtyToken===dirtyToken){
+        if(!manual&&!Object.values(savedState.entries).some(row=>row.missingName!==undefined)&&savedState.generation===remote.generation&&savedState.dirtyToken===dirtyToken){
           if(!lastStatus.startsWith('同期済み'))status('同期済み（変更なし）');
           return;
         }
@@ -298,8 +301,26 @@ export function startFastLocalSync(scope){
           return fingerprintCache.get(key);
         };
         const push=[],pull=[],conflicts=[],safe=new Set(),computed=new Map();
+        const localMoleculeNames=new Set([...local.values()].filter(item=>item.kind==='m').map(item=>item.meta.name));
         for(const key of keys){
           const saved=baseline[key],current=local.get(key),cloud=remoteMap.get(key);
+          if(saved?.missingName!==undefined){
+            // This record was never migrated. Its absence is not a local deletion.
+            if(!cloud){
+              if(!current){safe.add(key);computed.set(key,null);}
+              continue;
+            }
+            const kind=key[0],id=key.slice(2);
+            if(current||(kind==='m'&&localMoleculeNames.has(cloud.meta.name)))continue;
+            let body;
+            try{body=await drive.syncRead(kind,id);}
+            catch(error){if(error.status===404)continue;throw error;}
+            if(body?.id!==id||(kind==='m'&&!Array.isArray(body.atoms)))continue;
+            pull.push({kind,id,meta:cloud.meta,body,action:'put'});
+            if(kind==='m')localMoleculeNames.add(cloud.meta.name);
+            safe.add(key);
+            continue;
+          }
           const hash=await localHash(key);
           let localChanged,remoteChanged;
           if(saved){
@@ -432,8 +453,10 @@ export function startFastLocalSync(scope){
           lastConflict='';
           localStorage.removeItem(conflictKey);
         }
+        const pending=Object.values(newState).filter(row=>row.missingName!==undefined).length;
         status('同期済み（Driveへ '+remoteChanges.length+'件・端末へ '+localChanges.length+'件）'+
-          (remainingConflicts.length?'／競合 '+remainingConflicts.length+'件は保留':''));
+          (remainingConflicts.length?'／競合 '+remainingConflicts.length+'件は保留':'')+
+          (pending?'／未取得 '+pending+'件は同期を保留':''));
         // Local catalogue pages need a refresh after remote-origin changes.
         if(localChanges.length||pullTags){
           document.dispatchEvent(new Event('drive-store-updated'));
