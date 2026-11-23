@@ -31,6 +31,7 @@ on:
   # Final check: atomic Durable Object run allocation, with matching transaction regression tests.
   # Redeploy after run-identity test browser lock fixture repair (2026-11-17).
   # Release v0.99-beta: freeze functional scope and publish version metadata.
+  # Publish the ColabReaction-compatible calculation result ZIP.
   push:
     branches: [main]
     paths: [.github/workflows/deploy.yml]

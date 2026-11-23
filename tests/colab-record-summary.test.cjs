@@ -46,7 +46,7 @@ const {pathToFileURL} = require('node:url');
     close(){this.open=false;}
   }
   const code = fs.readFileSync(path.join(__dirname,'../dist/colab-records.js'),'utf8')
-    .replace(/^import .*;\n/gm,'') +
+    .replace(/^import .*;\r?\n/gm,'') +
     '\nglobalThis.__test={loadRecords,setRoot:id=>{root=id},getCards:()=>cards,getJobs:()=>jobs};';
 
   async function scenario(n,mode) {
