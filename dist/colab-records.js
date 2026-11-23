@@ -693,11 +693,55 @@ function connectImageSaver(params, jobId, images) {
   };
 }
 
-async function downloadArchive(job, originals, button) {
+function colabResultEntries(job, files) {
+  const required = ['reactant.xyz', 'product.xyz', 'DMF_energy.csv'];
+  const byName = new Map();
+  for (const file of files) {
+    const name = file.path.split('/').at(-1);
+    byName.set(name, (byName.get(name) || 0) + 1);
+  }
+  for (const name of [...required, 'DMF_final.xyz', 'reaction-context.json']) {
+    if (byName.get(name) > 1) throw Error(name + ' が複数あります。');
+    if (required.includes(name) && !byName.has(name)) throw Error(name + ' がありません。');
+  }
+
+  const {method, runId, runNumber: storedNumber, sourceReactionId, reactionName, classification} =
+    job.appProperties || {};
+  const runNumber = Number(storedNumber);
+  if (!job._parentName || !/^[A-Za-z0-9_-]{1,24}$/.test(method || '') ||
+      !Number.isSafeInteger(runNumber) || runNumber < 1) return files;
+
+  const runLabel = method + '(' + runNumber + ')';
+  const folderName = Mol.safeName(job._parentName).replace(/^\.+$/, '_');
+  const displayPath = folderName + '/' + runLabel;
+  const prefix = displayPath + '/';
+  // Recognize an earlier export even if the reaction folder has been renamed.
+  const [reactionFolder, runFolder] = files[0].path.split('/');
+  const oldPrefix = reactionFolder + '/' + runLabel + '/';
+  const alreadyWrapped = runFolder === runLabel && files.every(file => file.path.startsWith(oldPrefix));
+  const entries = files.map(file => ({
+    ...file, path: prefix + (alreadyWrapped ? file.path.slice(oldPrefix.length) : file.path),
+  }));
+  // Batch imports can have identity in Drive even when the member ZIP had no context.
+  if (!byName.has('reaction-context.json') && runId && sourceReactionId) {
+    const context = {
+      format: 'mol-bench-reaction-context', version: 2, sourceReactionId,
+      name: reactionName || job._parentName, classification: classification ?? null,
+      runId, runNumber, method, displayPath,
+    };
+    entries.push({path: prefix + 'reaction-context.json',
+      bytes: new TextEncoder().encode(JSON.stringify(context, null, 2) + '\n')});
+  }
+  return entries;
+}
+
+async function downloadArchive(job, originals, button, {colabResult = false} = {}) {
   button.disabled = true;
+  const label = button.textContent;
   let output;
   try {
-    const filename=Mol.safeName((job._parentName?job._parentName+'_':'')+job.name).replace(/\.zip$/i,'')+'.zip';
+    const basename=Mol.safeName((job._parentName?job._parentName+'_':'')+job.name).replace(/\.zip$/i,'');
+    const filename=basename+(colabResult?'_ColabReaction':'')+'.zip';
     // Chrome/Chromebook: stream directly to disk, rather than allocating a 1GB ZIP in RAM.
     if(typeof window.showSaveFilePicker==='function'){
       try{
@@ -718,13 +762,16 @@ async function downloadArchive(job, originals, button) {
     while (pending.length) {
       const {id,path} = pending.pop();
       for (const file of await list("'" + id + "' in parents")) {
-        const name = Mol.safeName(file.name);
+        const name = colabResult ? file.name : Mol.safeName(file.name);
+        if (colabResult && (!name || name === '.' || name === '..' || /[\\/\x00-\x1f]/.test(name) ||
+            (!path && /^[A-Za-z]:/.test(name)))) throw Error('無効なファイル名: ' + name);
         if (file.mimeType === folderType) pending.push({id:file.id,path:path+name+'/'});
         else files.push({id:file.id,path:path+name});
       }
     }
     if (!files.length) throw Error('ダウンロードできる計算結果がありません。');
     const {Zip,ZipPassThrough} = await import('./vendor/fflate.mjs');
+    const entries = colabResult ? colabResultEntries(job, files) : files;
     const pieces=[],paths=new Set();
     let write=Promise.resolve(),failure=null,finished=false;
     const archive=new Zip((error,chunk,final)=>{
@@ -733,12 +780,12 @@ async function downloadArchive(job, originals, button) {
       else pieces.push(chunk);
       if(final)finished=true;
     });
-    for(let i=0;i<files.length;i++){
-      const file=files[i];
+    for(let i=0;i<entries.length;i++){
+      const file=entries[i];
       if(paths.has(file.path))throw Error('ZIP内のファイル名が重複しています。');
       paths.add(file.path);
-      button.textContent='取得中 '+(i+1)+'/'+files.length;
-      const response=await download(file.id);
+      button.textContent='取得中 '+(i+1)+'/'+entries.length;
+      const response=file.bytes ? new Response(file.bytes) : await download(file.id);
       const item=new ZipPassThrough(file.path);
       archive.add(item);
       if(response.body){
@@ -772,7 +819,7 @@ async function downloadArchive(job, originals, button) {
     status('ZIPのダウンロードに失敗しました。' + error.message);
   } finally {
     button.disabled = false;
-    button.textContent = '結果ZIPをダウンロード';
+    button.textContent = label;
   }
 }
 function serveVibrationFiles(tab, originals, channelId) {
@@ -1170,13 +1217,18 @@ async function renderRecord(job) {
   archive.textContent = '結果ZIPをダウンロード';
   archive.disabled = !files.has('計算結果');
   archive.onclick = () => void downloadArchive(job,files.get('計算結果'),archive);
+  const colabArchive = document.createElement('button');
+  colabArchive.type = 'button';
+  colabArchive.textContent = 'ColabReaction互換ZIPを書き出す';
+  colabArchive.disabled = archive.disabled;
+  colabArchive.onclick = () => void downloadArchive(job,files.get('計算結果'),colabArchive,{colabResult:true});
   if(job.appProperties?.reactionName){
     const originalName=document.createElement('p');
     originalName.className='muted';
     originalName.textContent='元の反応：'+job.appProperties.reactionName;
     card.append(originalName);
   }
-  card.append(title, images, info, notes, open, classificationButton, archive);
+  card.append(title, images, info, notes, open, classificationButton, archive, colabArchive);
   const resultDate = summaryResultDate(parsed);
   cards.set(job.id,Object.assign(job,{card,title,classificationButton,resultDate,recordFiles:files}));
   jobs.append(card);
