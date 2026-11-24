@@ -621,7 +621,7 @@ async function saveEndpoint(finish, openEditor = false) {
             : '対応するSTARTが見つかりません。先にSTARTを保存してください。');
         target=candidates[0];
       }
-      if (target.FINISH && !await Mol.confirmFileAction('生成物の上書き',target.name+'_FINISH を上書きしますか？','生成物を上書きする')) return;
+      if (target.FINISH && !await Mol.confirmFileAction('生成物の上書き',target.name+'_FINISH を上書きをしますか？','生成物を上書きする')) return;
       structure.name = target.name+'_FINISH';
       const reviewed=await Mol.reviewReactionSave({...target,FINISH:structure},'FINISH');if(!reviewed)return;
       const fields={FINISH:structure};if(reviewed.START!==target.START)fields.START=reviewed.START;
