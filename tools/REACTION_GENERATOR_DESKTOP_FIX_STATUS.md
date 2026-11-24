@@ -6,6 +6,11 @@
 - Web版: dist/editor.html のGFN2-xTB直下にGFN1-xTBを配置し、GFN2 hover/focus時のみGFN1表示。要素IDと計算起動処理は保持。
 - Web版: エディタの原子平行移動速度のデフォルト値を 5 Å/s に変更。元の min=0.1, max=8, step=0.1 維持。
 - Windows版向け: tools/Apply-Editor-Fixes-Windows.ps1 はユーザーPC内の editor.html を探索し、GFN配置・初期速度・「上書きしますか」→「上書きをしますか」をバックアップ付きで修正する。実機未検証。
+- Web版Colab計算履歴: Ctrl/Meta＋左クリックで項目全域の複数選択、チェックマークで継続、Shift＋右クリックは追加専用。選択した複数記録の分類一括設定、部分失敗報告。分類ダイアログを反応ライブラリの入力形式に近づけた。
+- Web版ビューアー: 不要な「出発物を選んで生成物として保存」を削除。元反応ZIPを参照できない時も現在表示中のSTART構造の保存を続行。ImportJob初期化失敗でもbusy状態を解除するよう修正。上書き確認文言の「上書きをしますか」化。
+- Web版反応ライブラリ: 別タブで作成・変更した構造をBroadcastChannelで通知し、250msデバウンスで自動再描画。ポーリングはしない。
+- Windows版向け: tools/Install-Web-UI-Updates-Windows.ps1 はCodex配下のWeb UIソースへ7ファイルの変更を3-way merge（Git利用可能なら）してバックアップ付き適用する。既存のローカル差分と競合する場合はスキップして警告。
+- 静的ソース契約検査とJavaScript構文解析を実施し成功。Windowsのデスクトップ側の追加9項目は依然として未実装。
 - ユーザーのWindows版全体への統合済み配布ZIPは未作成。残る項目を修正済みと誤記しないこと。
 
 ## 既存22項目（以前のパッチから機能を後退させない）
