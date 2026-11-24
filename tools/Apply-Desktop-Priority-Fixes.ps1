@@ -358,7 +358,7 @@ if (-not $new.Contains('rg-gfn1-desktop-v2')) {
     if ($head -lt 0) { throw 'Missing head tag.' }
     $new=$new.Insert($head,$css+[Environment]::NewLine)
 }
-$new=[regex]::Replace($new,'(?i)(\bid=["'']speed["''][^>]*\bvalue=["''])1(?:\.0)?(["''])','15$2')
+$new=[regex]::Replace($new,'(?i)(\bid=["'']speed["''][^>]*\bvalue=["''])1(?:\.0)?(["''])','${1}5$2')
 $new=[regex]::Replace($new,'(?i)(\bid=["'']speedValue["''][^>]*>)\s*1\.0(\s*Å/s)','$'+'{1}5.0$2')
 $new=$new.Replace('上書きしますか','上書きをしますか')
 if ($new -cne $old) { Write-BackedUp $p $new $false } else { Write-Host 'Editor fixes already present.' }
