@@ -17,6 +17,8 @@ assert.match(js,/const selectedJobIds = new Set\(\)/);
 assert.match(js,/card\.addEventListener\('click',[\s\S]*?event\.ctrlKey \|\| event\.metaKey/);
 assert.match(js,/card\.addEventListener\('contextmenu',[\s\S]*?event\.shiftKey/);
 assert.match(js,/selectionCheckbox\.onclick[\s\S]*?toggleSelected\(job\.id\)/);
+assert.match(js,/if \(!selectedJobIds\.has\(job\.id\)\) \{\s*selectedJobIds\.add\(job\.id\)/);
+assert.match(js,/Ordinary clicks clear the previous selection/);
 assert.match(js,/const targets = \[\.\.\.classificationTargets\]/);
 assert.match(html,/id="classificationKnownNames"/);
 assert.match(html,/分類名を一括変更/);
