@@ -37,6 +37,25 @@ if (-not $dir) {
     }
 }
 if (-not $dir) {
+    $oldCache = Join-Path $cacheDir 'targets.json'
+    if (Test-Path -LiteralPath $oldCache -PathType Leaf) {
+        try {
+            function Get-RgPathStrings($value) {
+                if ($null -eq $value) { return }
+                if ($value -is [string]) { $value; return }
+                if ($value -is [System.Collections.IEnumerable] -and $value -isnot [pscustomobject]) {
+                    foreach ($v in $value) { Get-RgPathStrings $v }
+                } elseif ($value -is [pscustomobject]) {
+                    foreach ($prop in $value.PSObject.Properties) { Get-RgPathStrings $prop.Value }
+                }
+            }
+            $oldTargets=ConvertFrom-Json -InputObject ([IO.File]::ReadAllText($oldCache))
+            $known=@(Get-RgPathStrings $oldTargets | ForEach-Object { Find-Launcher $_ } | Where-Object { $_ } | Sort-Object -Unique)
+            if ($known.Count -eq 1) { $dir=$known[0] }
+        } catch { Write-Warning 'Previous updater cache could not be read; searching normally.' }
+    }
+}
+if (-not $dir) {
     $roots = @((Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Codex'),
         (Join-Path $HOME 'Documents\Codex'), (Join-Path $HOME 'OneDrive\Documents\Codex'))
     $candidates = @(
@@ -359,7 +378,7 @@ if (-not $new.Contains('rg-gfn1-desktop-v2')) {
     $new=$new.Insert($head,$css+[Environment]::NewLine)
 }
 $new=[regex]::Replace($new,'(?i)(\bid=["'']speed["''][^>]*\bvalue=["''])1(?:\.0)?(["''])','${1}5$2')
-$new=[regex]::Replace($new,'(?i)(\bid=["'']speedValue["''][^>]*>)\s*1\.0(\s*Å/s)','$'+'{1}5.0$2')
+$new=[regex]::Replace($new,'(?i)(\bid=["'']speedValue["''][^>]*>)\s*1\.0(\s*Å/s)','${1}5.0$2')
 $new=$new.Replace('上書きしますか','上書きをしますか')
 if ($new -cne $old) { Write-BackedUp $p $new $false } else { Write-Host 'Editor fixes already present.' }
 # Exact wording correction only in nearby application source, preserving all other content.
@@ -391,7 +410,7 @@ if (-not $NoSourceExport) {
         }
         foreach ($base in @($app,$dir)) {
             Get-ChildItem -LiteralPath $base -File -ErrorAction SilentlyContinue |
-                Where-Object { $_.Extension -in @('.ps1','.py','.sh','.cmd','.bat') -and $_.Name -notmatch '(?i)secret|token|credential|private.?key' } |
+                Where-Object { $_.Extension -in @('.ps1','.py','.sh','.cmd','.bat','.cs') -and $_.Name -notmatch '(?i)secret|token|credential|private.?key' } |
                 ForEach-Object { & $addSource $_ }
         }
         $mol=Join-Path $app 'MolBench'
