@@ -22,6 +22,37 @@ const order = get('colabOrder');
 const replotButton = get('replotExisting');
 let replotRunning = false;
 const cards = new Map();
+const selectedJobIds = new Set();
+const selectionToolbar = get('colabSelectionToolbar');
+const selectionCount = get('colabSelectionCount');
+function updateSelected() {
+  for (const [id, entry] of cards) {
+    const on = selectedJobIds.has(id);
+    entry.card.classList.toggle('is-selected', on);
+    entry.card.setAttribute('aria-selected', String(on));
+    if (entry.selectionCheckbox) entry.selectionCheckbox.checked = on;
+  }
+  selectionToolbar.hidden = selectedJobIds.size === 0;
+  selectionCount.textContent = selectedJobIds.size + '件選択中';
+}
+function toggleSelected(id) {
+  if (selectedJobIds.has(id)) selectedJobIds.delete(id);
+  else selectedJobIds.add(id);
+  updateSelected();
+}
+function clearSelected() {
+  if (!selectedJobIds.size) return;
+  selectedJobIds.clear();
+  updateSelected();
+}
+get('colabSelectionClear').onclick = clearSelected;
+get('colabSelectionClassify').onclick = () => {
+  if (selectedJobIds.size) openClassification(null);
+};
+document.addEventListener('click', event => {
+  if (event.target.closest('.colab-job, #classificationDialog, #colabSelectionToolbar')) return;
+  clearSelected();
+});
 order.value = 'classification';
 order.onchange = sortCards;
 const status = message => { get('colabStatus').textContent = message; };
@@ -925,18 +956,23 @@ const classificationForm = get('classificationForm');
 const classificationName = get('classificationName');
 const classificationCreate = get('classificationCreate');
 let classificationJob;
+let classificationTargets = [];
 let classificationSaving = false;
 let classificationRenaming = false, classificationFrom = null;
 
 function openClassification(jobId) {
-  classificationJob = cards.get(jobId);
+  classificationTargets = jobId ? [jobId] : [...selectedJobIds].filter(id => cards.has(id));
+  classificationJob = cards.get(classificationTargets[0]);
   if (!classificationJob || classificationDialog.open) return;
   const current = classificationJob.appProperties?.classification;
-  get('classificationCurrent').textContent = '現在の分類：' + (current || 'なし');
+  get('classificationCurrent').textContent = classificationTargets.length > 1
+    ? classificationTargets.length + '件の分類を一括変更'
+    : '現在の分類：' + (current || 'なし');
   get('classificationStatus').textContent = '';
   classificationName.value = '';
   classificationForm.hidden = classificationCreate.disabled = true;
-  get('classificationRemove').disabled = !current;
+  get('classificationRemove').disabled = !classificationTargets.some(id => cards.get(id)?.appProperties?.classification);
+  get('classificationRename').disabled = classificationTargets.length > 1;
   classificationRenaming = false;
   classificationFrom = null;
   classificationCreate.textContent = '作成して設定';
@@ -973,28 +1009,39 @@ async function saveClassification(name) {
     return;
   }
   classificationSaving = true;
-  const jobId = classificationJob.id;
-  feedback.textContent = '保存中…';
+  const targets = [...classificationTargets];
+  feedback.textContent = targets.length + '件を保存中…';
+  const failed = [];
+  let updated = 0;
   try {
-    const response = await request(drive + '/files/' + encodeURIComponent(jobId) + '?fields=appProperties', {
-      method:'PATCH', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({appProperties:{...(cards.get(jobId)?.appProperties||{}),classification:name || null}}),
-    });
-    const {appProperties} = await response.json();
-    const job = cards.get(jobId);
-    if (job) {
-      job.appProperties = appProperties;
-      job.classificationButton.textContent = name ? '分類：' + name : '分類を設定';
-      if (order.value === 'classification') sortCards();
+    for (const jobId of targets) {
+      const job = cards.get(jobId);
+      if (!job) { failed.push(jobId + ': 一覧から消えました'); continue; }
+      try {
+        const response = await request(drive + '/files/' + encodeURIComponent(jobId) + '?fields=appProperties', {
+          method:'PATCH', headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({appProperties:{...(job.appProperties||{}),classification:name || null}}),
+        });
+        const {appProperties} = await response.json();
+        job.appProperties = appProperties;
+        job.classificationButton.textContent = name ? '分類：' + name : '分類を設定';
+        updated++;
+      } catch (error) {
+        failed.push((job._parentName ? job._parentName+'/' : '') + job.name + ': ' + error.message);
+      }
     }
-    classificationDialog.close();
-  } catch (error) {
-    feedback.textContent = error.message;
+    if (order.value === 'classification') sortCards();
+    if (failed.length) {
+      feedback.textContent = updated + '件更新、' + failed.length + '件失敗：' + failed.slice(0,3).join(' / ');
+      // Keep selection and dialog open so failed items can be retried.
+    } else {
+      classificationDialog.close();
+      if (targets.length > 1) clearSelected();
+    }
   } finally {
     classificationSaving = false;
   }
 }
-
 classificationDialog.addEventListener('cancel',event => {
   if (classificationSaving) event.preventDefault();
 });
@@ -1110,6 +1157,8 @@ async function loadRecords() {
   imageUrls.clear();
   jobs.replaceChildren();
   cards.clear();
+  selectedJobIds.clear();
+  updateSelected();
   const rootFolders=await list("'"+root+"' in parents and mimeType = '"+folderType+"'");
   const folders=[];
   for(const entry of rootFolders){
@@ -1206,7 +1255,34 @@ async function renderRecord(job) {
   },message=>{ noteError.textContent = '備考を保存できませんでした。' + message; },
   {label:'備考',multiline:true,allowEmpty:true});
   notes.append(notesLabel,note,noteError);
-  card.onclick = event => { if (!event.target.closest('button,input,.colab-record-name,.colab-notes')) open.click(); };
+  const selectionCheckbox = document.createElement('input');
+  selectionCheckbox.type = 'checkbox';
+  selectionCheckbox.className = 'colab-select-toggle';
+  selectionCheckbox.setAttribute('aria-label', 'この計算記録を選択');
+  selectionCheckbox.onclick = event => {
+    event.stopPropagation();
+    toggleSelected(job.id);
+  };
+  // Ctrl+left-click anywhere on the record changes only selection. It must
+  // run in capture phase to prevent nested buttons from opening/downloading.
+  card.addEventListener('click', event => {
+    if (!(event.ctrlKey || event.metaKey) || event.target === selectionCheckbox) return;
+    if (event.target.closest('input,textarea,[contenteditable="true"]')) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    toggleSelected(job.id);
+  }, true);
+  card.addEventListener('contextmenu', event => {
+    if (!event.shiftKey) return;
+    event.preventDefault();
+    toggleSelected(job.id);
+  });
+  card.onclick = event => {
+    if (event.target.closest('button,input,.colab-record-name,.colab-notes')) return;
+    clearSelected();
+    open.click();
+  };
+  card.append(selectionCheckbox);
   const classificationButton = document.createElement('button');
   classificationButton.type = 'button';
   classificationButton.textContent = job.appProperties?.classification
@@ -1230,7 +1306,7 @@ async function renderRecord(job) {
   }
   card.append(title, images, info, notes, open, classificationButton, archive, colabArchive);
   const resultDate = summaryResultDate(parsed);
-  cards.set(job.id,Object.assign(job,{card,title,classificationButton,resultDate,recordFiles:files}));
+  cards.set(job.id,Object.assign(job,{card,title,classificationButton,selectionCheckbox,resultDate,recordFiles:files}));
   jobs.append(card);
   let counted;
   if (savedCount === undefined && files.has('計算結果') && (!summary || summary.count !== '?')) {
