@@ -69,7 +69,7 @@ Write-Host ("対象: " + $editor)
 $src = [IO.File]::ReadAllText($editor,[Text.Encoding]::UTF8)
 
 # Preserve button IDs and onclick handlers, but place GFN1 directly under GFN2.
-if (-not $src.Contains('rg-gfn1-position-v2')) {
+if (-not ($src.Contains('rg-gfn1-position-v2') -or $src.Contains('editor-opt-methods'))) {
   $regex1 = [regex]'(?is)<button\b[^>]*\bid=["'']optimizeGfn1["''][^>]*>.*?</button>'
   $regex2 = [regex]'(?is)<button\b[^>]*\bid=["'']optimize["''][^>]*>.*?</button>'
   $m1 = $regex1.Matches($src)
@@ -101,6 +101,8 @@ if (-not $src.Contains('rg-gfn1-position-v2')) {
 # Preserve min/max/step; change only default.
 $src=[regex]::Replace($src,'(?i)(\bid=["'']speed["''][^>]*\bvalue=["''])1(?:\.0)?(["''])','15$2')
 $src=[regex]::Replace($src,'(?i)(\bid=["'']speedValue["''][^>]*>)\s*1\.0(\s*Å/s)','15.0$2')
+$src=$src.Replace('GFN1-構造最適化','GFN1-xTB最適化')
+$src=$src.Replace('GFN2-構造最適化','GFN2-xTB最適化')
 $src=$src.Replace('上書きしますか','上書きをしますか')
 $changed=0
 if (Replace-TextFile -Path $editor -Value $src) { $changed++ }
