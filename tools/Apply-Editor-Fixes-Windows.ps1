@@ -9,7 +9,7 @@ function Replace-TextFile {
   $bak = $Path + '.rg-backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff')
   $tmp = $Path + '.rg-tmp-' + [Guid]::NewGuid().ToString('N')
   try {
-    [IO.File]::WriteAllText($tmp,$Value,(New-Object Text.UTF8Encoding($false)))
+    [IO.File]::WriteAllText($tmp,$Value,([Text.UTF8Encoding]::new($false)))
     [IO.File]::Replace($tmp,$Path,$bak)
   } finally {
     if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force }
