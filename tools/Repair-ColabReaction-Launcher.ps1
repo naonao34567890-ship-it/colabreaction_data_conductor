@@ -103,7 +103,7 @@ try {
 }
 $oldShell=[IO.File]::ReadAllText($runner)
 # Bash requires LF and no BOM. Compare bytes too, to detect a BOM-only defect.
-$newShell=$oldShell.Replace([string][char]13+[string][char]10,[string][char]10)
+$newShell=$oldShell.Replace(([string][char]13+[string][char]10),[string][char]10)
 $runnerBytes=[IO.File]::ReadAllBytes($runner)
 $hasBom=($runnerBytes.Length -ge 3 -and $runnerBytes[0] -eq 239 -and $runnerBytes[1] -eq 187 -and $runnerBytes[2] -eq 191)
 
