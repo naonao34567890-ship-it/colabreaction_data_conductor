@@ -625,7 +625,7 @@ async function saveEndpoint(finish, openEditor = false) {
       }
       if (target.FINISH && !await Mol.confirmFileAction('生成物の上書き',target.name+'_FINISH を上書きをしますか？','生成物を上書きする')) return;
       structure.name = target.name+'_FINISH';
-      const reviewed=await Mol.reviewReactionSave({...target,FINISH:structure},'FINISH');if(!reviewed)return;
+      const reviewed=await Mol.reviewReactionSave({...target,FINISH:structure},'FINISH');if(!reviewed){tab?.close();return;}
       const fields={FINISH:structure};if(reviewed.START!==target.START)fields.START=reviewed.START;
       saved = await ReactionStore.update(target.id,fields,current=>
         !!current.FINISH===!!target.FINISH && current.FINISH?.revision===target.FINISH?.revision && current.START?.revision===target.START?.revision);
