@@ -500,11 +500,13 @@ async function registerFrames(ranges) {
   busy = true;
   syncButtons();
   let firstSaved;
-  const job = new MolJobs.ImportJob(event => {
-    if (event.type === 'saved') firstSaved ??= event.items[0];
-    status('取り込み中 · '+job.stats.registered+' 件登録済み');
-  });
+  let job;
   try {
+    // Keep the busy cleanup in finally even if ImportJob initialization fails.
+    job = new MolJobs.ImportJob(event => {
+      if (event.type === 'saved') firstSaved ??= event.items[0];
+      status('取り込み中 · '+(job?.stats.registered || 0)+' 件登録済み');
+    });
     for (let i=0;i<frames.length;i++) {
       if (ranges && !ranges.some(([first,last]) => i+1>=first && i+1<=last)) continue;
       const block = i===current ? currentBlock : await readBlock(i);
@@ -514,7 +516,7 @@ async function registerFrames(ranges) {
     status(job.stats.registered+' 件をライブラリに取り込みました。');
     return firstSaved;
   } catch (error) {
-    status('取り込みを中断しました。登録済み '+job.stats.registered+' 件。'+(job.stats.fatal || error.message));
+    status('取り込みを中断しました。登録済み '+(job?.stats.registered || 0)+' 件。'+(job?.stats.fatal || error.message));
   } finally {
     busy = false;
     syncButtons();
