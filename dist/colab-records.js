@@ -1278,8 +1278,10 @@ async function renderRecord(job) {
     toggleSelected(job.id);
   });
   card.onclick = event => {
-    if (event.target.closest('button,input,.colab-record-name,.colab-notes')) return;
+    // Ordinary clicks clear the previous selection, including clicks on
+    // record action buttons; the checkbox's handler stops propagation.
     clearSelected();
+    if (event.target.closest('button,input,.colab-record-name,.colab-notes')) return;
     open.click();
   };
   card.append(selectionCheckbox);
