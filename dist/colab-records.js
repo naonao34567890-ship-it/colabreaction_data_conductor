@@ -970,12 +970,13 @@ function openClassification(jobId) {
     : '現在の分類：' + (current || 'なし');
   get('classificationStatus').textContent = '';
   classificationName.value = '';
-  classificationForm.hidden = classificationCreate.disabled = true;
+  classificationForm.hidden = false;
+  classificationCreate.disabled = true;
   get('classificationRemove').disabled = !classificationTargets.some(id => cards.get(id)?.appProperties?.classification);
   get('classificationRename').disabled = classificationTargets.length > 1;
   classificationRenaming = false;
   classificationFrom = null;
-  classificationCreate.textContent = '作成して設定';
+  classificationCreate.textContent = '選択した記録に分類を設定';
   renderClassifications();
   classificationDialog.showModal();
 }
@@ -984,7 +985,12 @@ function renderClassifications() {
   const choices = get('classificationChoices');
   choices.replaceChildren();
   const names = new Set([...cards.values()].map(job => job.appProperties?.classification).filter(Boolean));
+  const datalist = get('classificationKnownNames');
+  datalist.replaceChildren();
   for (const name of [...names].sort(Mol.compareTagNames)) {
+    const option = document.createElement('option');
+    option.value = name;
+    datalist.append(option);
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = name;
@@ -1052,7 +1058,7 @@ get('classificationNew').onclick = () => {
   classificationRenaming = false;
   classificationFrom = null;
   classificationName.value = '';
-  classificationCreate.textContent = '作成して設定';
+  classificationCreate.textContent = '選択した記録に分類を設定';
   classificationCreate.disabled = true;
   classificationForm.hidden = false;
   classificationName.focus();
