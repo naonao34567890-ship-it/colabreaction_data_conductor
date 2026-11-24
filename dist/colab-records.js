@@ -1275,7 +1275,11 @@ async function renderRecord(job) {
   card.addEventListener('contextmenu', event => {
     if (!event.shiftKey) return;
     event.preventDefault();
-    toggleSelected(job.id);
+    // Shift+right-click only adds to selection; it never removes other items.
+    if (!selectedJobIds.has(job.id)) {
+      selectedJobIds.add(job.id);
+      updateSelected();
+    }
   });
   card.onclick = event => {
     // Ordinary clicks clear the previous selection, including clicks on
