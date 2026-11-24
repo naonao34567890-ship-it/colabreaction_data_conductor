@@ -123,4 +123,4 @@ try {
 }
 Write-Host ''
 Write-Host ('完了: '+$changed+'件更新、'+$skipped+'件保留') -ForegroundColor Cyan
-Write-Host '対象はWeb UIソース5ファイルのみ。ORCAキューや保存データは変更していません。'
+Write-Host '対象はWeb UIソース7ファイルのみ。ORCAキューや保存データは変更していません。'
