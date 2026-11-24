@@ -631,7 +631,13 @@ async function saveEndpoint(finish, openEditor = false) {
       if(!await Mol.confirmElectronicSave({START:structure})){tab?.close();return;}
       // Restore every custom record property from the original typed archive.
       // Endpoints and ID must NOT be copied: this is a new saved reaction path.
-      const source=await loadFullSourceReaction();
+      // Source metadata is optional. A stale/unreachable source ZIP must not
+      // prevent saving the currently displayed molecule to the local library.
+      let source=null;
+      try { source=await loadFullSourceReaction(); }
+      catch (error) {
+        console.warn('元反応ZIPの追加情報を取得できません。現在の構造で保存します:',error);
+      }
       const {id:_id,createdAt:_created,name:_name,START:_start,FINISH:_finish,
        startPreview:_preview,_driveFileId:_drive,_summary:_summary,...rest}=source||{};
       const provenance=sourceReactionContext||source?{
