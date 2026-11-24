@@ -18,6 +18,10 @@ assert.match(js,/card\.addEventListener\('click',[\s\S]*?event\.ctrlKey \|\| eve
 assert.match(js,/card\.addEventListener\('contextmenu',[\s\S]*?event\.shiftKey/);
 assert.match(js,/selectionCheckbox\.onclick[\s\S]*?toggleSelected\(job\.id\)/);
 assert.match(js,/const targets = \[\.\.\.classificationTargets\]/);
+assert.match(html,/id="classificationKnownNames"/);
+assert.match(html,/分類名を一括変更/);
+assert.match(js,/get\('classificationKnownNames'\)/);
+assert.match(js,/classificationTargets\.length > 1/);
 assert.match(js,/for \(const jobId of targets\)/);
 assert.match(js,/failed\.length/);
 assert.match(js,/if \(event\.target\.closest\('button,input,\.colab-record-name,\.colab-notes'\)\) return;/);
