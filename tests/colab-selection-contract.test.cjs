@@ -8,6 +8,8 @@ const js=fs.readFileSync(path.join(root,'colab-records.js'),'utf8');
 const editor=fs.readFileSync(path.join(root,'editor.html'),'utf8');
 const viewer=fs.readFileSync(path.join(root,'reaction-viewer.html'),'utf8');
 const slideshow=fs.readFileSync(path.join(root,'slideshow.js'),'utf8');
+const reactionStore=fs.readFileSync(path.join(root,'reaction-store.js'),'utf8');
+const reactionList=fs.readFileSync(path.join(root,'reactions.js'),'utf8');
 // New selection controls are complete and uniquely identified.
 for(const id of ['colabSelectionToolbar','colabSelectionCount','colabSelectionClassify','colabSelectionClear']){
   const found=[...html.matchAll(new RegExp('id="'+id+'"','g'))];
@@ -37,4 +39,8 @@ assert.match(editor,/id="optimize"[\s\S]{0,250}id="optimizeGfn1"/);
 assert.doesNotMatch(viewer,/出発物を選んで生成物として保存/);
 assert.match(slideshow,/元反応ZIPの追加情報を取得できません/);
 assert.match(slideshow,/上書きをしますか/);
+assert.match(reactionStore,/molecular-xyz-reaction-list-changed-v1/);
+assert.match(reactionStore,/for \(const method of \['update','importRecords','remove','tag','classify','create','createReaction'\]\)/);
+assert.match(reactionList,/molecular-xyz-reaction-list-changed-v1/);
+assert.match(reactionList,/setTimeout\(\(\) => \{[\s\S]*?renderReactions\(\)/);
 console.log('Colab selection, editor, viewer source contracts passed');
