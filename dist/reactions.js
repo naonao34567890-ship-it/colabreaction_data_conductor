@@ -211,6 +211,28 @@ async function renderReactions() {
 // Focus can render before that refresh finishes; focus alone misses the new head.
 document.addEventListener('drive-store-updated',renderReactions);
 window.addEventListener('focus',renderReactions);
+// A reaction saved from the editor/viewer in another tab should appear without
+// the user manually reloading this catalogue. Avoid polling large databases.
+if (typeof BroadcastChannel === 'function') {
+ const changes = new BroadcastChannel('molecular-xyz-reaction-list-changed-v1');
+ let refreshTimer = null, pendingHidden = false;
+ const scheduleRefresh = () => {
+  if (document.hidden) {pendingHidden = true;return;}
+  if (refreshTimer !== null) clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => {
+   refreshTimer = null;
+   void renderReactions();
+  },250);
+ };
+ changes.onmessage = ({data}) => { if(data?.type === 'changed') scheduleRefresh(); };
+ document.addEventListener('visibilitychange',() => {
+  if (!document.hidden && pendingHidden) {pendingHidden=false;scheduleRefresh();}
+ });
+ window.addEventListener('pagehide',() => {
+  if(refreshTimer !== null)clearTimeout(refreshTimer);
+  changes.close();
+ },{once:true});
+}
 void renderReactions();
 
 function selectionUI() {

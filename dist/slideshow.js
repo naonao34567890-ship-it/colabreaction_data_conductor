@@ -500,11 +500,13 @@ async function registerFrames(ranges) {
   busy = true;
   syncButtons();
   let firstSaved;
-  const job = new MolJobs.ImportJob(event => {
-    if (event.type === 'saved') firstSaved ??= event.items[0];
-    status('取り込み中 · '+job.stats.registered+' 件登録済み');
-  });
+  let job;
   try {
+    // Keep the busy cleanup in finally even if ImportJob initialization fails.
+    job = new MolJobs.ImportJob(event => {
+      if (event.type === 'saved') firstSaved ??= event.items[0];
+      status('取り込み中 · '+(job?.stats.registered || 0)+' 件登録済み');
+    });
     for (let i=0;i<frames.length;i++) {
       if (ranges && !ranges.some(([first,last]) => i+1>=first && i+1<=last)) continue;
       const block = i===current ? currentBlock : await readBlock(i);
@@ -514,7 +516,7 @@ async function registerFrames(ranges) {
     status(job.stats.registered+' 件をライブラリに取り込みました。');
     return firstSaved;
   } catch (error) {
-    status('取り込みを中断しました。登録済み '+job.stats.registered+' 件。'+(job.stats.fatal || error.message));
+    status('取り込みを中断しました。登録済み '+(job?.stats.registered || 0)+' 件。'+(job?.stats.fatal || error.message));
   } finally {
     busy = false;
     syncButtons();
@@ -621,9 +623,9 @@ async function saveEndpoint(finish, openEditor = false) {
             : '対応するSTARTが見つかりません。先にSTARTを保存してください。');
         target=candidates[0];
       }
-      if (target.FINISH && !await Mol.confirmFileAction('生成物の上書き',target.name+'_FINISH を上書きしますか？','生成物を上書きする')) return;
+      if (target.FINISH && !await Mol.confirmFileAction('生成物の上書き',target.name+'_FINISH を上書きをしますか？','生成物を上書きする')) return;
       structure.name = target.name+'_FINISH';
-      const reviewed=await Mol.reviewReactionSave({...target,FINISH:structure},'FINISH');if(!reviewed)return;
+      const reviewed=await Mol.reviewReactionSave({...target,FINISH:structure},'FINISH');if(!reviewed){tab?.close();return;}
       const fields={FINISH:structure};if(reviewed.START!==target.START)fields.START=reviewed.START;
       saved = await ReactionStore.update(target.id,fields,current=>
         !!current.FINISH===!!target.FINISH && current.FINISH?.revision===target.FINISH?.revision && current.START?.revision===target.START?.revision);
@@ -631,7 +633,13 @@ async function saveEndpoint(finish, openEditor = false) {
       if(!await Mol.confirmElectronicSave({START:structure})){tab?.close();return;}
       // Restore every custom record property from the original typed archive.
       // Endpoints and ID must NOT be copied: this is a new saved reaction path.
-      const source=await loadFullSourceReaction();
+      // Source metadata is optional. A stale/unreachable source ZIP must not
+      // prevent saving the currently displayed molecule to the local library.
+      let source=null;
+      try { source=await loadFullSourceReaction(); }
+      catch (error) {
+        console.warn('元反応ZIPの追加情報を取得できません。現在の構造で保存します:',error);
+      }
       const {id:_id,createdAt:_created,name:_name,START:_start,FINISH:_finish,
        startPreview:_preview,_driveFileId:_drive,_summary:_summary,...rest}=source||{};
       const provenance=sourceReactionContext||source?{

@@ -169,5 +169,19 @@ const ReactionStore = (() => {
    };
   }
  }
+ // Notify other tabs only after successful mutations. Preview cache writes
+ // are deliberately excluded to avoid expensive list refresh loops.
+ if (typeof BroadcastChannel === 'function') {
+  const changes = new BroadcastChannel('molecular-xyz-reaction-list-changed-v1');
+  for (const method of ['update','importRecords','remove','tag','classify','create','createReaction']) {
+   const original = api[method];
+   api[method] = async (...args) => {
+    const result = await original(...args);
+    try { changes.postMessage({type:'changed',method}); } catch {}
+    return result;
+   };
+  }
+  window.addEventListener('pagehide',()=>changes.close(),{once:true});
+ }
  return api;
 })();

@@ -36,6 +36,13 @@
 #classificationDialog .dialog-actions { flex-wrap: wrap; }
 .colab-group-heading { padding: 6px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
 #colabJobs { display: grid; gap: 12px; }
+.colab-job{position:relative}
+.colab-job.is-selected{border-color:#45bba0;box-shadow:inset 0 0 0 1px #45bba0}
+.colab-select-toggle{position:absolute;top:10px;right:10px;z-index:2;width:19px;height:19px;cursor:pointer;accent-color:#45bba0}
+.colab-job .colab-record-name{padding-right:30px}
+#colabSelectionToolbar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:8px 0;padding:10px;border:1px solid #457668;border-radius:8px;background:#1a2926}
+#colabSelectionToolbar[hidden]{display:none}
+#colabSelectionToolbar button{font-size:13px}
 .colab-job { padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
 .colab-notes { margin: 4px 0 10px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; }
 .colab-note-text { white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }
@@ -86,8 +93,8 @@
     </select></label>
   </div>
 </header>
-<div id="colabScroll" role="region" aria-label="Colab計算記録の操作・ログ・一覧" tabindex="0">
-<div class="heading library-shell-heading"><div><div class="eyebrow">MOLECULAR WORKSPACE / 04</div><h1 id="colabTitle">Colab計算記録</h1></div><div class="badge">Google Drive / Colab</div></div>
+<div id="colabScroll" role="region" aria-label="Colab計算履歴の操作・ログ・一覧" tabindex="0">
+<div class="heading library-shell-heading"><div><div class="eyebrow">MOLECULAR WORKSPACE / 04</div><h1 id="colabTitle">Colab計算履歴</h1></div><div class="badge">Google Drive / Colab</div></div>
 <div id="colabDrop" class="library-shell-drop" aria-label="Colab計算結果ドロップ領域">計算結果のZIPまたはフォルダーは、この領域にドラッグ＆ドロップすることもできます。</div>
 <form id="driveSetup" hidden>
   <label>Googleクライアントシークレット<input id="driveSecret" type="password" autocomplete="new-password" required></label>
@@ -98,26 +105,33 @@
   <p id="colabQueue" role="status">待機中 0件</p>
   <div id="colabErrors" role="status"></div>
 </div>
-<div id="colabResults" role="region" aria-label="計算記録一覧" tabindex="0">
+<div id="colabResults" role="region" aria-label="計算履歴一覧" tabindex="0">
+<div id="colabSelectionToolbar" role="toolbar" aria-label="計算記録の選択操作" hidden>
+<span id="colabSelectionCount" role="status">0件選択</span>
+<button id="colabSelectionClassify" type="button">選択した記録の分類を一括変更</button>
+<button id="colabSelectionClear" type="button">選択解除</button>
+</div>
 <div id="colabJobs"></div>
 <p id="colabLoading" class="muted" role="status" hidden>ロード中…</p>
 </div>
 </div>
 <dialog id="classificationDialog" aria-labelledby="classificationTitle">
-<h2 id="classificationTitle">分類を選ぶ</h2>
+<h2 id="classificationTitle">計算記録の分類</h2>
 <p id="classificationCurrent"></p>
-<div id="classificationChoices"></div>
-<div class="dialog-actions">
-<button type="button" id="classificationNew">新規に作る</button>
-<button type="button" id="classificationRename">名前を変更する</button>
-<button type="button" id="classificationRemove" class="danger">分類を外す</button>
-<button type="button" id="classificationCancel">キャンセル</button>
-</div>
-<form id="classificationForm" hidden>
-<label>分類名<input id="classificationName" required></label>
-<button id="classificationCreate" class="danger" disabled>作成して設定</button>
+<form id="classificationForm">
+<label>分類名（既存の分類も選択可能）<input id="classificationName" list="classificationKnownNames" placeholder="分類名" required></label>
+<datalist id="classificationKnownNames"></datalist>
+<button id="classificationCreate" class="primary" disabled>選択した記録に分類を設定</button>
 </form>
+<div id="classificationChoices" aria-label="既存の分類を選択"></div>
+<div class="dialog-actions">
+<button type="button" id="classificationCancel">閉じる</button>
+<button type="button" id="classificationRemove" class="danger">分類を外す</button>
+<button type="button" id="classificationRename">分類名を一括変更</button>
+<button type="button" id="classificationNew">新規に作る</button>
+</div>
+<p class="muted">分類名の一括変更は、同じ分類に属する記録の名称をまとめて更新します。</p>
 <p id="classificationStatus" role="status"></p>
 </dialog>
 </section>
-</div><script type="module" src="colab-records.js?v=colab-result-export-1"></script></body></html>
+</div><script type="module" src="colab-records.js?v=select-batch-fix-20261125"></script></body></html>
